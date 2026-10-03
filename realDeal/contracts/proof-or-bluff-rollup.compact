@@ -22,7 +22,9 @@
 // wagered edition settles ONLY after a verified closing proof (spec §3).
 
 pragma language_version >= 0.16 && <= 0.23;
+include "signed_credential";
 import CompactStandardLibrary;
+import SignedCredentials;
 
 // ---------------------------------------------------------------------------
 // Sizes. Fixed at compile time; measured before freezing (spec §6a.3).
@@ -85,6 +87,18 @@ struct SeedInput { separator: Bytes<32>; p1Entropy: Bytes<32>; p2Entropy: Bytes<
 struct EntropyCommitInput { separator: Bytes<32>; entropy: Bytes<32>; }
 struct HandSaltCommitInput { separator: Bytes<32>; salt: Bytes<32>; }
 struct DealInput { separator: Bytes<32>; salt: Bytes<32>; seed: Field; round: Uint<32>; }
+// What both players sign to authorize a close (spec §7). SignedCredential<T>
+// comes from the vendored SignedCredentials module; the `pk` inside each
+// credential is bound to the stored player identity via playerIdFromPk.
+export struct CloseConsent {
+  sep: Bytes<32>;
+  gameId: Bytes<32>;
+  transcriptRoot: Field;
+  p1Score: Uint<8>;
+  p2Score: Uint<8>;
+  winner: Uint<8>;
+}
+struct PlayerIdPreimage { separator: Bytes<32>; x: Field; y: Field; }
 
 // Private witnesses for closeGame. The prover (the player's browser, or our
 // proof server acting for it) holds everything; none of it is disclosed.
@@ -92,6 +106,8 @@ witness entropyPair(): [Bytes<32>, Bytes<32>];
 witness saltPair(): [Bytes<32>, Bytes<32>];
 witness transcript(): Vector<64, Move>;
 witness snapshots(): Vector<65, GameState>;
+witness p1CloseConsent(): SignedCredential<CloseConsent>;
+witness p2CloseConsent(): SignedCredential<CloseConsent>;
 
 export ledger games: Map<Bytes<32>, GameRecord>;
 export ledger totalGamesOpened: Counter;
@@ -121,6 +137,34 @@ export pure circuit commitPlayCards(cards: Vector<4, Uint<8>>, playSalt: Field):
 // maintain exactly the chain the circuit will verify.
 export pure circuit chainMove(prev: Field, kind: Uint<8>, rank: Uint<8>, count: Uint<8>, playCommit: Field): Field {
   return transientHash<[Field, Uint<8>, Uint<8>, Uint<8>, Field]>([prev, kind, rank, count, playCommit]);
+}
+
+// A player's stored Bytes<32> identity is the persistentHash of their Jubjub
+// session public key, so closeGame can bind a signer's pk to the registered
+// seat without ever storing the key itself on the ledger.
+export pure circuit playerIdFromPk(pk: JubjubPoint): Bytes<32> {
+  return persistentHash<PlayerIdPreimage>(PlayerIdPreimage {
+    separator: pad(32, "pob:pk:v1"), x: jubjubPointX(pk), y: jubjubPointY(pk)
+  });
+}
+// The canonical CloseConsent for a finished game. Exported so the off-chain
+// signer builds byte-identical separators instead of guessing pad() layout.
+export pure circuit closeConsentFor(
+  gameId: Bytes<32>, transcriptRoot: Field, p1Score: Uint<8>, p2Score: Uint<8>, winner: Uint<8>
+): CloseConsent {
+  return CloseConsent {
+    sep: pad(32, "pob:close:v1"), gameId: gameId, transcriptRoot: transcriptRoot,
+    p1Score: p1Score, p2Score: p2Score, winner: winner
+  };
+}
+// The circuit's own Fiat-Shamir challenge and deterministic nonce, exported so
+// the off-chain signer (cli/src/rollup-consent.js) hashes EXACTLY as the
+// verifier will — see signer.mjs in midnight-modules for the pattern.
+export pure circuit closeConsentChallenge(r: JubjubPoint, pk: JubjubPoint, consent: CloseConsent): Field {
+  return compute_challenge<CloseConsent>(r, pk, consent);
+}
+export pure circuit closeConsentK(sk: Field, consent: CloseConsent): Field {
+  return deterministic_k<CloseConsent>(Nonce<CloseConsent> { sk: sk, credential: consent });
 }
 
 // ---------------------------------------------------------------------------
@@ -258,6 +302,19 @@ circuit applyMove(
   assert(!isPlay || !s.pending, "play while claim pending");
   assert(!(isAccept || isChallenge) || s.pending, "response without claim");
   assert(!isPlay || (m.rank == s.currentRank && m.count >= (1 as Uint<8>) && m.count <= (4 as Uint<8>)), "bad claim");
+  // Every card slot is a rank index 0..12: a value like 200 would slip past
+  // the per-rank removal check and act as a phantom card. Inactive slots
+  // (index >= count) must be zero so the play commitment stays canonical.
+  assert(!isPlay || (
+    m.cards[0] <= (12 as Uint<8>) && m.cards[1] <= (12 as Uint<8>) &&
+    m.cards[2] <= (12 as Uint<8>) && m.cards[3] <= (12 as Uint<8>) &&
+    ((1 as Uint<8>) < m.count || m.cards[1] == (0 as Uint<8>)) &&
+    ((2 as Uint<8>) < m.count || m.cards[2] == (0 as Uint<8>)) &&
+    ((3 as Uint<8>) < m.count || m.cards[3] == (0 as Uint<8>))
+  ), "played card out of range");
+  // rank/count feed the transcript chain for EVERY move kind; forcing them to
+  // zero on non-PLAY moves keeps the transcript root canonical.
+  assert(isPlay || (m.rank == (0 as Uint<8>) && m.count == (0 as Uint<8>)), "non-PLAY fields must be zero");
 
   // PLAY: the mover's hand must hold the cards; remove them.
   const moverIs0 = s.turn == (0 as Uint<8>);
@@ -402,6 +459,22 @@ export circuit closeGame(
   // Draw (0) if nobody reached the threshold — 64 moves used, or out of rounds.
   const w: Uint<8> = fin.score0 >= threshold ? 1 : (fin.score1 >= threshold ? 2 : 0);
   assert(w == winner, "winner mismatch");
+
+  // 6. Result authorization (spec §7). The checks above prove SOME legal game
+  //    produces this result; that alone is not enough — a prover holding both
+  //    salts could fabricate a different legal transcript and close first.
+  //    The close is only valid when BOTH registered players signed this exact
+  //    result: each consent's pk must hash to the seat recorded at openGame,
+  //    and each signed credential must equal the public result being written.
+  const consent1 = p1CloseConsent();
+  const consent2 = p2CloseConsent();
+  const expectedConsent = closeConsentFor(gameId, transcriptRoot, p1Score, p2Score, winner);
+  assert(playerIdFromPk(consent1.pk) == g.playerOne, "P1 signer is not player one");
+  assert(playerIdFromPk(consent2.pk) == g.playerTwo, "P2 signer is not player two");
+  assert(consent1.credential == expectedConsent, "P1 signed a different result");
+  assert(consent2.credential == expectedConsent, "P2 signed a different result");
+  assert_signed_by<CloseConsent>(consent1, consent1.pk);
+  assert_signed_by<CloseConsent>(consent2, consent2.pk);
 
   games.insert(disclose(gameId), disclose(GameRecord {
     playerOne: g.playerOne, playerTwo: g.playerTwo, mode: g.mode,

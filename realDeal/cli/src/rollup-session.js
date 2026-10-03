@@ -26,19 +26,24 @@
 //   that needs real cards (membership, "was the claim truthful") is either
 //   known to the bot (its own plays) or revealed by the human on challenge.
 //
-// WHAT this module does NOT do: no network, no chain, no signatures. A later
-// module wires HTTP + the openGame / closeGame transactions around it.
+// WHAT this module does NOT do: no network, no chain submission. A later
+// module wires HTTP + the openGame / closeGame transactions around it. It
+// DOES sign: at finish() the bot countersigns the CloseConsent (spec §7)
+// after replaying the whole transcript through the referee — it never signs
+// a result it cannot itself prove.
 //
-// NOTE on turn order: the compiled circuit currently toggles `turn` on every
-// move, which makes player 0 (the human) the claimant on every turn and the
-// bot a pure responder. The session does not hardcode either reading — it
-// probes the referee (see probeTurnRule) and follows the circuit, so a circuit
-// fix needs no change here. Every public API below works in both regimes.
+// NOTE on turn order: the circuit hands the turn to the responder after a
+// claim resolves (`nextTurn` in applyMove). The session does not hardcode
+// that reading — it probes the referee (see probeTurnRule) and follows the
+// circuit, so a circuit change needs no change here.
 
 import { randomBytes as nodeRandomBytes } from 'node:crypto';
 import {
   createReferee, KIND, MAX_MOVES, MAX_ROUNDS, handSize, startingRank, winThreshold,
 } from '../../contracts/rollup-referee.js';
+import {
+  consentKeyPairFromSecret, buildCloseConsent, signCloseConsent, verifyCloseConsentOffChain,
+} from './rollup-consent.js';
 import { RANKS } from '../../shared/dealing.js';
 import * as scriptedAi from '../../../demoLand/src/game/ai/scripted.js';
 
@@ -275,7 +280,9 @@ function applyPublicMove(state, { kind, rank, count, playCommit, truthful, moveI
  * @param randomBytes         (length) => Uint8Array; injectable for tests
  * @param now                 () => ms timestamp; injectable for tests
  * @param ai                  { decidePlay, decideChallenge, getChallengeReaction }; defaults to scripted.js
- * @param botSessionKey       Uint8Array(32) — playerTwo identity; random if omitted
+ * @param botConsentSecret    Uint8Array(32) — secret scalar for the bot's Jubjub
+ *                            consent key; the playerTwo identity becomes
+ *                            playerIdFromPk(derived pk). Random if omitted.
  * @param turnRule            { responderPlaysNext } — who claims after a response.
  *                            Defaults to what the circuit does (probeTurnRule);
  *                            override ONLY in unit tests that never reach the circuit.
@@ -290,7 +297,7 @@ export function createRollupSession({
   randomBytes = defaultRandomBytes,
   now = () => Date.now(),
   ai = scriptedAi,
-  botSessionKey,
+  botConsentSecret,
   turnRule = probeTurnRule(pureCircuits),
 }) {
   if (!pureCircuits || typeof pureCircuits.commitEntropy !== 'function') {
@@ -313,7 +320,10 @@ export function createRollupSession({
   const botPrivate = {
     entropy: randomBytes(32),
     salt: randomBytes(32),
-    sessionKey: botSessionKey ?? randomBytes(32),
+    // Jubjub key pair for signing the CloseConsent. The public playerTwo
+    // identity on the ledger is playerIdFromPk(pk) — a hash, so the key
+    // itself is never published until the consent is verified in-circuit.
+    consentKeys: consentKeyPairFromSecret(botConsentSecret ?? randomBytes(32)),
     handCounts: null,            // Array(13) of bigint for the current round
     playRecords: new Map(),      // moveIndex -> { cards: bigint[4], playSalt: bigint }
   };
@@ -321,6 +331,7 @@ export function createRollupSession({
   requireBytes32(botPrivate.salt, 'randomBytes(32)');
   const botEntropyCommit = pureCircuits.commitEntropy(botPrivate.entropy);
   const botSaltCommit = pureCircuits.commitHandSalt(botPrivate.salt);
+  const botSessionKey = pureCircuits.playerIdFromPk(botPrivate.consentKeys.pk);
 
   // ---- what the bot learns about the human during play --------------------
   let humanEntropy = null;
@@ -417,7 +428,7 @@ export function createRollupSession({
     /** Everything the browser needs to build openGame and verify the bot's commitments. */
     get botEntropyCommit() { return botEntropyCommit; },
     get botSaltCommit() { return botSaltCommit; },
-    get botSessionKey() { return botPrivate.sessionKey; },
+    get botSessionKey() { return new Uint8Array(botSessionKey); },
     get humanSessionKey() { return humanSessionKey; },
     get status() { return status; },
 
@@ -589,8 +600,13 @@ export function createRollupSession({
      * @param humanPlays  [{ moveIndex, cards, playSalt }] for every human PLAY
      *                    that was NOT already revealed through a challenge
      *                    (supplying revealed ones too is fine if they match).
+     * @param gameId      Uint8Array(32) — the gameId openGame returned on-chain
+     * @param humanCloseConsent  SignedCredential<CloseConsent> — the human's
+     *                    signature over the result (rollup-consent.js
+     *                    signCloseConsent). Verified off-chain first; the bot
+     *                    only countersigns a result it replayed and proved.
      */
-    finish({ humanSalt, humanPlays = [] }) {
+    finish({ humanSalt, humanPlays = [], gameId, humanCloseConsent }) {
       requireStatus(SESSION_STATUS.ENDED, SESSION_STATUS.FINISHED);
       requireBytes32(humanSalt, 'humanSalt');
       if (!bytesEqual(pureCircuits.commitHandSalt(humanSalt), humanSaltCommit)) {
@@ -614,11 +630,29 @@ export function createRollupSession({
       }
       referee.pad();
       const result = referee.result();
+
+      // Result authorization (spec §7): the close needs BOTH players' consent
+      // signatures over { gameId, transcriptRoot, scores, winner }. Check the
+      // human's signature + identity binding off-chain before the bot signs —
+      // the bot's signature is its assertion "I replayed this exact game".
+      requireBytes32(gameId, 'gameId');
+      const expectedConsent = buildCloseConsent(pureCircuits, {
+        gameId,
+        transcriptRoot: result.transcriptRoot,
+        p1Score: result.p1Score,
+        p2Score: result.p2Score,
+        winner: result.winner,
+      });
+      verifyCloseConsentOffChain(pureCircuits, humanCloseConsent, expectedConsent, humanSessionKey);
+      const botCloseConsent = signCloseConsent(pureCircuits, expectedConsent, botPrivate.consentKeys);
+
       status = SESSION_STATUS.FINISHED;
       return {
         ...result,
         entropyPair: [new Uint8Array(humanEntropy), new Uint8Array(botPrivate.entropy)],
         saltPair: [new Uint8Array(humanSalt), new Uint8Array(botPrivate.salt)],
+        p1CloseConsent: humanCloseConsent,
+        p2CloseConsent: botCloseConsent,
       };
     },
 
@@ -636,7 +670,7 @@ export function createRollupSession({
         endedAt,
         players: {
           human: { seat: SEAT.HUMAN, sessionKey: new Uint8Array(humanSessionKey), entropyCommit: new Uint8Array(humanEntropyCommit), saltCommit: new Uint8Array(humanSaltCommit) },
-          bot: { seat: SEAT.BOT, sessionKey: new Uint8Array(botPrivate.sessionKey), entropyCommit: new Uint8Array(botEntropyCommit), saltCommit: new Uint8Array(botSaltCommit) },
+          bot: { seat: SEAT.BOT, sessionKey: new Uint8Array(botSessionKey), entropyCommit: new Uint8Array(botEntropyCommit), saltCommit: new Uint8Array(botSaltCommit) },
         },
         seed: seed ?? null,   // transient-domain Field (bigint), never on the ledger
         turn: publicState?.turn ?? null,

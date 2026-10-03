@@ -14,12 +14,14 @@ import * as runtime from '@midnight-ntwrk/compact-runtime';
 import { Contract, ledger, pureCircuits } from '../../contracts/managed/proof-or-bluff-rollup/contract/index.js';
 import { KIND, MAX_MOVES, MAX_ROUNDS, handSize, startingRank } from '../../contracts/rollup-referee.js';
 import { createRollupSession, probeTurnRule, SEAT, SESSION_STATUS } from './rollup-session.js';
+import {
+  consentKeyPairFromSecret, buildCloseConsent, signCloseConsent, challengeReductionWitness,
+} from './rollup-consent.js';
 
 // Who claims after a response is decided by the circuit (see probeTurnRule in
-// rollup-session.js). As compiled today the human claims on every turn and the
-// bot only responds; the per-move Preview contract alternates claimants. The
-// game-level tests below are written to pass under either rule; the unit tests
-// that need the bot to CLAIM force the alternating rule explicitly.
+// rollup-session.js): the responder keeps the turn. The game-level tests below
+// are written to pass under either rule; the unit tests that need the bot to
+// CLAIM force the alternating rule explicitly.
 const CIRCUIT_TURN_RULE = probeTurnRule(pureCircuits);
 const ALTERNATING_TURN_RULE = { responderPlaysNext: true };
 
@@ -67,7 +69,10 @@ const CASUAL = 0n;
 const NOW_SECONDS = 1_800_000_000;
 const SPONSOR = '33'.repeat(32);
 
-const HUMAN_SESSION_KEY = new Uint8Array(32).fill(0x11);
+// The human's session identity is playerIdFromPk(pk) — the same Jubjub key
+// signs the CloseConsent at finish().
+const HUMAN_KP = consentKeyPairFromSecret(new Uint8Array(32).fill(0x61));
+const HUMAN_SESSION_KEY = pureCircuits.playerIdFromPk(HUMAN_KP.pk);
 const HUMAN_ENTROPY = new Uint8Array(32).fill(0x03);
 const HUMAN_SALT = new Uint8Array(32).fill(0xa1);
 const WRONG_ENTROPY = new Uint8Array(32).fill(0x04);
@@ -219,12 +224,15 @@ function playWholeGame(session, human) {
 // ---------------------------------------------------------------------------
 
 function newTable() {
-  const witness = { entropy: null, salts: null, transcript: [], snapshots: [] };
+  const witness = { entropy: null, salts: null, transcript: [], snapshots: [], p1CloseConsent: null, p2CloseConsent: null };
   const contract = new Contract({
     entropyPair: (ctx) => [ctx.privateState, witness.entropy],
     saltPair: (ctx) => [ctx.privateState, witness.salts],
     transcript: (ctx) => [ctx.privateState, witness.transcript],
     snapshots: (ctx) => [ctx.privateState, witness.snapshots],
+    p1CloseConsent: (ctx) => [ctx.privateState, witness.p1CloseConsent],
+    p2CloseConsent: (ctx) => [ctx.privateState, witness.p2CloseConsent],
+    get_challenge_reduction: (ctx, full) => challengeReductionWitness(ctx, full),
   });
   const initial = contract.initialState(runtime.createConstructorContext({}, SPONSOR));
   let context = runtime.createCircuitContext(
@@ -240,18 +248,39 @@ function newTable() {
   return { call, state, witness };
 }
 
-/** openGame from the session's public commitments, then closeGame from finish()'s output. */
-function openAndCloseOnChain(session, finished) {
+/** openGame from the session's public commitments. Open FIRST, like production:
+ * the gameId it returns is what both players' CloseConsent signatures bind to. */
+function openOnChain(session) {
   const pub = session.getPublicState();
   const table = newTable();
   const gameId = table.call('openGame',
     pub.players.human.sessionKey, pub.players.bot.sessionKey, pub.mode,
     pub.players.human.entropyCommit, pub.players.human.saltCommit,
     pub.players.bot.entropyCommit, pub.players.bot.saltCommit, BigInt(NOW_SECONDS));
+  return { table, gameId };
+}
+
+/** The human's signed CloseConsent for the result shown in the public state. */
+function humanConsentFor(session, gameId) {
+  const pub = session.getPublicState();
+  const consent = buildCloseConsent(pureCircuits, {
+    gameId,
+    transcriptRoot: pub.chainHead,
+    p1Score: pub.scores.human,
+    p2Score: pub.scores.bot,
+    winner: pub.winner,
+  });
+  return signCloseConsent(pureCircuits, consent, HUMAN_KP);
+}
+
+/** closeGame from finish()'s output (consents staged with the rest). */
+function closeOnChain(table, gameId, finished) {
   table.witness.entropy = finished.entropyPair;
   table.witness.salts = finished.saltPair;
   table.witness.transcript = finished.witnesses.transcript;
   table.witness.snapshots = finished.witnesses.snapshots;
+  table.witness.p1CloseConsent = finished.p1CloseConsent;
+  table.witness.p2CloseConsent = finished.p2CloseConsent;
   table.call('closeGame', gameId, finished.transcriptRoot, finished.p1Score, finished.p2Score, finished.winner, BigInt(NOW_SECONDS));
   return table.state().games.lookup(gameId);
 }
@@ -401,6 +430,7 @@ describe('rollup session: complete games are accepted by the real closeGame circ
   it('honest human vs scripted bot — finish() yields circuit-valid witnesses', () => {
     const session = newSession();
     const human = createScriptedHuman(session, { style: 'honest', challengeEvery: 1, randomBytes: createDeterministicRandomBytes('human') });
+    const { table, gameId } = openOnChain(session);
     const stats = playWholeGame(session, human);
     const pub = session.getPublicState();
     expect(session.status).toBe(SESSION_STATUS.ENDED);
@@ -408,7 +438,10 @@ describe('rollup session: complete games are accepted by the real closeGame circ
     expect(stats.botChallenges).toBeGreaterThan(0);
     expect(pub.transcript.some((move) => move.kind === KIND.CHALLENGE)).toBe(true);
 
-    const finished = session.finish({ humanSalt: HUMAN_SALT, humanPlays: human.unrevealedPlays });
+    const finished = session.finish({
+      humanSalt: HUMAN_SALT, humanPlays: human.unrevealedPlays,
+      gameId, humanCloseConsent: humanConsentFor(session, gameId),
+    });
     expect(finished.transcriptRoot).toBe(pub.chainHead);
     expect(finished.p1Score).toBe(pub.scores.human);
     expect(finished.p2Score).toBe(pub.scores.bot);
@@ -417,7 +450,7 @@ describe('rollup session: complete games are accepted by the real closeGame circ
     expect(finished.witnesses.snapshots).toHaveLength(MAX_MOVES + 1);
     expect(Buffer.from(finished.saltPair[1])).toEqual(Buffer.from(session.revealBotSalt()));
 
-    const record = openAndCloseOnChain(session, finished);
+    const record = closeOnChain(table, gameId, finished);
     expect(record.closed).toBe(true);
     expect(record.winner).toBe(pub.winner);
     expect(record.p1Score).toBe(pub.scores.human);
@@ -427,6 +460,7 @@ describe('rollup session: complete games are accepted by the real closeGame circ
   it('bluffing human vs scripted bot — bluffs get caught, someone wins, the game is provable', () => {
     const session = newSession({ randomBytes: createDeterministicRandomBytes('bot-2') });
     const human = createScriptedHuman(session, { style: 'bluffer', challengeEvery: 2, randomBytes: createDeterministicRandomBytes('human-2') });
+    const { table, gameId } = openOnChain(session);
     const stats = playWholeGame(session, human);
     expect(stats.botChallenges).toBeGreaterThan(0);
     const pub = session.getPublicState();
@@ -434,9 +468,12 @@ describe('rollup session: complete games are accepted by the real closeGame circ
     expect(pub.winner === 1n || pub.winner === 2n).toBe(true);
     expect(pub.scores.human >= 15n || pub.scores.bot >= 15n).toBe(true);
     // Supplying ALL plays (revealed ones included) is fine as long as they match.
-    const finished = session.finish({ humanSalt: HUMAN_SALT, humanPlays: human.plays });
+    const finished = session.finish({
+      humanSalt: HUMAN_SALT, humanPlays: human.plays,
+      gameId, humanCloseConsent: humanConsentFor(session, gameId),
+    });
     expect(finished.transcriptRoot).toBe(pub.chainHead);
-    const record = openAndCloseOnChain(session, finished);
+    const record = closeOnChain(table, gameId, finished);
     expect(record.closed).toBe(true);
     expect(record.transcriptRoot).toBe(pub.chainHead);
   });
@@ -475,7 +512,11 @@ describe('rollup session: complete games are accepted by the real closeGame circ
     expect(() => session.humanAccept()).toThrow(/requires 'playing'/);
     expect(() => session.botPlay()).toThrow(/requires 'playing'/);
 
-    const finished = session.finish({ humanSalt: HUMAN_SALT, humanPlays: human.plays });
+    const { table, gameId } = openOnChain(session);
+    const finished = session.finish({
+      humanSalt: HUMAN_SALT, humanPlays: human.plays,
+      gameId, humanCloseConsent: humanConsentFor(session, gameId),
+    });
     expect(finished.winner).toBe(pub.winner);
     expect(finished.transcriptRoot).toBe(pub.chainHead);
     expect(finished.witnesses.transcript).toHaveLength(MAX_MOVES);
@@ -496,7 +537,7 @@ describe('rollup session: complete games are accepted by the real closeGame circ
     for (const snapshot of finished.witnesses.snapshots.slice(pub.moveCount)) {
       expect(snapshot).toEqual(terminalSnapshot);
     }
-    const record = openAndCloseOnChain(session, finished);
+    const record = closeOnChain(table, gameId, finished);
     expect(record.closed).toBe(true);
     expect(record.winner).toBe(0n);
     expect(record.p1Score).toBe(0n);
@@ -510,6 +551,7 @@ describe('rollup session: complete games are accepted by the real closeGame circ
     // Nobody ever challenges, so no score ever moves: 64 moves, no winner.
     const session = newSession({ ai: alwaysAcceptAi });
     const human = createScriptedHuman(session, { style: 'honest', challengeEvery: 1_000_000, randomBytes: createDeterministicRandomBytes('human-3') });
+    const { table, gameId } = openOnChain(session);
     playWholeGame(session, human);
     const pub = session.getPublicState();
     expect(pub.moveCount).toBe(MAX_MOVES);
@@ -519,10 +561,13 @@ describe('rollup session: complete games are accepted by the real closeGame circ
     expect(pub.round).toBeGreaterThan(1n);           // hands emptied and were re-dealt
     expect(session.status).toBe(SESSION_STATUS.ENDED);
 
-    const finished = session.finish({ humanSalt: HUMAN_SALT, humanPlays: human.plays });
+    const finished = session.finish({
+      humanSalt: HUMAN_SALT, humanPlays: human.plays,
+      gameId, humanCloseConsent: humanConsentFor(session, gameId),
+    });
     expect(finished.winner).toBe(0n);
     expect(finished.witnesses.transcript.every((move) => move.kind !== KIND.NOOP)).toBe(true);
-    const record = openAndCloseOnChain(session, finished);
+    const record = closeOnChain(table, gameId, finished);
     expect(record.closed).toBe(true);
     expect(record.winner).toBe(0n);
   });

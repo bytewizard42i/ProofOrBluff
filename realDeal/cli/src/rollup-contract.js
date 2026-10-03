@@ -41,6 +41,7 @@ import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
 
 import { withDustRetry } from './contract.js';
+import { challengeReductionWitness } from './rollup-consent.js';
 import * as state from './state.js';
 
 // ---------------------------------------------------------------------------
@@ -155,12 +156,27 @@ export function zeroGameState() {
   };
 }
 
+/** Zero-shaped SignedCredential<CloseConsent> for circuits that never read it. */
+export function zeroConsent() {
+  const zeroPoint = { x: 0n, y: 0n };
+  return {
+    credential: {
+      sep: new Uint8Array(32), gameId: new Uint8Array(32), transcriptRoot: 0n,
+      p1Score: 0n, p2Score: 0n, winner: 0n,
+    },
+    signature: { r: zeroPoint, s: 0n },
+    pk: zeroPoint,
+  };
+}
+
 export function zeroWitnessBundle() {
   return {
     entropyPair: [new Uint8Array(32), new Uint8Array(32)],
     saltPair: [new Uint8Array(32), new Uint8Array(32)],
     transcript: Array.from({ length: ROLLUP_TRANSCRIPT_LENGTH }, zeroMove),
     snapshots: Array.from({ length: ROLLUP_SNAPSHOT_LENGTH }, zeroGameState),
+    p1CloseConsent: zeroConsent(),
+    p2CloseConsent: zeroConsent(),
   };
 }
 
@@ -171,9 +187,9 @@ export function zeroWitnessBundle() {
  */
 export function assertCloseGameWitnessShape(witnesses) {
   if (!witnesses || typeof witnesses !== 'object') {
-    throw new Error('closeGame needs witnesses: { entropyPair, saltPair, transcript, snapshots } (from rollup-referee result() plus the two players\' private entropy/salt).');
+    throw new Error('closeGame needs witnesses: { entropyPair, saltPair, transcript, snapshots, p1CloseConsent, p2CloseConsent } (from rollup-referee result() plus entropy, salts and both signed consents).');
   }
-  const { entropyPair, saltPair, transcript, snapshots } = witnesses;
+  const { entropyPair, saltPair, transcript, snapshots, p1CloseConsent, p2CloseConsent } = witnesses;
   for (const [name, pair] of [['entropyPair', entropyPair], ['saltPair', saltPair]]) {
     if (!Array.isArray(pair) || pair.length !== 2) {
       throw new Error(`witnesses.${name} must be a 2-element array of 32-byte values.`);
@@ -184,6 +200,16 @@ export function assertCloseGameWitnessShape(witnesses) {
   }
   if (!Array.isArray(snapshots) || snapshots.length !== ROLLUP_SNAPSHOT_LENGTH) {
     throw new Error(`witnesses.snapshots must have exactly ${ROLLUP_SNAPSHOT_LENGTH} states (got ${snapshots?.length}).`);
+  }
+  for (const [name, consent] of [['p1CloseConsent', p1CloseConsent], ['p2CloseConsent', p2CloseConsent]]) {
+    const ok = consent
+      && consent.credential?.gameId instanceof Uint8Array
+      && typeof consent.signature?.s === 'bigint'
+      && typeof consent.signature?.r?.x === 'bigint'
+      && typeof consent.pk?.x === 'bigint' && typeof consent.pk?.y === 'bigint';
+    if (!ok) {
+      throw new Error(`witnesses.${name} must be a SignedCredential<CloseConsent> { credential, signature: { r, s }, pk } (see rollup-consent.js signCloseConsent).`);
+    }
   }
 }
 
@@ -396,6 +422,11 @@ export async function getRollupContractApi({
     saltPair(context) { return [context.privateState, witnessValue('saltPair')]; },
     transcript(context) { return [context.privateState, witnessValue('transcript')]; },
     snapshots(context) { return [context.privateState, witnessValue('snapshots')]; },
+    p1CloseConsent(context) { return [context.privateState, witnessValue('p1CloseConsent')]; },
+    p2CloseConsent(context) { return [context.privateState, witnessValue('p2CloseConsent')]; },
+    // The SignedCredentials module's reduction witness is generic: compute
+    // (q, r) for whatever challenge hash the circuit hands us.
+    get_challenge_reduction: challengeReductionWitness,
   };
 
   const compiledContract = CompiledContract.make(ROLLUP_CONTRACT_NAME, Contract).pipe(
@@ -536,6 +567,8 @@ export async function getRollupContractApi({
         saltPair: closeWitnesses.saltPair.map((value, index) => toBytes32(value, `saltPair[${index}]`)),
         transcript: closeWitnesses.transcript,
         snapshots: closeWitnesses.snapshots,
+        p1CloseConsent: closeWitnesses.p1CloseConsent,
+        p2CloseConsent: closeWitnesses.p2CloseConsent,
       };
       try {
         const finalized = await callCircuit('closeGame', ...orderedArguments);

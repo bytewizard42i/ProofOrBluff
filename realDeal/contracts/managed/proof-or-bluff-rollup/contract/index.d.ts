@@ -7,7 +7,17 @@ export enum GameMode { CASUAL = 0,
                        CASINO = 4
 }
 
+export type CloseConsent = { sep: Uint8Array;
+                             gameId: Uint8Array;
+                             transcriptRoot: bigint;
+                             p1Score: bigint;
+                             p2Score: bigint;
+                             winner: bigint
+                           };
+
 export type Witnesses<PS> = {
+  get_challenge_reduction(context: __compactRuntime.WitnessContext<Ledger, PS>,
+                          challenge_hash_0: bigint): [PS, [bigint, bigint]];
   entropyPair(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, [Uint8Array,
                                                                            Uint8Array]];
   saltPair(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, [Uint8Array,
@@ -33,6 +43,18 @@ export type Witnesses<PS> = {
                                                                           ended: boolean,
                                                                           chain: bigint
                                                                         }[]];
+  p1CloseConsent(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, { credential: CloseConsent,
+                                                                               signature: { r: __compactRuntime.JubjubPoint,
+                                                                                            s: bigint
+                                                                                          },
+                                                                               pk: __compactRuntime.JubjubPoint
+                                                                             }];
+  p2CloseConsent(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, { credential: CloseConsent,
+                                                                               signature: { r: __compactRuntime.JubjubPoint,
+                                                                                            s: bigint
+                                                                                          },
+                                                                               pk: __compactRuntime.JubjubPoint
+                                                                             }];
 }
 
 export type ImpureCircuits<PS> = {
@@ -89,6 +111,16 @@ export type PureCircuits = {
             rank_0: bigint,
             count_0: bigint,
             playCommit_0: bigint): bigint;
+  playerIdFromPk(pk_0: __compactRuntime.JubjubPoint): Uint8Array;
+  closeConsentFor(gameId_0: Uint8Array,
+                  transcriptRoot_0: bigint,
+                  p1Score_0: bigint,
+                  p2Score_0: bigint,
+                  winner_0: bigint): CloseConsent;
+  closeConsentChallenge(r_0: __compactRuntime.JubjubPoint,
+                        pk_0: __compactRuntime.JubjubPoint,
+                        consent_0: CloseConsent): bigint;
+  closeConsentK(sk_0: bigint, consent_0: CloseConsent): bigint;
   dealHandRanks(salt_0: Uint8Array,
                 seed_0: bigint,
                 round_0: bigint,
@@ -113,6 +145,21 @@ export type Circuits<PS> = {
             rank_0: bigint,
             count_0: bigint,
             playCommit_0: bigint): __compactRuntime.CircuitResults<PS, bigint>;
+  playerIdFromPk(context: __compactRuntime.CircuitContext<PS>,
+                 pk_0: __compactRuntime.JubjubPoint): __compactRuntime.CircuitResults<PS, Uint8Array>;
+  closeConsentFor(context: __compactRuntime.CircuitContext<PS>,
+                  gameId_0: Uint8Array,
+                  transcriptRoot_0: bigint,
+                  p1Score_0: bigint,
+                  p2Score_0: bigint,
+                  winner_0: bigint): __compactRuntime.CircuitResults<PS, CloseConsent>;
+  closeConsentChallenge(context: __compactRuntime.CircuitContext<PS>,
+                        r_0: __compactRuntime.JubjubPoint,
+                        pk_0: __compactRuntime.JubjubPoint,
+                        consent_0: CloseConsent): __compactRuntime.CircuitResults<PS, bigint>;
+  closeConsentK(context: __compactRuntime.CircuitContext<PS>,
+                sk_0: bigint,
+                consent_0: CloseConsent): __compactRuntime.CircuitResults<PS, bigint>;
   dealHandRanks(context: __compactRuntime.CircuitContext<PS>,
                 salt_0: Uint8Array,
                 seed_0: bigint,

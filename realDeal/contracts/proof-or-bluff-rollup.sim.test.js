@@ -1,6 +1,9 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import * as runtime from '@midnight-ntwrk/compact-runtime';
 import { createReferee, KIND, MAX_MOVES, startingRank, winThreshold } from './rollup-referee.js';
+import {
+  consentKeyPairFromSecret, buildCloseConsent, signCloseConsent, challengeReductionWitness, TWO_248,
+} from '../cli/src/rollup-consent.js';
 
 const { Contract, pureCircuits, ledger } = await import(
   process.env.POB_ROLLUP_BINDINGS_URL ?? './managed/proof-or-bluff-rollup/contract/index.js'
@@ -12,8 +15,12 @@ const { Contract, pureCircuits, ledger } = await import(
 // cheat the chain can never accept.
 
 const SPONSOR = '33'.repeat(32);
-const P1 = new Uint8Array(32).fill(0x11);
-const P2 = new Uint8Array(32).fill(0x22);
+// Player identities are playerIdFromPk(pk) so closeGame can bind each
+// CloseConsent signature to a registered seat.
+const KP1 = consentKeyPairFromSecret(new Uint8Array(32).fill(0x51));
+const KP2 = consentKeyPairFromSecret(new Uint8Array(32).fill(0x52));
+const P1 = pureCircuits.playerIdFromPk(KP1.pk);
+const P2 = pureCircuits.playerIdFromPk(KP2.pk);
 const NOW = 1_800_000_000;
 const STANDARD = 1n;
 const E1 = new Uint8Array(32).fill(3);
@@ -21,13 +28,32 @@ const E2 = new Uint8Array(32).fill(7);
 const SALT1 = new Uint8Array(32).fill(0xa1);
 const SALT2 = new Uint8Array(32).fill(0xb2);
 
+/** Sign whatever result args the close submits (over = cheat overrides). */
+function stageConsents(t, id, result, over = {}, { kp1 = KP1, kp2 = KP2 } = {}) {
+  const consent = buildCloseConsent(pureCircuits, {
+    gameId: id,
+    transcriptRoot: over.transcriptRoot ?? result.transcriptRoot,
+    p1Score: over.p1Score ?? result.p1Score,
+    p2Score: over.p2Score ?? result.p2Score,
+    winner: over.winner ?? result.winner,
+  });
+  t.witness.p1CloseConsent = signCloseConsent(pureCircuits, consent, kp1);
+  t.witness.p2CloseConsent = signCloseConsent(pureCircuits, consent, kp2);
+}
+
 function newTable() {
-  const witness = { entropy: [E1, E2], salts: [SALT1, SALT2], transcript: [], snapshots: [] };
+  const witness = {
+    entropy: [E1, E2], salts: [SALT1, SALT2], transcript: [], snapshots: [],
+    p1CloseConsent: null, p2CloseConsent: null,
+  };
   const contract = new Contract({
     entropyPair: (ctx) => [ctx.privateState, witness.entropy],
     saltPair: (ctx) => [ctx.privateState, witness.salts],
     transcript: (ctx) => [ctx.privateState, witness.transcript],
     snapshots: (ctx) => [ctx.privateState, witness.snapshots],
+    p1CloseConsent: (ctx) => [ctx.privateState, witness.p1CloseConsent],
+    p2CloseConsent: (ctx) => [ctx.privateState, witness.p2CloseConsent],
+    get_challenge_reduction: (ctx, full) => challengeReductionWitness(ctx, full),
   });
   const initial = contract.initialState(runtime.createConstructorContext({}, SPONSOR));
   let context = runtime.createCircuitContext(
@@ -134,6 +160,7 @@ describe('rollup contract: a complete honest game closes with one proof', () => 
   });
 
   it('closeGame accepts the referee\'s transcript and records the result', () => {
+    stageConsents(t, id, result);
     t.call('closeGame', id, result.transcriptRoot, result.p1Score, result.p2Score, result.winner, BigInt(NOW));
     const g = t.state().games.lookup(id);
     expect(g.closed).toBe(true);
@@ -167,9 +194,14 @@ describe('rollup contract: every cheat is a failed proof', () => {
     t.witness.snapshots = result.witnesses.snapshots.map((s) => ({ ...s, hand0: [...s.hand0], hand1: [...s.hand1] }));
     return { t, id, ref, result };
   };
-  const close = (t, id, r, over = {}) => t.call('closeGame', id,
-    over.transcriptRoot ?? r.transcriptRoot, over.p1Score ?? r.p1Score, over.p2Score ?? r.p2Score,
-    over.winner ?? r.winner, BigInt(NOW));
+  const close = (t, id, r, over = {}) => {
+    // The cheater can sign whatever it submits — consents bind the SUBMITTED
+    // args, so the game-logic asserts (not the signature check) must reject it.
+    stageConsents(t, id, r, over);
+    return t.call('closeGame', id,
+      over.transcriptRoot ?? r.transcriptRoot, over.p1Score ?? r.p1Score, over.p2Score ?? r.p2Score,
+      over.winner ?? r.winner, BigInt(NOW));
+  };
 
   it('wrong winner', () => {
     const { t, id, result } = freshClosedSetup();
@@ -207,6 +239,36 @@ describe('rollup contract: every cheat is a failed proof', () => {
     const { t, id, result } = freshClosedSetup();
     t.witness.snapshots[10].score0 += 1n;
     expect(() => close(t, id, result)).toThrow(/invalid transition/);
+  });
+  it('a phantom card (rank index > 12) cannot dodge the removal check', () => {
+    const { t, id, result } = freshClosedSetup();
+    const i = t.witness.transcript.findIndex((m) => m.kind === KIND.PLAY);
+    t.witness.transcript[i].cards[0] = 200n;
+    expect(() => close(t, id, result)).toThrow(/played card out of range|invalid transition/);
+  });
+  it('non-PLAY moves must carry canonical zero rank/count (transcript root is over them)', () => {
+    const { t, id, result } = freshClosedSetup();
+    const i = t.witness.transcript.findIndex((m) => m.kind === KIND.ACCEPT || m.kind === KIND.CHALLENGE);
+    t.witness.transcript[i].rank = 7n;
+    expect(() => close(t, id, result)).toThrow(/non-PLAY fields must be zero|invalid transition/);
+  });
+  it('a close signed by the wrong key (fabricated transcript, attacker holds both salts)', () => {
+    const { t, id, result } = freshClosedSetup();
+    // The whole point of CloseConsent: even a fully legal fabricated transcript
+    // cannot be closed without BOTH registered players' signatures.
+    const attacker = consentKeyPairFromSecret(new Uint8Array(32).fill(0x99));
+    stageConsents(t, id, result, {}, { kp2: attacker });
+    expect(() => t.call('closeGame', id, result.transcriptRoot, result.p1Score, result.p2Score, result.winner, BigInt(NOW)))
+      .toThrow(/signer is not player two/);
+  });
+  it('a consent for a different result is rejected', () => {
+    const { t, id, result } = freshClosedSetup();
+    // Sign the REAL result but submit a different winner — the consent no
+    // longer equals what is being written. (Fails on winner mismatch first
+    // if the replay still catches it; either way the proof fails.)
+    stageConsents(t, id, result);
+    expect(() => t.call('closeGame', id, result.transcriptRoot, result.p1Score, result.p2Score,
+      result.winner === 1n ? 2n : 1n, BigInt(NOW))).toThrow();
   });
   it('closing a game early as a draw (padding before the end)', () => {
     const t = newTable();

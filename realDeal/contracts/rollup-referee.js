@@ -95,6 +95,17 @@ export function createReferee(pureCircuits, { seed, salts, mode }) {
     if (isPlay && s.pending) throw new Error('play while claim pending');
     if ((isAccept || isChallenge) && !s.pending) throw new Error('response without claim');
     if (isPlay && !(m.rank === s.currentRank && m.count >= 1n && m.count <= 4n)) throw new Error('bad claim');
+    // Mirrors the circuit: every slot is a rank 0..12 (a 200 would dodge the
+    // per-rank removal check), and slots past `count` must be zero so the
+    // play commitment is canonical.
+    if (isPlay) {
+      for (let i = 0; i < 4; i += 1) {
+        if (m.cards[i] > 12n) throw new Error('played card out of range');
+        if (BigInt(i) >= m.count && m.cards[i] !== 0n) throw new Error('played card out of range');
+      }
+    }
+    // rank/count feed the transcript chain for every kind; non-PLAY must be 0.
+    if (!isPlay && (m.rank !== 0n || m.count !== 0n)) throw new Error('non-PLAY fields must be zero');
 
     const moverIs0 = s.turn === 0n;
     const playCount = isPlay ? m.count : 0n;

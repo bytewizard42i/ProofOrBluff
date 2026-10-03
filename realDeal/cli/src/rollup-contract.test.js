@@ -167,6 +167,9 @@ function expectCloseSubmission(recorded, index, request) {
   expect(recorded.witnessSnapshotsDuringCall[index].seen).toEqual({
     ...request.witnesses,
     saltPair: request.witnesses.saltPair.map((value) => hexToBytes32(value)),
+    // The challenge-reduction witness is generic: invoked without an argument
+    // by the fake harness it returns the [0n, 0n] fallback.
+    get_challenge_reduction: [0n, 0n],
   });
 }
 
@@ -242,7 +245,10 @@ describe('rollup-contract: serialized mutations', () => {
     await Promise.all([first, second]);
 
     expect(stagedWhileWaiting).toBe(false);
-    expect(recorded.witnessSnapshotsDuringCall[0]).toEqual({ name: method, seen: zeroWitnessBundle() });
+    expect(recorded.witnessSnapshotsDuringCall[0]).toEqual({
+      name: method,
+      seen: { ...zeroWitnessBundle(), get_challenge_reduction: [0n, 0n] },
+    });
     expectCloseSubmission(recorded, 1, request);
   });
 
@@ -261,8 +267,9 @@ describe('rollup-contract: serialized mutations', () => {
 
     expectCloseSubmission(recorded, 0, request);
     expect(recorded.calls.map(({ name }) => name)).toEqual(['closeGame', 'openGame', 'pruneExpired']);
+    const zeroSeen = { ...zeroWitnessBundle(), get_challenge_reduction: [0n, 0n] };
     expect(recorded.witnessSnapshotsDuringCall.slice(1).map(({ seen }) => seen))
-      .toEqual([zeroWitnessBundle(), zeroWitnessBundle()]);
+      .toEqual([zeroSeen, zeroSeen]);
   });
 
   it('holds the lock and the same private inputs across a DUST rebuild', async () => {
