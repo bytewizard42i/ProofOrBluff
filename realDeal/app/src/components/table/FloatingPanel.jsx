@@ -27,6 +27,14 @@ export default function FloatingPanel({
   });
   const panelRef = useRef(null);
   const dragRef = useRef(null);
+  const [minimized, setMinimized] = useState(() => {
+    try { return window.localStorage.getItem(`${storageKey}:min`) === '1'; } catch { return false; }
+  });
+  const toggleMinimized = () => setMinimized((current) => {
+    const next = !current;
+    try { window.localStorage.setItem(`${storageKey}:min`, next ? '1' : '0'); } catch { /* noop */ }
+    return next;
+  });
 
   const persist = useCallback((next) => {
     try { window.localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* noop */ }
@@ -79,6 +87,7 @@ export default function FloatingPanel({
     const node = panelRef.current;
     if (!node || typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(() => {
+      if (node.classList.contains('floating-panel--minimized')) return;
       const { width, height } = node.getBoundingClientRect();
       setLayout((current) => {
         if (Math.abs(current.width - width) < 1 && Math.abs(current.height - height) < 1) return current;
@@ -100,14 +109,14 @@ export default function FloatingPanel({
   return (
     <div
       ref={panelRef}
-      className={`floating-panel ${className}`.trim()}
+      className={`floating-panel ${minimized ? 'floating-panel--minimized' : ''} ${className}`.trim()}
       style={{
         left: layout.x,
         top: layout.y,
-        width: layout.width,
-        height: layout.height,
-        minWidth,
-        minHeight,
+        width: minimized ? Math.max(200, Math.min(layout.width, 260)) : layout.width,
+        height: minimized ? 'auto' : layout.height,
+        minWidth: minimized ? 200 : minWidth,
+        minHeight: minimized ? 0 : minHeight,
       }}
       role="region"
       aria-label={title}
@@ -137,8 +146,19 @@ export default function FloatingPanel({
         >
           ⟲
         </button>
+        <button
+          type="button"
+          className="floating-panel__minimize"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={toggleMinimized}
+          title={minimized ? 'Expand' : 'Minimize'}
+          aria-label={minimized ? `Expand ${title}` : `Minimize ${title}`}
+          aria-expanded={!minimized}
+        >
+          {minimized ? '▢' : '—'}
+        </button>
       </div>
-      <div className="floating-panel__body">{children}</div>
+      {!minimized && <div className="floating-panel__body">{children}</div>}
     </div>
   );
 }

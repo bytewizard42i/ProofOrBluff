@@ -290,3 +290,46 @@ body.pob-playing .header h1 { font-size: 1.1rem; }
 body.pob-playing .header .tagline { display: none; }
 body.pob-playing .footer { padding: 0.3rem; font-size: 0.7rem; }
 body.pob-playing .testwired-panel__header { display: none; }
+
+/* Floating panel minimize */
+.floating-panel__minimize {
+  padding: 0 0.45rem;
+  min-width: 0;
+  line-height: 1.4;
+  font-size: 0.85rem;
+}
+.floating-panel--minimized { resize: none; overflow: visible; }
+.floating-panel--minimized .floating-panel__handle { border-bottom: 0; }
+
+/* Midnight activity: a slim strip while idle/confirmed during play, so it
+ * stops pushing the table down. It grows back when something is in flight. */
+body.pob-playing .pob-activity-panel:not(.pob-activity-panel--active):not(.pob-activity-panel--modal) {
+  padding: 0.3rem 0.8rem;
+  margin: 0 0 0.4rem;
+  border-radius: 8px;
+}
+body.pob-playing .pob-activity-panel:not(.pob-activity-panel--active) .pob-activity-headline { gap: 0.5rem; }
+body.pob-playing .pob-activity-panel:not(.pob-activity-panel--active) .pob-activity-operation,
+body.pob-playing .pob-activity-panel:not(.pob-activity-panel--active) .pob-activity-status {
+  display: inline;
+  margin: 0;
+  font-size: 0.8rem;
+}
+body.pob-playing .pob-activity-panel:not(.pob-activity-panel--active) .pob-activity-operation::after { content: ' · '; opacity: 0.5; }
+body.pob-playing .pob-activity-panel:not(.pob-activity-panel--active) .pob-activity-details > summary { font-size: 0.75rem; }
+body.pob-playing .pob-activity-panel:not(.pob-activity-panel--active) .pob-activity-spinner { width: 12px; height: 12px; }
+
+/* Centre: size to content (no clipping of the rank header) and close the
+ * gap between the pile and the player's hand. */
+.testwired-panel--playing .table-main {
+  grid-template-rows: auto auto auto;
+  max-height: none;
+}
+.testwired-panel--playing .center {
+  justify-content: flex-start;
+  padding: 0.5rem 0.9rem 0.4rem;
+  gap: 0.35rem;
+  min-height: 0;
+}
+.testwired-panel--playing .pile-display { margin: 0; }
+.testwired-panel--playing .required-rank { margin: 0; }
