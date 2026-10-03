@@ -32,6 +32,7 @@ export default function GuidedGameSetup({
   onContinue,
   onBack,
   onConnect,
+  onRetryWalletCheck,
   onStart,
   onResume,
   children,
@@ -91,7 +92,14 @@ export default function GuidedGameSetup({
             ) : walletAvailable === null ? (
               <p role="status">Checking whether Lace is available in this browser.</p>
             ) : walletAvailable === false ? (
-              <p className="guided-game-setup__warning">Lace is not available. Install or enable Lace in this browser, then try again.</p>
+              <>
+                <p className="guided-game-setup__warning">Lace is not available. Install or enable Lace in this browser, unlock it, then check again.</p>
+                {onRetryWalletCheck && (
+                  <button type="button" onClick={onRetryWalletCheck} disabled={busy}>
+                    Check for Lace again
+                  </button>
+                )}
+              </>
             ) : null}
             <div className="guided-game-setup__actions">
               {walletConnected ? (

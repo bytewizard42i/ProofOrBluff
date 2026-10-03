@@ -554,11 +554,29 @@ export default function TestWiredPanel() {
     }
   }, [addProgress, busy]);
 
+  const checkWalletAvailability = useCallback(async () => {
+    try {
+      const available = await isWalletAvailable();
+      if (mountedRef.current) setWalletAvailable(available);
+      return Boolean(available);
+    } catch {
+      if (mountedRef.current) setWalletAvailable(false);
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     mountedRef.current = true;
-    isWalletAvailable()
-      .then((available) => { if (mountedRef.current) setWalletAvailable(available); })
-      .catch(() => { if (mountedRef.current) setWalletAvailable(false); });
+    checkWalletAvailability();
+    // Wallet extensions inject window.midnight asynchronously — after a
+    // browser restart they can land seconds after the first check. Poll
+    // until Lace appears (or ~30s pass) instead of disabling Connect forever.
+    let attempts = 0;
+    const walletPoll = setInterval(async () => {
+      attempts += 1;
+      const available = await checkWalletAvailability();
+      if (available || attempts >= 20) clearInterval(walletPoll);
+    }, 1500);
     fetchBot('/health')
       .then(() => { if (mountedRef.current) setBotHealth('ready'); })
       .catch((caught) => {
@@ -567,10 +585,11 @@ export default function TestWiredPanel() {
 
     return () => {
       mountedRef.current = false;
+      clearInterval(walletPoll);
       for (const controller of requestControllersRef.current) controller.abort();
       requestControllersRef.current.clear();
     };
-  }, [fetchBot]);
+  }, [fetchBot, checkWalletAvailability]);
 
   useEffect(() => {
     if (!wallet) return undefined;
@@ -838,6 +857,7 @@ export default function TestWiredPanel() {
           onContinue={() => setSetupStep(setupStep === 'prepare' ? 'connect' : 'match')}
           onBack={() => setSetupStep(setupStep === 'match' ? 'connect' : 'prepare')}
           onConnect={connect}
+          onRetryWalletCheck={checkWalletAvailability}
           onStart={startMatch}
           onResume={resumeMatch}
         />
@@ -845,8 +865,8 @@ export default function TestWiredPanel() {
 
       {walletAvailable === false && (
         <p className="testwired-notice">
-          Lace was not detected. Install its Midnight connector, switch it to
-          {` ${NETWORK_ID}`}, reload this page, and try again.
+          Lace was not detected. Check that the extension is enabled and
+          unlocked, then use Check for Lace again or reload this page.
         </p>
       )}
       {busyMessage && <p className="testwired-proof-status" role="status">{busyMessage}</p>}
