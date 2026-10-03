@@ -41,8 +41,10 @@ import {
 } from './game/ai/scripted.js';
 import RealDealHeader from './RealDealHeader.jsx';
 import ProofServerLog from './ProofServerLog.jsx';
-import SponsorRail from './SponsorRail.jsx';
+import SponsorRail, { SponsorInvite } from './SponsorRail.jsx';
+import MusicPicker from './MusicPicker.jsx';
 import TestWiredPanel from './TestWiredPanel.jsx';
+import ProTeaser from './ProTeaser.jsx';
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -1249,8 +1251,13 @@ export default function App() {
             <h1>Proof or Bluff <span className="badge">TestWired</span></h1>
             <div className="tagline">Local chain. Real proofs. Scripted opponent.</div>
           </div>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <MusicPicker compact />
+            <ProTeaser />
+          </div>
         </header>
         <TestWiredPanel />
+        <SponsorInvite />
         <footer className="footer">
           TestWired build · local Midnight environment · not mainnet
         </footer>
@@ -1272,7 +1279,9 @@ export default function App() {
           </h1>
           <div className="tagline">Bluff publicly. Prove privately.</div>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <ProTeaser />
+          <MusicPicker compact />
           <button
             onClick={() => { unlockAudio(); setMuted((m) => !m); }}
             title={muted ? 'Unmute lounge music' : 'Mute lounge music'}
@@ -1374,6 +1383,7 @@ export default function App() {
         </>
       )}
 
+      <SponsorInvite />
       <footer className="footer">
         realDeal build · MLH × Midnight Hackathon · May 15-17 2026 ·{' '}
         <a href="https://github.com/bytewizard42i/ProofOrBluff_MLH_Midnight" target="_blank" rel="noreferrer">

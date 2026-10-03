@@ -2,6 +2,16 @@
 
 **Bluff in public. Prove in private.**
 
+> **Status (Oct 2026)** — Beyond the hackathon build below: the **TestWired**
+> tier runs complete matches on a local Midnight chain — on-chain escrow,
+> commit-reveal shuffle, committed plays, and ZK challenge resolution that
+> discloses only true/false (a partial lifecycle was verified on the local
+> chain in Aug 2026). An automated `npm run cli -- e2e` exists but awaits a
+> live rerun. A separate no-stakes, seed-commitment contract compiles for
+> Compact 0.31.1; it is **not deployed or mainnet-ready**. Follow the gates
+> in `docs/MAINNET_PLAN.md` before any public-network transaction. Architecture tiers:
+> `docs/TESTWIRED_PLAN.md` · productization: `docs/PRODUCTIZATION_PLAN.md`.
+
 > *A loneliness-fighting Ai card game that makes zero-knowledge proofs feel human.*
 
 ---

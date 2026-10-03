@@ -47,3 +47,16 @@ export default function SponsorRail() {
     </aside>
   );
 }
+
+export function SponsorInvite() {
+  return (
+    <aside className="sponsor-invite" aria-label="Future advertising space">
+      <span className="sponsor-invite__accent" aria-hidden="true" />
+      <span className="sponsor-invite__message">
+        <span className="sponsor-invite__eyebrow">Your brand at the table</span>
+        <strong>Advertize your Blockchain service here!</strong>
+      </span>
+      <span className="sponsor-invite__status">Coming soon!</span>
+    </aside>
+  );
+}

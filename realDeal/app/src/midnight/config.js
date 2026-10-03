@@ -12,13 +12,70 @@
 const env = import.meta.env || {};
 
 export const NETWORK_ID = env.VITE_NETWORK_ID || 'undeployed';
+export const CONTRACT_VARIANT = env.VITE_CONTRACT_VARIANT === 'state-only'
+  ? 'state-only' : 'wagered';
+export const CONTRACT_ASSET_NAME = CONTRACT_VARIANT === 'state-only'
+  ? 'proof-or-bluff-mainnet' : 'proof-or-bluff';
 
+// Browser-side Blockfrost URLs would expose John's project token to everyone
+// who opens the page. Mainnet needs a trusted backend proxy or wallet-managed
+// endpoints; reject this configuration instead of silently leaking a token.
+if (NETWORK_ID === 'mainnet') {
+  throw new Error('Browser mainnet endpoints are disabled until the Blockfrost token is kept behind a server proxy.');
+}
+if (NETWORK_ID !== 'undeployed' && CONTRACT_VARIANT !== 'state-only') {
+  throw new Error('The wagered contract is disabled on public networks. Set VITE_CONTRACT_VARIANT=state-only.');
+}
+
+const PUBLIC_TEST_NETWORKS = ['preview', 'preprod'];
+if (NETWORK_ID !== 'undeployed' && !PUBLIC_TEST_NETWORKS.includes(NETWORK_ID)) {
+  throw new Error(`Unsupported VITE_NETWORK_ID "${NETWORK_ID}" (use undeployed|preview|preprod).`);
+}
+
+// Proof-server choice — the one component that sees private witnesses
+// (cards, hand salt, shared seed) while proving.
+//   hosted: the operator's proof server (VITE_HOSTED_PROOF_SERVER_URL). "It
+//           just works", but the operator can observe witnesses in transit.
+//   local:  the player's own proof server on localhost:6300 — full privacy.
+// The player's choice is remembered in localStorage; the hosted URL is the
+// default only when one is configured for this build.
+const PROOF_SERVER_MODE_KEY = 'pob:proof-server-mode';
+export const LOCAL_PROOF_SERVER_URL = 'http://localhost:6300';
+export const HOSTED_PROOF_SERVER_URL = env.VITE_HOSTED_PROOF_SERVER_URL || null;
+
+export function getProofServerMode() {
+  if (typeof window === 'undefined') return HOSTED_PROOF_SERVER_URL ? 'hosted' : 'local';
+  const stored = window.localStorage.getItem(PROOF_SERVER_MODE_KEY);
+  if (stored === 'local' || stored === 'hosted') return stored === 'hosted' && !HOSTED_PROOF_SERVER_URL ? 'local' : stored;
+  return HOSTED_PROOF_SERVER_URL ? 'hosted' : 'local';
+}
+
+export function setProofServerMode(mode) {
+  if (mode !== 'local' && mode !== 'hosted') throw new Error('Proof server mode must be "local" or "hosted".');
+  if (mode === 'hosted' && !HOSTED_PROOF_SERVER_URL) throw new Error('No hosted proof server is configured for this build.');
+  window.localStorage.setItem(PROOF_SERVER_MODE_KEY, mode);
+}
+
+export function resolveProofServerUrl() {
+  if (env.VITE_PROOF_SERVER_URL) return env.VITE_PROOF_SERVER_URL;
+  return getProofServerMode() === 'hosted' ? HOSTED_PROOF_SERVER_URL : LOCAL_PROOF_SERVER_URL;
+}
+
+// Public test networks are Midnight-hosted and need no token. The local
+// indexer-standalone 4.3.x (official midnight-local-dev) serves api/v4.
+const publicHost = (service) => `${service}.${NETWORK_ID}.midnight.network`;
 export const ENDPOINTS = {
-  node: env.VITE_NODE_URL || 'http://localhost:9944',
-  indexer: env.VITE_INDEXER_URL || 'http://localhost:8088/api/v3/graphql',
-  indexerWs:
-    env.VITE_INDEXER_WS_URL || 'ws://localhost:8088/api/v3/graphql/ws',
-  proofServer: env.VITE_PROOF_SERVER_URL || 'http://localhost:6300',
+  node: env.VITE_NODE_URL || (NETWORK_ID === 'undeployed'
+    ? 'http://localhost:9944' : `https://${publicHost('rpc')}`),
+  indexer: env.VITE_INDEXER_URL || (NETWORK_ID === 'undeployed'
+    ? 'http://localhost:8088/api/v4/graphql'
+    : `https://${publicHost('indexer')}/api/v4/graphql`),
+  indexerWs: env.VITE_INDEXER_WS_URL || (NETWORK_ID === 'undeployed'
+    ? 'ws://localhost:8088/api/v4/graphql/ws'
+    : `wss://${publicHost('indexer')}/api/v4/graphql/ws`),
+  // Read lazily by the provider builder so a toggle change applies on the
+  // next connection without a rebuild.
+  get proofServer() { return resolveProofServerUrl(); },
 };
 
 // Where the compiled Compact bindings live, relative to the repo root.
@@ -28,7 +85,9 @@ export const ZKIR_DIR = '@pob/zkir';
 
 // Filled in after the first `createMatch` deploys the contract.
 // Persisted to localStorage so the page survives a reload.
-const CONTRACT_ADDRESS_KEY = 'pob:realdeal:contract-address';
+const CONTRACT_ADDRESS_KEY = CONTRACT_VARIANT === 'state-only'
+  ? `pob:state-only:${NETWORK_ID}:contract-address`
+  : 'pob:realdeal:contract-address';
 
 export function getContractAddress() {
   if (typeof window === 'undefined') return null;

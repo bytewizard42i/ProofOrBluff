@@ -12,8 +12,15 @@ import {
   subscribeWalletState,
 } from './midnight/wallet.js';
 import RealDealGameProvider from './providers/realdeal/gameProvider.js';
-import { getContractAddress } from './midnight/config.js';
+import { getContractAddress, CONTRACT_VARIANT, NETWORK_ID } from './midnight/config.js';
 import { dealFromSeed, RANKS } from '../../shared/dealing.js';
+import ProofServerChoice from './ProofServerChoice.jsx';
+
+const NETWORK_LABELS = Object.freeze({
+  undeployed: 'local chain',
+  preview: 'Preview testnet',
+  preprod: 'Preprod testnet',
+});
 
 const BOT_URL = (import.meta.env.VITE_TESTWIRED_BOT_URL || 'http://127.0.0.1:3017')
   .replace(/\/$/, '');
@@ -139,6 +146,9 @@ function normalizeMatchResponse(payload, expectedMatchId) {
   const combinedSeed = !seedFinalized || combinedSeedValue == null
     ? null
     : requireHex64(combinedSeedValue, 'Combined seed');
+  const publishedCommitment = firstDefined(source, ['seedCommitment']);
+  const seedCommitment = seedFinalized && publishedCommitment
+    ? requireHex64(publishedCommitment, 'Seed commitment') : null;
 
   return {
     matchId: expectedMatchId || (responseMatchId ? requireHex64(responseMatchId, 'Bot match ID') : null),
@@ -153,6 +163,12 @@ function normalizeMatchResponse(payload, expectedMatchId) {
     winner,
     seedFinalized,
     combinedSeed,
+    seedCommitment,
+    // Provably fair edition public fields. Absent on the wagered contract.
+    mode: parseSafeInteger(firstDefined(source, ['mode']) ?? STANDARD_MODE, 'Game mode', { maximum: 4 }),
+    round: parseSafeInteger(firstDefined(source, ['round']) ?? 0, 'Round'),
+    p1HandDrawn: Boolean(firstDefined(source, ['p1HandDrawn'])),
+    p2HandDrawn: Boolean(firstDefined(source, ['p2HandDrawn'])),
     hasPendingPlay: Boolean(firstDefined(source, ['hasPendingPlay', 'pendingPlay'])),
     isChallenged: Boolean(firstDefined(source, ['isChallenged', 'challenged'])),
     lastPlayerIdx: parseSafeInteger(
@@ -264,6 +280,21 @@ function reconcileP1Hand(matchId, combinedSeed, publicHandSize, removedIds = [])
   return handIds.map((id) => cardById.get(id));
 }
 
+/**
+ * Provably fair edition: P1's hand is exactly what the contract has committed
+ * to, derived from this browser's private salt and the shared seed. Card IDs
+ * are positional so React keys stay stable within a round.
+ */
+function provableP1Hand(api, match) {
+  const { ranks } = api.getProvableHand({ matchId: match.matchId, role: 'p1', match });
+  return ranks.map((rankIndex, position) => ({
+    id: `p1:r${match.round}:${position}:${RANKS[rankIndex]}`,
+    rankIndex,
+    rank: RANKS[rankIndex],
+    suit: 'hidden',
+  }));
+}
+
 function botHasAction(match) {
   return (match.phase === 2 && match.activePlayerIdx === 1)
     || (match.phase === 3 && match.lastPlayerIdx === 0 && !match.isChallenged)
@@ -283,7 +314,7 @@ export default function TestWiredPanel() {
   const [wallet, setWallet] = useState(null);
   const [balances, setBalances] = useState({});
   const [botHealth, setBotHealth] = useState('checking');
-  const [wagerInput, setWagerInput] = useState('5');
+  const [wagerInput, setWagerInput] = useState(CONTRACT_VARIANT === 'state-only' ? '0' : '5');
   const [difficulty, setDifficulty] = useState('medium');
   const [busy, setBusy] = useState(false);
   const [busyMessage, setBusyMessage] = useState('');
@@ -346,13 +377,28 @@ export default function TestWiredPanel() {
 
   const applyMatch = useCallback((nextMatch) => {
     if (!mountedRef.current) return;
-    setMatch(nextMatch);
-    if (nextMatch.combinedSeed) {
-      const nextHand = reconcileP1Hand(
-        nextMatch.matchId,
-        nextMatch.combinedSeed,
-        nextMatch.p1HandSize,
-      );
+    // The state-only contract publishes a hash of the deal seed, never the
+    // seed itself. Rebuild it from the entropies privately exchanged with P2,
+    // and verify it against the public commitment before showing any cards.
+    if (CONTRACT_VARIANT === 'state-only' && nextMatch.seedFinalized && !nextMatch.seedCommitment) {
+      throw new Error('Indexer returned no seed commitment. Wait for the state-only contract to sync.');
+    }
+    const combinedSeed = CONTRACT_VARIANT === 'state-only' && nextMatch.seedFinalized
+      ? requireHex64(
+        providerRef.current?.api?.getPrivateDealSeed(nextMatch.matchId, nextMatch.seedCommitment),
+        'Private deal seed',
+      )
+      : nextMatch.combinedSeed;
+    const currentMatch = { ...nextMatch, combinedSeed };
+    setMatch(currentMatch);
+    if (combinedSeed) {
+      const nextHand = CONTRACT_VARIANT === 'state-only'
+        ? provableP1Hand(providerRef.current.api, nextMatch)
+        : reconcileP1Hand(
+          nextMatch.matchId,
+          combinedSeed,
+          nextMatch.p1HandSize,
+        );
       setHand(nextHand);
       const availableIds = new Set(nextHand.map((card) => card.id));
       setSelectedIds((current) => new Set([...current].filter((id) => availableIds.has(id))));
@@ -495,7 +541,9 @@ export default function TestWiredPanel() {
       setLastBotAction('');
       setDialogue('');
 
-      addProgress(`Creating a STANDARD mode match with local-chain wager ${wagerAmount}.`);
+      addProgress(CONTRACT_VARIANT === 'state-only'
+        ? 'Creating a no-stakes STANDARD match on the selected network.'
+        : `Creating a STANDARD mode match with local-chain wager ${wagerAmount}.`);
       const created = await providerRef.current.startGame({
         mode: STANDARD_MODE,
         wagerAmount,
@@ -550,7 +598,10 @@ export default function TestWiredPanel() {
       const transactionId = optionalTransactionId(result);
       if (mountedRef.current) setLastTransactionId(transactionId);
       addProgress(`Transaction submitted${transactionId ? `: ${shorten(transactionId)}` : '.'}`);
-      if (options.removedIds?.length && match?.combinedSeed && mountedRef.current) {
+      // In the provable edition the hand record is updated by playCards itself
+      // and re-read on the next status refresh; only the wagered path needs
+      // this optimistic local removal.
+      if (CONTRACT_VARIANT !== 'state-only' && options.removedIds?.length && match?.combinedSeed && mountedRef.current) {
         setHand((currentHand) => removeP1Cards(
           matchId,
           match.combinedSeed,
@@ -588,6 +639,8 @@ export default function TestWiredPanel() {
         cards: selectedCards.map((card) => card.rankIndex),
         claimedRank: match.currentRank,
         claimedCount: selectedCards.length,
+        role: 'p1',
+        match,
       }),
       { removedIds },
     );
@@ -602,7 +655,8 @@ export default function TestWiredPanel() {
     && match.hasPendingPlay
     && match.lastPlayerIdx === 0
     && (match.isChallenged || /challenge/i.test(lastBotAction));
-  const canClaimPayout = match?.phase === 4 && match.winner === 1 && !match.escrowReleased;
+  const canClaimPayout = CONTRACT_VARIANT !== 'state-only'
+    && match?.phase === 4 && match.winner === 1 && !match.escrowReleased;
 
   const renderedBalances = Object.entries(balances).map(([token, amount]) => (
     `${shorten(token, 5, 4)}=${String(amount)}`
@@ -613,11 +667,11 @@ export default function TestWiredPanel() {
       <header className="testwired-panel__header">
         <div>
           <p className="testwired-panel__eyebrow">Browser P1 versus localhost P2 bot</p>
-          <h2 id="testwired-title">TestWired · local chain</h2>
+          <h2 id="testwired-title">TestWired · {NETWORK_LABELS[NETWORK_ID] || NETWORK_ID}</h2>
           <p className="testwired-panel__intro">
-            This developer control panel uses the local Midnight node, indexer,
-            proof server, and bot. Tokens and wagers belong to the disposable
-            local chain; this is not mainnet.
+            {CONTRACT_VARIANT === 'state-only'
+              ? 'No-stakes game: public claims, private challenge witnesses, and a committed deal seed. No wagers or payouts. Players still need DUST for transaction fees.'
+              : 'This developer control panel uses the local Midnight node, indexer, proof server, and bot. Tokens and wagers belong to the disposable local chain; this is not mainnet.'}
           </p>
         </div>
         <dl className="testwired-vitals" aria-label="Connection status">
@@ -626,6 +680,12 @@ export default function TestWiredPanel() {
           <div><dt>Mode</dt><dd>STANDARD (1)</dd></div>
         </dl>
       </header>
+
+      {/* The choice must be made before connecting: the proof provider is
+          built once per connection from the selected proof-server URL. */}
+      {CONTRACT_VARIANT === 'state-only' && !wallet && (
+        <ProofServerChoice disabled={busy} />
+      )}
 
       <div className="testwired-toolbar">
         {!wallet ? (
@@ -639,17 +699,19 @@ export default function TestWiredPanel() {
             <span><strong>Balances:</strong> {renderedBalances.length ? renderedBalances.join(', ') : 'none reported'}</span>
           </div>
         )}
-        <label>
-          Wager
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value={wagerInput}
-            onChange={(event) => setWagerInput(event.target.value)}
-            disabled={busy}
-          />
-        </label>
+        {CONTRACT_VARIANT !== 'state-only' && (
+          <label>
+            Wager
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={wagerInput}
+              onChange={(event) => setWagerInput(event.target.value)}
+              disabled={busy}
+            />
+          </label>
+        )}
         <label>
           Bot difficulty
           <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} disabled={busy}>
@@ -666,7 +728,7 @@ export default function TestWiredPanel() {
       {walletAvailable === false && (
         <p className="testwired-notice">
           Lace was not detected. Install its Midnight connector, switch it to
-          Undeployed/local, reload this page, and try again.
+          {` ${NETWORK_ID}`}, reload this page, and try again.
         </p>
       )}
       {busyMessage && <p className="testwired-proof-status" role="status">{busyMessage}</p>}

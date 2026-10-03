@@ -1,0 +1,685 @@
+// Proof or Bluff — no-stakes, state-only first deployment, PROVABLY FAIR edition.
+//
+// The existing wagered contract is deliberately separate. This edition holds
+// no player funds and never receives a coin. Players still pay network DUST
+// for their transactions. Match state and claims are public; the actual cards
+// are private and only ever enter the zero-knowledge proof as witnesses.
+//
+// FAIRNESS MODEL (what the proof guarantees, for the human AND for our bot):
+//
+//  1. Unbiasable shared seed. P1 commits entropy at createMatch, P2 at
+//     joinMatch; both are revealed in revealSeed. Neither party can bias the
+//     combined seed because each committed before seeing the other's value.
+//     Only commitSeed(seed) is published; the seed itself stays with players.
+//
+//  2. Private hand salt. Each player also commits a secret salt at create/join.
+//     A player's hand for a round is dealt IN-CIRCUIT from
+//     hash(salt, seed, round). The salt is committed before the seed exists,
+//     so it cannot be ground for a good hand; the opponent never learns it, so
+//     the opponent cannot reconstruct the hand. The dealer (whoever runs the
+//     bot) provably cannot see the human's cards.
+//
+//  3. Proven moves. playCards receives the real cards as a private witness,
+//     checks they open the public play commitment, checks they are held in the
+//     player's committed hand, and stores the hand commitment with those cards
+//     removed. Playing a card you do not hold makes the proof fail, so the
+//     transaction can never be confirmed. Bluffing remains legal: the CLAIM is
+//     public, the CARDS are private.
+//
+//  4. Fair reshuffle. When either hand empties, the round counter increments
+//     and the next deal is hash(salt, seed, round + 1): same unbiasability,
+//     no extra transactions.
+//
+// RULE CHANGE REQUIRED FOR PROVABILITY (v1): the loser of a challenge does NOT
+// pick up the pile. The pile's contents are private and unprovable, so it is
+// discarded; outcomes are settled with points. Only the score-based modes
+// (CASUAL, STANDARD, CASINO) are enabled. Empty-hand modes are deferred.
+//
+// REMAINING LIMITATION: the rank derivation falls back through three hash bytes
+// to avoid modulo bias; the residual bias is about 0.004% and is documented in
+// dealHandRanks. Nothing here proves anything about money — there is none.
+
+pragma language_version >= 0.16 && <= 0.23;
+import CompactStandardLibrary;
+
+export enum GameMode { CASUAL, STANDARD, STRATEGIC, CLASSIC, CASINO }
+export enum MatchPhase {
+  WAITING_FOR_PLAYER_TWO,
+  WAITING_FOR_ENTROPY_REVEAL,
+  PLAYING,
+  AWAITING_RESPONSE,
+  GAMEOVER
+}
+
+struct MatchState {
+  playerOne: ZswapCoinPublicKey;
+  playerTwo: ZswapCoinPublicKey;
+  mode: Uint<8>;
+  winThreshold: Uint<8>;
+  createdAt: Uint<64>;
+  p1EntropyCommit: Bytes<32>;
+  p2EntropyCommit: Bytes<32>;
+  p1SaltCommit: Bytes<32>;
+  p2SaltCommit: Bytes<32>;
+  seedCommitment: Bytes<32>;
+  seedFinalized: Boolean;
+  round: Uint<32>;
+  p1HandCommit: Bytes<32>;
+  p2HandCommit: Bytes<32>;
+  p1HandDrawn: Boolean;
+  p2HandDrawn: Boolean;
+  phase: Uint<8>;
+  activePlayerIdx: Uint<8>;
+  currentRank: Uint<8>;
+  lastActionAt: Uint<64>;
+  lastClaimRank: Uint<8>;
+  lastClaimCount: Uint<8>;
+  lastPlayCommit: Bytes<32>;
+  lastPlayerIdx: Uint<8>;
+  hasPendingPlay: Boolean;
+  challengeCalledAt: Uint<64>;
+  isChallenged: Boolean;
+  pileSize: Uint<32>;
+  p1Score: Uint<32>;
+  p2Score: Uint<32>;
+  p1HandSize: Uint<32>;
+  p2HandSize: Uint<32>;
+  winner: Uint<8>;
+}
+
+struct MatchIdInput {
+  separator: Bytes<32>;
+  playerOne: ZswapCoinPublicKey;
+  mode: Uint<8>;
+  createdAt: Uint<64>;
+}
+struct SeedInput {
+  separator: Bytes<32>;
+  p1Entropy: Bytes<32>;
+  p2Entropy: Bytes<32>;
+}
+struct EntropyCommitInput {
+  separator: Bytes<32>;
+  entropy: Bytes<32>;
+}
+struct SeedCommitInput {
+  separator: Bytes<32>;
+  seed: Bytes<32>;
+}
+struct HandSaltCommitInput {
+  separator: Bytes<32>;
+  salt: Bytes<32>;
+}
+struct DealInput {
+  separator: Bytes<32>;
+  salt: Bytes<32>;
+  seed: Bytes<32>;
+  round: Uint<32>;
+}
+struct HandCommitInput {
+  separator: Bytes<32>;
+  counts: Vector<13, Uint<8>>;
+  salt: Bytes<32>;
+  round: Uint<32>;
+}
+struct PlayRevealWitness {
+  count: Uint<8>;
+  rank0: Uint<8>;
+  salt0: Bytes<32>;
+  rank1: Uint<8>;
+  salt1: Bytes<32>;
+  rank2: Uint<8>;
+  salt2: Bytes<32>;
+  rank3: Uint<8>;
+  salt3: Bytes<32>;
+}
+
+// Private inputs. None of these values ever reach the ledger; only hashes do.
+witness handSalt(): Bytes<32>;
+witness sharedSeed(): Bytes<32>;
+witness currentHandCounts(): Vector<13, Uint<8>>;
+witness nextPlay(): PlayRevealWitness;
+witness revealLastPlay(): PlayRevealWitness;
+
+export ledger matches: Map<Bytes<32>, MatchState>;
+export ledger totalMatchesCreated: Counter;
+export ledger totalMatchesCompleted: Counter;
+export ledger totalChallengesIssued: Counter;
+
+// The JS bindings expose these pure helpers so both clients compute exactly
+// the same commitments and the same dealt hand as the circuit.
+export pure circuit commitEntropy(entropy: Bytes<32>): Bytes<32> {
+  return persistentHash<EntropyCommitInput>(EntropyCommitInput {
+    separator: pad(32, "pob:entropy:v1"), entropy: entropy
+  });
+}
+export pure circuit commitPlay(reveal: PlayRevealWitness): Bytes<32> {
+  return persistentHash<PlayRevealWitness>(reveal);
+}
+export pure circuit combineEntropy(p1Entropy: Bytes<32>, p2Entropy: Bytes<32>): Bytes<32> {
+  return persistentHash<SeedInput>(SeedInput {
+    separator: pad(32, "pob:seed:v1"),
+    p1Entropy: p1Entropy, p2Entropy: p2Entropy
+  });
+}
+export pure circuit commitSeed(seed: Bytes<32>): Bytes<32> {
+  return persistentHash<SeedCommitInput>(SeedCommitInput {
+    separator: pad(32, "pob:seed-commit:v1"), seed: seed
+  });
+}
+export pure circuit commitHandSalt(salt: Bytes<32>): Bytes<32> {
+  return persistentHash<HandSaltCommitInput>(HandSaltCommitInput {
+    separator: pad(32, "pob:hand-salt:v1"), salt: salt
+  });
+}
+export pure circuit commitHandCounts(counts: Vector<13, Uint<8>>, salt: Bytes<32>, round: Uint<32>): Bytes<32> {
+  return persistentHash<HandCommitInput>(HandCommitInput {
+    separator: pad(32, "pob:hand:v1"), counts: counts, salt: salt, round: round
+  });
+}
+
+// Reduce one hash byte to a rank 0..12. 256 = 19*13 + 9, so bytes 247..255
+// would favour ranks 0..8; rankFromBytes skips such bytes where it can.
+circuit byteToRank(b: Uint<8>): Uint<8> {
+  const k: Uint<8> = (
+    (b >= (13 as Uint<8>) ? 1 : 0) + (b >= (26 as Uint<8>) ? 1 : 0) +
+    (b >= (39 as Uint<8>) ? 1 : 0) + (b >= (52 as Uint<8>) ? 1 : 0) +
+    (b >= (65 as Uint<8>) ? 1 : 0) + (b >= (78 as Uint<8>) ? 1 : 0) +
+    (b >= (91 as Uint<8>) ? 1 : 0) + (b >= (104 as Uint<8>) ? 1 : 0) +
+    (b >= (117 as Uint<8>) ? 1 : 0) + (b >= (130 as Uint<8>) ? 1 : 0) +
+    (b >= (143 as Uint<8>) ? 1 : 0) + (b >= (156 as Uint<8>) ? 1 : 0) +
+    (b >= (169 as Uint<8>) ? 1 : 0) + (b >= (182 as Uint<8>) ? 1 : 0) +
+    (b >= (195 as Uint<8>) ? 1 : 0) + (b >= (208 as Uint<8>) ? 1 : 0) +
+    (b >= (221 as Uint<8>) ? 1 : 0) + (b >= (234 as Uint<8>) ? 1 : 0) +
+    (b >= (247 as Uint<8>) ? 1 : 0)
+  ) as Uint<8>;
+  return (b - ((13 as Uint<8>) * k)) as Uint<8>;
+}
+// Rejection sampling with a bounded depth: use the first of three bytes that
+// is below 247. Probability all three are biased: (9/256)^3 ≈ 0.004%.
+circuit rankFromBytes(b0: Uint<8>, b1: Uint<8>, b2: Uint<8>): Uint<8> {
+  return b0 < (247 as Uint<8>) ? byteToRank(b0)
+    : b1 < (247 as Uint<8>) ? byteToRank(b1)
+    : byteToRank(b2);
+}
+// The provably fair deal. Exported so clients render exactly what the circuit
+// will later verify. Seven slots are always produced; handSize(mode) decides
+// how many count.
+export pure circuit dealHandRanks(salt: Bytes<32>, seed: Bytes<32>, round: Uint<32>): Vector<7, Uint<8>> {
+  const digest = persistentHash<DealInput>(DealInput {
+    separator: pad(32, "pob:deal:v1"), salt: salt, seed: seed, round: round
+  });
+  const b = digest as Vector<32, Uint<8>>;
+  return [
+    rankFromBytes(b[0], b[1], b[2]),
+    rankFromBytes(b[3], b[4], b[5]),
+    rankFromBytes(b[6], b[7], b[8]),
+    rankFromBytes(b[9], b[10], b[11]),
+    rankFromBytes(b[12], b[13], b[14]),
+    rankFromBytes(b[15], b[16], b[17]),
+    rankFromBytes(b[18], b[19], b[20])
+  ];
+}
+circuit countRank(ranks: Vector<7, Uint<8>>, size: Uint<32>, target: Uint<8>): Uint<8> {
+  const c0: Uint<8> = (size >= (1 as Uint<32>) && ranks[0] == target) ? 1 : 0;
+  const c1: Uint<8> = (size >= (2 as Uint<32>) && ranks[1] == target) ? 1 : 0;
+  const c2: Uint<8> = (size >= (3 as Uint<32>) && ranks[2] == target) ? 1 : 0;
+  const c3: Uint<8> = (size >= (4 as Uint<32>) && ranks[3] == target) ? 1 : 0;
+  const c4: Uint<8> = (size >= (5 as Uint<32>) && ranks[4] == target) ? 1 : 0;
+  const c5: Uint<8> = (size >= (6 as Uint<32>) && ranks[5] == target) ? 1 : 0;
+  const c6: Uint<8> = (size >= (7 as Uint<32>) && ranks[6] == target) ? 1 : 0;
+  return (c0 + c1 + c2 + c3 + c4 + c5 + c6) as Uint<8>;
+}
+// A hand is a multiset of ranks, represented as 13 per-rank counts.
+export pure circuit handCountsFromRanks(ranks: Vector<7, Uint<8>>, size: Uint<32>): Vector<13, Uint<8>> {
+  return [
+    countRank(ranks, size, 0), countRank(ranks, size, 1), countRank(ranks, size, 2),
+    countRank(ranks, size, 3), countRank(ranks, size, 4), countRank(ranks, size, 5),
+    countRank(ranks, size, 6), countRank(ranks, size, 7), countRank(ranks, size, 8),
+    countRank(ranks, size, 9), countRank(ranks, size, 10), countRank(ranks, size, 11),
+    countRank(ranks, size, 12)
+  ];
+}
+circuit matchingRanks(reveal: PlayRevealWitness, target: Uint<8>): Uint<8> {
+  const r0: Uint<8> = (reveal.count >= (1 as Uint<8>) && reveal.rank0 == target) ? 1 : 0;
+  const r1: Uint<8> = (reveal.count >= (2 as Uint<8>) && reveal.rank1 == target) ? 1 : 0;
+  const r2: Uint<8> = (reveal.count >= (3 as Uint<8>) && reveal.rank2 == target) ? 1 : 0;
+  const r3: Uint<8> = (reveal.count >= (4 as Uint<8>) && reveal.rank3 == target) ? 1 : 0;
+  return (r0 + r1 + r2 + r3) as Uint<8>;
+}
+circuit holdsPlayed(counts: Vector<13, Uint<8>>, play: PlayRevealWitness): Boolean {
+  return counts[0] >= matchingRanks(play, 0) && counts[1] >= matchingRanks(play, 1)
+    && counts[2] >= matchingRanks(play, 2) && counts[3] >= matchingRanks(play, 3)
+    && counts[4] >= matchingRanks(play, 4) && counts[5] >= matchingRanks(play, 5)
+    && counts[6] >= matchingRanks(play, 6) && counts[7] >= matchingRanks(play, 7)
+    && counts[8] >= matchingRanks(play, 8) && counts[9] >= matchingRanks(play, 9)
+    && counts[10] >= matchingRanks(play, 10) && counts[11] >= matchingRanks(play, 11)
+    && counts[12] >= matchingRanks(play, 12);
+}
+// Exported so clients can keep their private hand-count witness in sync.
+export pure circuit removePlayed(counts: Vector<13, Uint<8>>, play: PlayRevealWitness): Vector<13, Uint<8>> {
+  return [
+    (counts[0] - matchingRanks(play, 0)) as Uint<8>, (counts[1] - matchingRanks(play, 1)) as Uint<8>,
+    (counts[2] - matchingRanks(play, 2)) as Uint<8>, (counts[3] - matchingRanks(play, 3)) as Uint<8>,
+    (counts[4] - matchingRanks(play, 4)) as Uint<8>, (counts[5] - matchingRanks(play, 5)) as Uint<8>,
+    (counts[6] - matchingRanks(play, 6)) as Uint<8>, (counts[7] - matchingRanks(play, 7)) as Uint<8>,
+    (counts[8] - matchingRanks(play, 8)) as Uint<8>, (counts[9] - matchingRanks(play, 9)) as Uint<8>,
+    (counts[10] - matchingRanks(play, 10)) as Uint<8>, (counts[11] - matchingRanks(play, 11)) as Uint<8>,
+    (counts[12] - matchingRanks(play, 12)) as Uint<8>
+  ];
+}
+circuit selectCounts(useFirst: Boolean, a: Vector<13, Uint<8>>, b: Vector<13, Uint<8>>): Vector<13, Uint<8>> {
+  return [
+    useFirst ? a[0] : b[0], useFirst ? a[1] : b[1], useFirst ? a[2] : b[2],
+    useFirst ? a[3] : b[3], useFirst ? a[4] : b[4], useFirst ? a[5] : b[5],
+    useFirst ? a[6] : b[6], useFirst ? a[7] : b[7], useFirst ? a[8] : b[8],
+    useFirst ? a[9] : b[9], useFirst ? a[10] : b[10], useFirst ? a[11] : b[11],
+    useFirst ? a[12] : b[12]
+  ];
+}
+
+circuit nextRank(rank: Uint<8>): Uint<8> {
+  return rank >= (12 as Uint<8>) ? 0 : (rank + 1) as Uint<8>;
+}
+circuit handSize(mode: Uint<8>): Uint<32> {
+  return mode == (0 as Uint<8>) ? 5 : 7;
+}
+circuit winThreshold(mode: Uint<8>): Uint<8> {
+  if (mode == (0 as Uint<8>)) { return 10; }
+  if (mode == (1 as Uint<8>)) { return 15; }
+  return 20;
+}
+circuit clampSubtract(a: Uint<32>, b: Uint<32>): Uint<32> {
+  return a <= b ? 0 : (a - b) as Uint<32>;
+}
+// The client supplies seconds since epoch for display and match IDs. Reject a
+// value older than two minutes or in the future relative to consensus time;
+// otherwise anyone could forge a stale lastActionAt and forfeit immediately.
+circuit assertRecentBlockTime(currentTime: Uint<64>): [] {
+  assert(blockTimeGte(disclose(currentTime)), "Timestamp is in the future");
+  assert(blockTimeLte(disclose((currentTime + 120) as Uint<64>)), "Timestamp is too old");
+}
+circuit assertTimeout(timeoutSeconds: Uint<64>, lastActionAt: Uint<64>): [] {
+  assert(disclose(timeoutSeconds) >= (3600 as Uint<64>) && disclose(timeoutSeconds) <= (604800 as Uint<64>),
+    "Timeout must be between one hour and seven days");
+  assert(blockTimeGte(disclose((lastActionAt + timeoutSeconds) as Uint<64>)), "Timeout window still open");
+}
+
+export circuit createMatch(
+  mode: Uint<8>, p1EntropyCommit: Bytes<32>, p1SaltCommit: Bytes<32>, currentTime: Uint<64>
+): Bytes<32> {
+  assertRecentBlockTime(currentTime);
+  assert(disclose(mode) == (0 as Uint<8>) || disclose(mode) == (1 as Uint<8>) || disclose(mode) == (4 as Uint<8>),
+    "Only score-based modes (CASUAL, STANDARD, CASINO) are enabled in this edition");
+  const caller = ownPublicKey();
+  const matchId = persistentHash<MatchIdInput>(MatchIdInput {
+    separator: pad(32, "pob:match:v1"),
+    playerOne: caller, mode: mode, createdAt: currentTime
+  });
+  assert(!matches.member(disclose(matchId)), "Match already exists");
+  const size = handSize(mode);
+  const state = MatchState {
+    playerOne: caller, playerTwo: caller,
+    mode: mode, winThreshold: winThreshold(mode), createdAt: currentTime,
+    p1EntropyCommit: p1EntropyCommit, p2EntropyCommit: pad(32, ""),
+    p1SaltCommit: p1SaltCommit, p2SaltCommit: pad(32, ""),
+    seedCommitment: pad(32, ""), seedFinalized: false,
+    round: 0, p1HandCommit: pad(32, ""), p2HandCommit: pad(32, ""),
+    p1HandDrawn: false, p2HandDrawn: false,
+    phase: 0, activePlayerIdx: 0, currentRank: 0, lastActionAt: currentTime,
+    lastClaimRank: 0, lastClaimCount: 0, lastPlayCommit: pad(32, ""),
+    lastPlayerIdx: 0, hasPendingPlay: false, challengeCalledAt: 0,
+    isChallenged: false, pileSize: 0, p1Score: 0, p2Score: 0,
+    p1HandSize: size, p2HandSize: size, winner: 0
+  };
+  matches.insert(disclose(matchId), disclose(state));
+  totalMatchesCreated.increment(1);
+  return disclose(matchId);
+}
+
+export circuit joinMatch(matchId: Bytes<32>, p2EntropyCommit: Bytes<32>, p2SaltCommit: Bytes<32>): [] {
+  assert(matches.member(disclose(matchId)), "Match not found");
+  const m = matches.lookup(disclose(matchId));
+  assert(disclose(m.phase) == (0 as Uint<8>), "Match not open");
+  const joiner = ownPublicKey();
+  assert(joiner != m.playerOne, "Creator cannot join as player two");
+  const updated = MatchState {
+    playerOne: m.playerOne, playerTwo: joiner,
+    mode: m.mode, winThreshold: m.winThreshold, createdAt: m.createdAt,
+    p1EntropyCommit: m.p1EntropyCommit, p2EntropyCommit: p2EntropyCommit,
+    p1SaltCommit: m.p1SaltCommit, p2SaltCommit: p2SaltCommit,
+    seedCommitment: m.seedCommitment, seedFinalized: false,
+    round: 0, p1HandCommit: pad(32, ""), p2HandCommit: pad(32, ""),
+    p1HandDrawn: false, p2HandDrawn: false,
+    phase: 1, activePlayerIdx: 0, currentRank: m.currentRank,
+    lastActionAt: m.lastActionAt, lastClaimRank: 0, lastClaimCount: 0,
+    lastPlayCommit: m.lastPlayCommit, lastPlayerIdx: 0,
+    hasPendingPlay: false, challengeCalledAt: 0, isChallenged: false,
+    pileSize: 0, p1Score: 0, p2Score: 0,
+    p1HandSize: m.p1HandSize, p2HandSize: m.p2HandSize, winner: 0
+  };
+  matches.insert(disclose(matchId), disclose(updated));
+}
+
+export circuit revealSeed(
+  matchId: Bytes<32>, p1Entropy: Bytes<32>, p2Entropy: Bytes<32>,
+  startingRank: Uint<8>, currentTime: Uint<64>
+): [] {
+  assert(matches.member(disclose(matchId)), "Match not found");
+  const m = matches.lookup(disclose(matchId));
+  assert(disclose(m.phase) == (1 as Uint<8>), "Match not awaiting seeds");
+  assertRecentBlockTime(currentTime);
+  assert(disclose(startingRank) <= (12 as Uint<8>), "Starting rank out of range");
+  assert(commitEntropy(p1Entropy) == m.p1EntropyCommit, "P1 entropy mismatch");
+  assert(commitEntropy(p2Entropy) == m.p2EntropyCommit, "P2 entropy mismatch");
+  const combined = combineEntropy(p1Entropy, p2Entropy);
+  const updated = MatchState {
+    playerOne: m.playerOne, playerTwo: m.playerTwo,
+    mode: m.mode, winThreshold: m.winThreshold, createdAt: m.createdAt,
+    p1EntropyCommit: m.p1EntropyCommit, p2EntropyCommit: m.p2EntropyCommit,
+    p1SaltCommit: m.p1SaltCommit, p2SaltCommit: m.p2SaltCommit,
+    seedCommitment: commitSeed(combined), seedFinalized: true,
+    round: 1, p1HandCommit: pad(32, ""), p2HandCommit: pad(32, ""),
+    p1HandDrawn: false, p2HandDrawn: false,
+    phase: 2, activePlayerIdx: 0, currentRank: startingRank,
+    lastActionAt: currentTime, lastClaimRank: 0, lastClaimCount: 0,
+    lastPlayCommit: m.lastPlayCommit, lastPlayerIdx: 0,
+    hasPendingPlay: false, challengeCalledAt: 0, isChallenged: false,
+    pileSize: 0, p1Score: 0, p2Score: 0,
+    p1HandSize: m.p1HandSize, p2HandSize: m.p2HandSize, winner: 0
+  };
+  matches.insert(disclose(matchId), disclose(updated));
+}
+
+// The move that carries the anti-cheat proof. Public inputs: the claim and a
+// commitment to the real cards. Private witnesses: the real cards, the
+// player's hand salt, the shared seed, and the player's current hand counts.
+export circuit playCards(
+  matchId: Bytes<32>, playCommit: Bytes<32>, claimedRank: Uint<8>,
+  claimedCount: Uint<8>, currentTime: Uint<64>
+): [] {
+  assert(matches.member(disclose(matchId)), "Match not found");
+  const m = matches.lookup(disclose(matchId));
+  assert(disclose(m.phase) == (2 as Uint<8>), "Match not in PLAYING phase");
+  assertRecentBlockTime(currentTime);
+  const caller = ownPublicKey();
+  assert(caller == m.playerOne || caller == m.playerTwo, "Not a player");
+  const callerIdx: Uint<8> = caller == m.playerOne ? 0 : 1;
+  const isP1 = callerIdx == (0 as Uint<8>);
+  assert(disclose(callerIdx) == disclose(m.activePlayerIdx), "Not your turn");
+  assert(disclose(claimedRank) == disclose(m.currentRank), "Wrong claimed rank");
+  assert(disclose(claimedCount) >= (1 as Uint<8>) && disclose(claimedCount) <= (4 as Uint<8>), "Must play 1-4 cards");
+  const available: Uint<32> = isP1 ? m.p1HandSize : m.p2HandSize;
+  assert(disclose(available) >= (disclose(claimedCount) as Uint<32>), "Not enough cards");
+
+  // 1. The private cards must open the public commitment and match the count.
+  const play = nextPlay();
+  assert(persistentHash<PlayRevealWitness>(play) == playCommit, "Play does not open its commitment");
+  assert(play.count == claimedCount, "Play count does not match claim");
+
+  // 2. The player must know the committed salt and the committed seed.
+  const salt = handSalt();
+  assert(commitHandSalt(salt) == (isP1 ? m.p1SaltCommit : m.p2SaltCommit), "Hand salt does not match commitment");
+  const seed = sharedSeed();
+  assert(commitSeed(seed) == m.seedCommitment, "Seed does not match commitment");
+
+  // 3. Establish the hand: freshly dealt in-circuit on the first play of a
+  //    round, otherwise the witness must open the stored hand commitment.
+  const drawn = isP1 ? m.p1HandDrawn : m.p2HandDrawn;
+  const dealt = handCountsFromRanks(dealHandRanks(salt, seed, m.round), handSize(m.mode));
+  const claimed = currentHandCounts();
+  assert(!drawn || commitHandCounts(claimed, salt, m.round) == (isP1 ? m.p1HandCommit : m.p2HandCommit),
+    "Hand does not match commitment");
+  const before = selectCounts(drawn, claimed, dealt);
+
+  // 4. Membership: every played card must be held. Then commit the remainder.
+  assert(holdsPlayed(before, play), "Played cards are not in your hand");
+  const after = removePlayed(before, play);
+  const newHandCommit = commitHandCounts(after, salt, m.round);
+
+  const updated = MatchState {
+    playerOne: m.playerOne, playerTwo: m.playerTwo,
+    mode: m.mode, winThreshold: m.winThreshold, createdAt: m.createdAt,
+    p1EntropyCommit: m.p1EntropyCommit, p2EntropyCommit: m.p2EntropyCommit,
+    p1SaltCommit: m.p1SaltCommit, p2SaltCommit: m.p2SaltCommit,
+    seedCommitment: m.seedCommitment, seedFinalized: true,
+    round: m.round,
+    p1HandCommit: isP1 ? newHandCommit : m.p1HandCommit,
+    p2HandCommit: isP1 ? m.p2HandCommit : newHandCommit,
+    p1HandDrawn: isP1 ? true : m.p1HandDrawn,
+    p2HandDrawn: isP1 ? m.p2HandDrawn : true,
+    phase: 3, activePlayerIdx: isP1 ? 1 : 0,
+    currentRank: m.currentRank, lastActionAt: currentTime,
+    lastClaimRank: claimedRank, lastClaimCount: claimedCount,
+    lastPlayCommit: playCommit, lastPlayerIdx: callerIdx,
+    hasPendingPlay: true, challengeCalledAt: 0, isChallenged: false,
+    pileSize: m.pileSize, p1Score: m.p1Score, p2Score: m.p2Score,
+    p1HandSize: isP1 ? clampSubtract(m.p1HandSize, claimedCount as Uint<32>) : m.p1HandSize,
+    p2HandSize: isP1 ? m.p2HandSize : clampSubtract(m.p2HandSize, claimedCount as Uint<32>),
+    winner: m.winner
+  };
+  matches.insert(disclose(matchId), disclose(updated));
+}
+
+export circuit acceptClaim(matchId: Bytes<32>, currentTime: Uint<64>): [] {
+  assert(matches.member(disclose(matchId)), "Match not found");
+  const m = matches.lookup(disclose(matchId));
+  assert(disclose(m.phase) == (3 as Uint<8>) && m.hasPendingPlay && !m.isChallenged, "No pending claim to accept");
+  assertRecentBlockTime(currentTime);
+  const caller = ownPublicKey();
+  assert(caller == m.playerOne || caller == m.playerTwo, "Not a player");
+  const callerIdx: Uint<8> = caller == m.playerOne ? 0 : 1;
+  assert(disclose(callerIdx) != disclose(m.lastPlayerIdx), "Only opponent may accept");
+  // Accepting can end a round when the last play emptied a hand: reshuffle.
+  const roundOver = m.p1HandSize == (0 as Uint<32>) || m.p2HandSize == (0 as Uint<32>);
+  const size = handSize(m.mode);
+  const updated = MatchState {
+    playerOne: m.playerOne, playerTwo: m.playerTwo,
+    mode: m.mode, winThreshold: m.winThreshold, createdAt: m.createdAt,
+    p1EntropyCommit: m.p1EntropyCommit, p2EntropyCommit: m.p2EntropyCommit,
+    p1SaltCommit: m.p1SaltCommit, p2SaltCommit: m.p2SaltCommit,
+    seedCommitment: m.seedCommitment, seedFinalized: true,
+    round: roundOver ? (m.round + 1) as Uint<32> : m.round,
+    p1HandCommit: roundOver ? pad(32, "") : m.p1HandCommit,
+    p2HandCommit: roundOver ? pad(32, "") : m.p2HandCommit,
+    p1HandDrawn: roundOver ? false : m.p1HandDrawn,
+    p2HandDrawn: roundOver ? false : m.p2HandDrawn,
+    phase: 2, activePlayerIdx: callerIdx, currentRank: nextRank(m.currentRank),
+    lastActionAt: currentTime, lastClaimRank: 0, lastClaimCount: 0,
+    lastPlayCommit: pad(32, ""), lastPlayerIdx: 0,
+    hasPendingPlay: false, challengeCalledAt: 0, isChallenged: false,
+    pileSize: roundOver ? 0 : (m.pileSize + (m.lastClaimCount as Uint<32>)) as Uint<32>,
+    p1Score: m.p1Score, p2Score: m.p2Score,
+    p1HandSize: roundOver ? size : m.p1HandSize,
+    p2HandSize: roundOver ? size : m.p2HandSize,
+    winner: m.winner
+  };
+  matches.insert(disclose(matchId), disclose(updated));
+}
+
+export circuit challengeClaim(matchId: Bytes<32>, currentTime: Uint<64>): [] {
+  assert(matches.member(disclose(matchId)), "Match not found");
+  const m = matches.lookup(disclose(matchId));
+  assert(disclose(m.phase) == (3 as Uint<8>) && m.hasPendingPlay && !m.isChallenged, "No pending claim to challenge");
+  assertRecentBlockTime(currentTime);
+  const caller = ownPublicKey();
+  assert(caller == m.playerOne || caller == m.playerTwo, "Not a player");
+  const callerIdx: Uint<8> = caller == m.playerOne ? 0 : 1;
+  assert(disclose(callerIdx) != disclose(m.lastPlayerIdx), "Only opponent may challenge");
+  const updated = MatchState {
+    playerOne: m.playerOne, playerTwo: m.playerTwo,
+    mode: m.mode, winThreshold: m.winThreshold, createdAt: m.createdAt,
+    p1EntropyCommit: m.p1EntropyCommit, p2EntropyCommit: m.p2EntropyCommit,
+    p1SaltCommit: m.p1SaltCommit, p2SaltCommit: m.p2SaltCommit,
+    seedCommitment: m.seedCommitment, seedFinalized: true,
+    round: m.round, p1HandCommit: m.p1HandCommit, p2HandCommit: m.p2HandCommit,
+    p1HandDrawn: m.p1HandDrawn, p2HandDrawn: m.p2HandDrawn,
+    phase: m.phase, activePlayerIdx: m.activePlayerIdx, currentRank: m.currentRank,
+    lastActionAt: currentTime, lastClaimRank: m.lastClaimRank,
+    lastClaimCount: m.lastClaimCount, lastPlayCommit: m.lastPlayCommit,
+    lastPlayerIdx: m.lastPlayerIdx, hasPendingPlay: true,
+    challengeCalledAt: currentTime, isChallenged: true,
+    pileSize: m.pileSize, p1Score: m.p1Score, p2Score: m.p2Score,
+    p1HandSize: m.p1HandSize, p2HandSize: m.p2HandSize, winner: m.winner
+  };
+  matches.insert(disclose(matchId), disclose(updated));
+  totalChallengesIssued.increment(1);
+}
+
+// Discloses exactly one bit: whether the claim was true. The pile is discarded
+// (not picked up) so no private card ever has to be revealed to the opponent.
+export circuit resolveChallenge(matchId: Bytes<32>, currentTime: Uint<64>): Boolean {
+  assert(matches.member(disclose(matchId)), "Match not found");
+  const m = matches.lookup(disclose(matchId));
+  assert(disclose(m.phase) == (3 as Uint<8>) && m.hasPendingPlay && m.isChallenged, "No active challenge");
+  assertRecentBlockTime(currentTime);
+  const caller = ownPublicKey();
+  assert(caller == m.playerOne || caller == m.playerTwo, "Not a player");
+  const callerIdx: Uint<8> = caller == m.playerOne ? 0 : 1;
+  assert(disclose(callerIdx) == disclose(m.lastPlayerIdx), "Only challenged player can resolve");
+  const reveal = revealLastPlay();
+  assert(disclose(reveal.count) == disclose(m.lastClaimCount), "Reveal count mismatch");
+  assert(disclose(persistentHash<PlayRevealWitness>(reveal)) == disclose(m.lastPlayCommit), "Reveal does not match commitment");
+  const claimWasTrue: Boolean = matchingRanks(reveal, m.lastClaimRank) == m.lastClaimCount;
+  const challengerIdx: Uint<8> = m.lastPlayerIdx == (0 as Uint<8>) ? 1 : 0;
+  const nextP1Score: Uint<32> = !disclose(claimWasTrue) && challengerIdx == (0 as Uint<8>)
+    ? (m.p1Score + 3) as Uint<32>
+    : disclose(claimWasTrue) && challengerIdx == (0 as Uint<8>) ? clampSubtract(m.p1Score, 1) : m.p1Score;
+  const nextP2Score: Uint<32> = !disclose(claimWasTrue) && challengerIdx == (1 as Uint<8>)
+    ? (m.p2Score + 3) as Uint<32>
+    : disclose(claimWasTrue) && challengerIdx == (1 as Uint<8>) ? clampSubtract(m.p2Score, 1) : m.p2Score;
+  const p1Wins = nextP1Score >= (m.winThreshold as Uint<32>);
+  const p2Wins = nextP2Score >= (m.winThreshold as Uint<32>);
+  const winner: Uint<8> = p1Wins ? 1 : p2Wins ? 2 : 0;
+  const roundOver = m.p1HandSize == (0 as Uint<32>) || m.p2HandSize == (0 as Uint<32>);
+  const size = handSize(m.mode);
+  const updated = MatchState {
+    playerOne: m.playerOne, playerTwo: m.playerTwo,
+    mode: m.mode, winThreshold: m.winThreshold, createdAt: m.createdAt,
+    p1EntropyCommit: m.p1EntropyCommit, p2EntropyCommit: m.p2EntropyCommit,
+    p1SaltCommit: m.p1SaltCommit, p2SaltCommit: m.p2SaltCommit,
+    seedCommitment: m.seedCommitment, seedFinalized: true,
+    round: roundOver ? (m.round + 1) as Uint<32> : m.round,
+    p1HandCommit: roundOver ? pad(32, "") : m.p1HandCommit,
+    p2HandCommit: roundOver ? pad(32, "") : m.p2HandCommit,
+    p1HandDrawn: roundOver ? false : m.p1HandDrawn,
+    p2HandDrawn: roundOver ? false : m.p2HandDrawn,
+    phase: winner == (0 as Uint<8>) ? 2 : 4,
+    activePlayerIdx: challengerIdx, currentRank: nextRank(m.currentRank),
+    lastActionAt: currentTime, lastClaimRank: 0, lastClaimCount: 0,
+    lastPlayCommit: pad(32, ""), lastPlayerIdx: 0,
+    hasPendingPlay: false, challengeCalledAt: 0, isChallenged: false,
+    pileSize: 0, p1Score: nextP1Score, p2Score: nextP2Score,
+    p1HandSize: roundOver ? size : m.p1HandSize,
+    p2HandSize: roundOver ? size : m.p2HandSize,
+    winner: winner
+  };
+  matches.insert(disclose(matchId), disclose(updated));
+  if (winner != (0 as Uint<8>)) { totalMatchesCompleted.increment(1); }
+  return disclose(claimWasTrue);
+}
+
+// With no pot to return, cancellation and timeout simply close a match.
+export circuit cancelUnjoinedMatch(matchId: Bytes<32>): [] {
+  assert(matches.member(disclose(matchId)), "Match not found");
+  const m = matches.lookup(disclose(matchId));
+  assert(disclose(m.phase) == (0 as Uint<8>), "Match already joined");
+  assert(ownPublicKey() == m.playerOne, "Only creator can cancel");
+  const updated = MatchState {
+    playerOne: m.playerOne, playerTwo: m.playerTwo,
+    mode: m.mode, winThreshold: m.winThreshold, createdAt: m.createdAt,
+    p1EntropyCommit: m.p1EntropyCommit, p2EntropyCommit: m.p2EntropyCommit,
+    p1SaltCommit: m.p1SaltCommit, p2SaltCommit: m.p2SaltCommit,
+    seedCommitment: m.seedCommitment, seedFinalized: false,
+    round: 0, p1HandCommit: pad(32, ""), p2HandCommit: pad(32, ""),
+    p1HandDrawn: false, p2HandDrawn: false,
+    phase: 4, activePlayerIdx: 0, currentRank: 0, lastActionAt: m.lastActionAt,
+    lastClaimRank: 0, lastClaimCount: 0, lastPlayCommit: pad(32, ""),
+    lastPlayerIdx: 0, hasPendingPlay: false, challengeCalledAt: 0,
+    isChallenged: false, pileSize: 0, p1Score: 0, p2Score: 0,
+    p1HandSize: m.p1HandSize, p2HandSize: m.p2HandSize, winner: 0
+  };
+  matches.insert(disclose(matchId), disclose(updated));
+}
+
+export circuit forfeitAbandonedMatch(
+  matchId: Bytes<32>, currentTime: Uint<64>, timeoutSeconds: Uint<64>
+): [] {
+  assert(matches.member(disclose(matchId)), "Match not found");
+  const m = matches.lookup(disclose(matchId));
+  assert(disclose(m.phase) == (2 as Uint<8>) && !m.hasPendingPlay, "Not an idle turn");
+  assertRecentBlockTime(currentTime);
+  assertTimeout(timeoutSeconds, m.lastActionAt);
+  const updated = MatchState {
+    playerOne: m.playerOne, playerTwo: m.playerTwo,
+    mode: m.mode, winThreshold: m.winThreshold, createdAt: m.createdAt,
+    p1EntropyCommit: m.p1EntropyCommit, p2EntropyCommit: m.p2EntropyCommit,
+    p1SaltCommit: m.p1SaltCommit, p2SaltCommit: m.p2SaltCommit,
+    seedCommitment: m.seedCommitment, seedFinalized: true,
+    round: m.round, p1HandCommit: m.p1HandCommit, p2HandCommit: m.p2HandCommit,
+    p1HandDrawn: m.p1HandDrawn, p2HandDrawn: m.p2HandDrawn,
+    phase: 4, activePlayerIdx: m.activePlayerIdx, currentRank: m.currentRank,
+    lastActionAt: currentTime, lastClaimRank: 0, lastClaimCount: 0,
+    lastPlayCommit: pad(32, ""), lastPlayerIdx: 0, hasPendingPlay: false,
+    challengeCalledAt: 0, isChallenged: false, pileSize: m.pileSize,
+    p1Score: m.p1Score, p2Score: m.p2Score,
+    p1HandSize: m.p1HandSize, p2HandSize: m.p2HandSize,
+    winner: m.activePlayerIdx == (0 as Uint<8>) ? 2 : 1
+  };
+  matches.insert(disclose(matchId), disclose(updated));
+  totalMatchesCompleted.increment(1);
+}
+
+// A challenged player who never proves is treated as caught bluffing.
+export circuit forfeitStalledChallenge(
+  matchId: Bytes<32>, currentTime: Uint<64>, timeoutSeconds: Uint<64>
+): [] {
+  assert(matches.member(disclose(matchId)), "Match not found");
+  const m = matches.lookup(disclose(matchId));
+  assert(disclose(m.phase) == (3 as Uint<8>) && m.hasPendingPlay && m.isChallenged, "No stalled challenge");
+  assertRecentBlockTime(currentTime);
+  assertTimeout(timeoutSeconds, m.challengeCalledAt);
+  const challengerIdx: Uint<8> = m.lastPlayerIdx == (0 as Uint<8>) ? 1 : 0;
+  const nextP1Score = challengerIdx == (0 as Uint<8>) ? (m.p1Score + 3) as Uint<32> : m.p1Score;
+  const nextP2Score = challengerIdx == (1 as Uint<8>) ? (m.p2Score + 3) as Uint<32> : m.p2Score;
+  const winner: Uint<8> = nextP1Score >= (m.winThreshold as Uint<32>) ? 1
+    : nextP2Score >= (m.winThreshold as Uint<32>) ? 2 : 0;
+  const roundOver = m.p1HandSize == (0 as Uint<32>) || m.p2HandSize == (0 as Uint<32>);
+  const size = handSize(m.mode);
+  const updated = MatchState {
+    playerOne: m.playerOne, playerTwo: m.playerTwo,
+    mode: m.mode, winThreshold: m.winThreshold, createdAt: m.createdAt,
+    p1EntropyCommit: m.p1EntropyCommit, p2EntropyCommit: m.p2EntropyCommit,
+    p1SaltCommit: m.p1SaltCommit, p2SaltCommit: m.p2SaltCommit,
+    seedCommitment: m.seedCommitment, seedFinalized: true,
+    round: roundOver ? (m.round + 1) as Uint<32> : m.round,
+    p1HandCommit: roundOver ? pad(32, "") : m.p1HandCommit,
+    p2HandCommit: roundOver ? pad(32, "") : m.p2HandCommit,
+    p1HandDrawn: roundOver ? false : m.p1HandDrawn,
+    p2HandDrawn: roundOver ? false : m.p2HandDrawn,
+    phase: winner == (0 as Uint<8>) ? 2 : 4, activePlayerIdx: challengerIdx,
+    currentRank: nextRank(m.currentRank), lastActionAt: currentTime,
+    lastClaimRank: 0, lastClaimCount: 0, lastPlayCommit: pad(32, ""),
+    lastPlayerIdx: 0, hasPendingPlay: false, challengeCalledAt: 0,
+    isChallenged: false, pileSize: 0,
+    p1Score: nextP1Score, p2Score: nextP2Score,
+    p1HandSize: roundOver ? size : m.p1HandSize,
+    p2HandSize: roundOver ? size : m.p2HandSize,
+    winner: winner
+  };
+  matches.insert(disclose(matchId), disclose(updated));
+  if (winner != (0 as Uint<8>)) { totalMatchesCompleted.increment(1); }
+}
+
+export circuit getMatch(matchId: Bytes<32>): MatchState {
+  assert(matches.member(disclose(matchId)), "Match not found");
+  return matches.lookup(disclose(matchId));
+}
+export circuit getMatchPhase(matchId: Bytes<32>): Uint<8> {
+  assert(matches.member(disclose(matchId)), "Match not found");
+  return matches.lookup(disclose(matchId)).phase;
+}
+export circuit getWinner(matchId: Bytes<32>): Uint<8> {
+  assert(matches.member(disclose(matchId)), "Match not found");
+  return matches.lookup(disclose(matchId)).winner;
+}

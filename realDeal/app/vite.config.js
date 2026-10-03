@@ -5,8 +5,47 @@ import topLevelAwait from 'vite-plugin-top-level-await';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const stateOnlyAssets = resolve(__dirname, '../contracts/managed/proof-or-bluff-mainnet');
+const stateOnlyBuild = process.env.VITE_CONTRACT_VARIANT === 'state-only';
+
+// Keep the generated state-only ZK assets separate from the wagered symlink.
+// Dev serves only known key/zkir file names; production emits the same assets
+// into dist so a static host can serve them without access to this source tree.
+function stateOnlyZkAssetsPlugin() {
+  return {
+    name: 'pob-state-only-zk-assets',
+    configureServer(server) {
+      if (!stateOnlyBuild) return;
+      server.middlewares.use((request, response, next) => {
+        const match = /^\/managed\/proof-or-bluff-mainnet\/(keys|zkir)\/([a-zA-Z0-9_-]+\.(?:prover|verifier|bzkir|zkir))$/.exec(request.url?.split('?')[0] || '');
+        if (!match) return next();
+        try {
+          const bytes = readFileSync(resolve(stateOnlyAssets, match[1], match[2]));
+          response.setHeader('Content-Type', 'application/octet-stream');
+          response.end(bytes);
+        } catch {
+          response.statusCode = 404;
+          response.end('Compiled ZK asset not found. Run npm run compile:state-only.');
+        }
+      });
+    },
+    generateBundle() {
+      if (!stateOnlyBuild) return;
+      for (const folder of ['keys', 'zkir']) {
+        for (const filename of readdirSync(resolve(stateOnlyAssets, folder))) {
+          this.emitFile({
+            type: 'asset',
+            fileName: `managed/proof-or-bluff-mainnet/${folder}/${filename}`,
+            source: readFileSync(resolve(stateOnlyAssets, folder, filename)),
+          });
+        }
+      }
+    },
+  };
+}
 
 // Tiny dev-only middleware: GET /api/proof-server-logs?tail=N returns
 // the last N lines of `docker logs midnight-proof-server` as plain
@@ -57,7 +96,7 @@ function proofServerLogsPlugin() {
 // these plugins Vite errors with: "ESM integration proposal for Wasm
 // is not supported currently".
 export default defineConfig({
-  plugins: [react(), wasm(), topLevelAwait(), proofServerLogsPlugin()],
+  plugins: [react(), wasm(), topLevelAwait(), stateOnlyZkAssetsPlugin(), proofServerLogsPlugin()],
   resolve: {
     // Keep symlinks unresolved so the bindings imported via
     // src/contract/ keep their import paths anchored inside realDeal/app/,
@@ -70,10 +109,9 @@ export default defineConfig({
       // realDeal/contracts/managed/proof-or-bluff. Importing through the
       // symlinked path lets the bindings resolve @midnight-ntwrk/* from
       // realDeal/app/node_modules.
-      '@pob/contract': resolve(
-        __dirname,
-        './src/contract/contract/index.js'
-      ),
+      '@pob/contract': stateOnlyBuild
+        ? resolve(stateOnlyAssets, 'contract/index.js')
+        : resolve(__dirname, './src/contract/contract/index.js'),
       '@pob/zkir': resolve(
         __dirname,
         './src/contract/zkir'
@@ -96,13 +134,9 @@ export default defineConfig({
       '@midnight-ntwrk/zswap',
       '@midnight-ntwrk/onchain-runtime',
     ],
-    // Force-include CJS deps that midnight-js uses transitively, so
-    // Vite synthesizes proper default exports for them.
-    include: [
-      'object-inspect',
-      'side-channel',
-      'qs',
-    ],
+    // Pre-bundle the CJS dependency that is actually installed. Old
+    // entries for qs/side-channel made Vite's optimizer fail on clean installs.
+    include: ['object-inspect'],
     esbuildOptions: {
       target: 'es2022',
     },

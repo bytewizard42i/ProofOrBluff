@@ -1,6 +1,12 @@
 node_modules
 dist/
 build/
+# Commit the small generated JS bindings so offline circuit tests can run on
+# a fresh checkout. Proof keys and ZKIR are large generated artifacts: compile
+# them locally with npm run compile:state-only before building the web app.
+/realDeal/contracts/managed/proof-or-bluff-mainnet/keys/
+/realDeal/contracts/managed/proof-or-bluff-mainnet/zkir/
+/realDeal/contracts/managed/proof-or-bluff-mainnet/compiler/
 midnight-local-dev/
 # .env is committed for realDeal/cli/ (public local-dev test seeds —
 # see realDeal/docs/LOCAL_DEV_GUIDE.md). For all other paths .env

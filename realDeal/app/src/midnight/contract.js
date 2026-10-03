@@ -29,8 +29,10 @@ import * as ledger from '@midnight-ntwrk/ledger-v8';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
 
 import { Contract, pureCircuits } from '@pob/contract';
-import { ENDPOINTS, NETWORK_ID, getContractAddress, setContractAddress }
-  from './config.js';
+import {
+  ENDPOINTS, NETWORK_ID, CONTRACT_VARIANT, CONTRACT_ASSET_NAME,
+  getContractAddress, setContractAddress,
+} from './config.js';
 
 // ---------------------------------------------------------------------------
 // Network registration (NetworkId is just a string in v4.0.4 — pass through).
@@ -44,6 +46,17 @@ let _pendingReveal = null;
 export function setPendingReveal(reveal) { _pendingReveal = reveal; }
 export function clearPendingReveal() { _pendingReveal = null; }
 
+// Provably fair edition: private inputs for playCards. Staged immediately
+// before the call and cleared in a finally block, never persisted here.
+let _stagedPlay = null;
+let _stagedHandSalt = null;
+let _stagedSeed = null;
+let _stagedHandCounts = null;
+function requireStaged(value, name) {
+  if (value == null) throw new Error(`${name} witness requested with nothing staged.`);
+  return value;
+}
+
 const witnesses = {
   revealLastPlay(context) {
     if (!_pendingReveal) {
@@ -54,6 +67,10 @@ const witnesses = {
     }
     return [context.privateState, _pendingReveal];
   },
+  nextPlay(context) { return [context.privateState, requireStaged(_stagedPlay, 'nextPlay')]; },
+  handSalt(context) { return [context.privateState, requireStaged(_stagedHandSalt, 'handSalt')]; },
+  sharedSeed(context) { return [context.privateState, requireStaged(_stagedSeed, 'sharedSeed')]; },
+  currentHandCounts(context) { return [context.privateState, requireStaged(_stagedHandCounts, 'currentHandCounts')]; },
 };
 
 // ---------------------------------------------------------------------------
@@ -121,9 +138,38 @@ const extractResult = (r) =>
 
 const KEY_ENTROPY     = (mid, role) => `pob:realdeal:entropy:${mid}:${role}`;
 const KEY_PLAY_REVEAL = (mid)       => `pob:realdeal:play:${mid}`;
+// Provably fair edition. The hand salt is the secret that makes this player's
+// deal unpredictable to everyone else; it never leaves this browser. The hand
+// record mirrors the 13 per-rank counts the contract has committed to.
+const KEY_HAND_SALT   = (mid, role) => `pob:realdeal:hand-salt:${mid}:${role}`;
+const KEY_HAND_COUNTS = (mid, role) => `pob:realdeal:hand:${mid}:${role}`;
 
 function persistEntropy(matchId, role, entropyHex) {
   window.localStorage.setItem(KEY_ENTROPY(matchId, role), entropyHex);
+}
+
+function persistHandSalt(matchId, role, saltHex) {
+  window.localStorage.setItem(KEY_HAND_SALT(matchId, role), saltHex);
+}
+function getStoredHandSalt(matchId, role) {
+  return window.localStorage.getItem(KEY_HAND_SALT(matchId, role));
+}
+function persistHandCounts(matchId, role, round, counts) {
+  window.localStorage.setItem(KEY_HAND_COUNTS(matchId, role), JSON.stringify({
+    round: round.toString(),
+    counts: counts.map((count) => count.toString()),
+  }));
+}
+function loadHandCounts(matchId, role) {
+  const raw = window.localStorage.getItem(KEY_HAND_COUNTS(matchId, role));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.counts) || parsed.counts.length !== 13) return null;
+    return { round: BigInt(parsed.round), counts: parsed.counts.map((count) => BigInt(count)) };
+  } catch {
+    return null;
+  }
 }
 
 export function getStoredEntropy(matchId, role) {
@@ -205,7 +251,7 @@ function createMemoryPrivateStateProvider() {
 // Provider bundle.
 
 function buildProviders({ walletHandle }) {
-  const baseURL = `${window.location.origin}/managed/proof-or-bluff`;
+  const baseURL = `${window.location.origin}/managed/${CONTRACT_ASSET_NAME}`;
   const innerProvider = new FetchZkConfigProvider(baseURL);
   // Wrap to surface the underlying fetch/parse error. The default
   // FetchZkConfigProvider rejects with response.statusText (often empty)
@@ -297,8 +343,18 @@ function buildProviders({ walletHandle }) {
   };
 }
 
-async function resolveContract(providers, compiledContract) {
+async function resolveContract(providers, compiledContract, allowDeploy) {
   const persisted = getContractAddress();
+  if (!persisted && !allowDeploy) {
+    // Deploying must be an intentional act (it costs a transaction and makes
+    // every other stored match unreachable from this fresh, empty contract).
+    // Only match-creation flows pass allowDeploy: true.
+    throw new Error(
+      'No deployed contract address is stored in this browser. Start a new '
+      + 'match (which deploys), or paste a known address into the '
+      + 'localStorage key "pob:realdeal:contract-address" and reload.'
+    );
+  }
 
   if (persisted) {
     return findDeployedContract(providers, {
@@ -321,21 +377,21 @@ async function resolveContract(providers, compiledContract) {
 // ---------------------------------------------------------------------------
 // Public factory.
 
-export async function getContractApi({ walletHandle }) {
+export async function getContractApi({ walletHandle, allowDeploy = false }) {
   const providers = buildProviders({ walletHandle });
 
   // v8 midnight-js requires the CompiledContract wrapper around the
   // raw Contract class. fetchZkConfigProvider serves the assets over
   // HTTP, but the CompiledContract still needs an asset path tag so
   // the runtime can locate them.
-  const compiledContract = CompiledContract.make('proof-or-bluff', Contract).pipe(
+  const compiledContract = CompiledContract.make(CONTRACT_ASSET_NAME, Contract).pipe(
     CompiledContract.withWitnesses(witnesses),
     CompiledContract.withCompiledFileAssets(
-      `${window.location.origin}/managed/proof-or-bluff`
+      `${window.location.origin}/managed/${CONTRACT_ASSET_NAME}`
     ),
   );
 
-  const deployed = await resolveContract(providers, compiledContract);
+  const deployed = await resolveContract(providers, compiledContract, allowDeploy);
   const tx = deployed.callTx;
 
   const ensure = (name) => {
@@ -387,16 +443,21 @@ export async function getContractApi({ walletHandle }) {
       const entropy = randomBytes32();
       const entropyHex = bytesToHex(entropy);
       const commit = pureCircuits.commitEntropy(entropy);
-      const result = await ensure('createMatch')(
-        BigInt(mode),
-        BigInt(wagerAmount),
-        commit,
-        nowSec(),
-        nativeCoin(wagerAmount)
-      );
+      if (CONTRACT_VARIANT === 'state-only' && wagerAmount !== 0) {
+        throw new Error('The state-only contract does not take a wager. Set wager to 0.');
+      }
+      // The hand salt is generated before the opponent's entropy exists, which
+      // is exactly what makes grinding for a good hand impossible.
+      const handSalt = CONTRACT_VARIANT === 'state-only' ? randomBytes32() : null;
+      const result = CONTRACT_VARIANT === 'state-only'
+        ? await ensure('createMatch')(BigInt(mode), commit, pureCircuits.commitHandSalt(handSalt), nowSec())
+        : await ensure('createMatch')(
+          BigInt(mode), BigInt(wagerAmount), commit, nowSec(), nativeCoin(wagerAmount)
+        );
       const matchIdBytes = extractResult(result);
       const matchId = matchIdBytes ? bytesToHex(matchIdBytes) : null;
       if (matchId) persistEntropy(matchId, 'p1', entropyHex);
+      if (matchId && handSalt) persistHandSalt(matchId, 'p1', bytesToHex(handSalt));
       return { matchId, entropy: entropyHex, txId: extractTxId(result) };
     },
 
@@ -404,13 +465,64 @@ export async function getContractApi({ walletHandle }) {
       const entropy = randomBytes32();
       const entropyHex = bytesToHex(entropy);
       const commit = pureCircuits.commitEntropy(entropy);
-      const result = await ensure('joinMatch')(
-        hexToBytes(matchId),
-        commit,
-        nativeCoin(wagerAmount)
-      );
+      if (CONTRACT_VARIANT === 'state-only' && wagerAmount !== 0) {
+        throw new Error('The state-only contract does not take a wager. Set wager to 0.');
+      }
+      const handSalt = CONTRACT_VARIANT === 'state-only' ? randomBytes32() : null;
+      const result = CONTRACT_VARIANT === 'state-only'
+        ? await ensure('joinMatch')(hexToBytes(matchId), commit, pureCircuits.commitHandSalt(handSalt))
+        : await ensure('joinMatch')(hexToBytes(matchId), commit, nativeCoin(wagerAmount));
       persistEntropy(matchId, 'p2', entropyHex);
+      if (handSalt) persistHandSalt(matchId, 'p2', bytesToHex(handSalt));
       return { entropy: entropyHex, txId: extractTxId(result) };
+    },
+
+    /**
+     * Provably fair edition: the hand the contract currently binds this player
+     * to. Dealt from committed material on a round's first play; afterwards the
+     * locally mirrored remainder. Synchronous — pure circuits plus localStorage.
+     * `match` must carry round, mode, p1HandDrawn/p2HandDrawn and seedCommitment.
+     */
+    getProvableHand({ matchId, role, match }) {
+      if (CONTRACT_VARIANT !== 'state-only') throw new Error('getProvableHand is only available in the state-only edition.');
+      if (role !== 'p1' && role !== 'p2') throw new Error('role must be "p1" or "p2"');
+      const saltHex = getStoredHandSalt(matchId, role);
+      if (!saltHex) {
+        throw new Error(`No hand salt stored in this browser for ${role} of match ${matchId}. Only the browser that created the match can play it.`);
+      }
+      const salt = hexToBytes(saltHex);
+      const seed = this.getPrivateDealSeed(matchId, match.seedCommitment);
+      const round = BigInt(match.round);
+      const drawn = role === 'p1' ? Boolean(match.p1HandDrawn) : Boolean(match.p2HandDrawn);
+      const handSize = BigInt(match.mode) === 0n ? 5n : 7n;
+      let counts;
+      if (!drawn) {
+        counts = pureCircuits.handCountsFromRanks(pureCircuits.dealHandRanks(salt, seed, round), handSize);
+      } else {
+        const stored = loadHandCounts(matchId, role);
+        if (!stored || stored.round !== round) {
+          throw new Error('This browser has no hand record for the current round, so it cannot open the on-chain hand commitment.');
+        }
+        counts = stored.counts;
+      }
+      const ranks = [];
+      counts.forEach((count, rank) => { for (let i = 0n; i < count; i += 1n) ranks.push(rank); });
+      return { round, counts, ranks, salt, seed };
+    },
+
+    getPrivateDealSeed(matchId, publishedCommitment) {
+      if (CONTRACT_VARIANT !== 'state-only') throw new Error('Private seed is only used in the state-only edition.');
+      const p1 = getStoredEntropy(matchId, 'p1');
+      const p2 = getStoredEntropy(matchId, 'p2');
+      if (!p1 || !p2) throw new Error('Both private entropy values are needed to reconstruct the deal.');
+      const seed = pureCircuits.combineEntropy(hexToBytes(p1), hexToBytes(p2));
+      if (publishedCommitment) {
+        const expected = pureCircuits.commitSeed(seed);
+        if (bytesToHex(expected) !== bytesToHex(hexToBytes(publishedCommitment))) {
+          throw new Error('Private deal seed does not match public commitment. Do not play this match.');
+        }
+      }
+      return seed;
     },
 
     async revealSeed({ matchId, startingRank = 0 }) {
@@ -432,24 +544,49 @@ export async function getContractApi({ walletHandle }) {
       return { txId: extractTxId(result) };
     },
 
-    async playCards({ matchId, cards, claimedRank, claimedCount }) {
+    async playCards({ matchId, cards, claimedRank, claimedCount, role = null, match = null }) {
       if (claimedCount !== cards.length) {
         throw new Error('claimedCount must equal cards.length');
       }
       const reveal = buildPlayReveal(cards);
       const playCommit = pureCircuits.commitPlay(reveal);
-      const result = await ensure('playCards')(
-        hexToBytes(matchId),
-        playCommit,
-        BigInt(claimedRank),
-        BigInt(claimedCount),
-        nowSec()
-      );
-      persistPlayReveal(matchId, reveal);
-      return {
-        playCommit: bytesToHex(playCommit),
-        txId: extractTxId(result),
-      };
+      let hand = null;
+      if (CONTRACT_VARIANT === 'state-only') {
+        if (!role || !match) throw new Error('playCards on the state-only contract needs role and the current match state.');
+        hand = this.getProvableHand({ matchId, role, match });
+        const held = [...hand.ranks];
+        for (const card of cards) {
+          const index = held.indexOf(Number(card));
+          if (index === -1) {
+            throw new Error(`You do not hold a card of rank index ${card}; the proof would be rejected.`);
+          }
+          held.splice(index, 1);
+        }
+        _stagedPlay = reveal;
+        _stagedHandSalt = hand.salt;
+        _stagedSeed = hand.seed;
+        _stagedHandCounts = hand.counts;
+      }
+      try {
+        const result = await ensure('playCards')(
+          hexToBytes(matchId),
+          playCommit,
+          BigInt(claimedRank),
+          BigInt(claimedCount),
+          nowSec()
+        );
+        persistPlayReveal(matchId, reveal);
+        if (hand) persistHandCounts(matchId, role, hand.round, pureCircuits.removePlayed(hand.counts, reveal));
+        return {
+          playCommit: bytesToHex(playCommit),
+          txId: extractTxId(result),
+        };
+      } finally {
+        _stagedPlay = null;
+        _stagedHandSalt = null;
+        _stagedSeed = null;
+        _stagedHandCounts = null;
+      }
     },
 
     async acceptClaim({ matchId }) {
@@ -480,6 +617,7 @@ export async function getContractApi({ walletHandle }) {
     },
 
     async claimPayout({ matchId }) {
+      if (CONTRACT_VARIANT === 'state-only') throw new Error('This contract holds no funds and has no payout.');
       const r = await ensure('claimPayout')(hexToBytes(matchId));
       return { txId: extractTxId(r) };
     },

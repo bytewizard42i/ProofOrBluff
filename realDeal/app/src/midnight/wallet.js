@@ -171,8 +171,8 @@ export async function connectWallet() {
   const connector = pickConnector();
   if (!connector) {
     throw new Error(
-      'No Midnight wallet connector found. Install Lace and switch its ' +
-        'network to "Undeployed" so it targets http://localhost:9944.'
+      `No Midnight wallet connector found. Install Lace and switch its ` +
+        `network to "${NETWORK_ID}" before reconnecting.`
     );
   }
 

@@ -225,6 +225,12 @@ function applyCors(request, response, allowedOrigins) {
   response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
+function safeErrorMessage(error) {
+  const message = error?.message || String(error);
+  const projectId = process.env.BLOCKFROST_PROJECT_ID?.trim();
+  return projectId ? message.replaceAll(projectId, '[redacted]') : message;
+}
+
 function sendJson(response, statusCode, payload) {
   const encodedPayload = JSON.stringify(normalizeCompactValue(payload));
   response.writeHead(statusCode, {
@@ -281,13 +287,16 @@ function noOp(reason, match) {
  * Growth uses untouched deterministic draw-pile cards and never duplicates an
  * identity already in the reconstructed hand.
  */
-function reconcileBotHand(matchId, match, botHands) {
+function reconcileBotHand(matchId, match, botHands, privateDealSeed = null) {
   const mode = requireCompactInteger(match, 'mode');
   const targetHandSize = requireCompactInteger(match, 'p2HandSize');
-  const combinedSeed = match?.combinedSeed;
+  // In the wagered local contract the seed is public (a known privacy bug).
+  // The state-only edition publishes only seedCommitment. The bot obtains the
+  // seed from its privately exchanged entropies, never from the indexer.
+  const combinedSeed = privateDealSeed || match?.combinedSeed;
   if (!(combinedSeed instanceof Uint8Array) || combinedSeed.length !== 32) {
     throw new Error(
-      'Match combinedSeed is missing or is not 32 bytes. Ensure P1 called revealSeed and wait for indexer sync.',
+      'Private deal seed is missing. Ensure both entropy values were exchanged and P1 called revealSeed.',
     );
   }
 
@@ -331,6 +340,23 @@ function reconcileBotHand(matchId, match, botHands) {
   return handState;
 }
 
+/**
+ * Provably fair edition: the bot's hand is whatever the contract has committed
+ * it to, derived from the bot's private salt and the shared seed. There is no
+ * draw-pile guesswork because the contract itself verifies every play.
+ */
+async function provableBotHand(api, matchId, match) {
+  const { ranks } = await api.getHand({ matchId, role: 'p2', match });
+  return {
+    hand: ranks.map((rankIndex, position) => ({
+      id: `p2:${position}:${RANKS[rankIndex]}`,
+      rankIndex,
+      rank: RANKS[rankIndex],
+      suit: 'hidden',
+    })),
+  };
+}
+
 function removePlayedCards(handState, cardsToPlay) {
   const playedIds = new Set(cardsToPlay.map((card) => card.id));
   handState.hand = handState.hand.filter((card) => !playedIds.has(card.id));
@@ -357,6 +383,14 @@ export function createTestWiredBot({ defaultDifficulty = 'medium' } = {}) {
     return session;
   }
 
+  function privateSeedForMatch(matchId, match) {
+    if (session?.variant !== 'state-only') return null;
+    if (!match.seedCommitment || !session.api.verifySeedCommitment(matchId, match.seedCommitment)) {
+      throw new Error('The privately exchanged seed does not match the public seed commitment. Do not play this match.');
+    }
+    return session.api.getPrivateDealSeed(matchId);
+  }
+
   async function join(body) {
     const request = validateJoinBody(body, validatedDefaultDifficulty);
     return serializeOperation(async () => {
@@ -371,16 +405,20 @@ export function createTestWiredBot({ defaultDifficulty = 'medium' } = {}) {
           );
         }
         const networkId = session?.networkId || process.env.POB_NETWORK_ID || 'undeployed';
-        state.setContractAddress(networkId, request.contractAddress);
+        const variant = session?.variant || process.env.POB_CONTRACT_VARIANT || 'wagered';
+        state.setContractAddress(networkId, request.contractAddress, variant);
       }
 
       const activeSession = await ensureSession();
+      if (activeSession.variant === 'state-only' && request.wagerAmount !== 0) {
+        throw new HttpError(400, 'State-only matches never take a wager; send wagerAmount: 0.');
+      }
       activeSession.api.importEntropy(request.matchId, 'p1', request.p1Entropy);
       const result = await activeSession.api.joinMatch({
         matchId: request.matchId,
         wagerAmount: request.wagerAmount,
       });
-      state.setActiveMatch(request.matchId);
+      state.setActiveMatch(request.matchId, activeSession.variant);
       matchDifficulties.set(request.matchId, request.difficulty);
 
       return {
@@ -431,8 +469,13 @@ export function createTestWiredBot({ defaultDifficulty = 'medium' } = {}) {
         );
       }
 
+      const provable = activeSession.variant === 'state-only';
+      if (provable) privateSeedForMatch(matchId, match); // verifies the seed commitment or throws
+
       if (selectedAction === 'play') {
-        const handState = reconcileBotHand(matchId, match, botHands);
+        const handState = provable
+          ? await provableBotHand(activeSession.api, matchId, match)
+          : reconcileBotHand(matchId, match, botHands, privateSeedForMatch(matchId, match));
         const currentRank = requireCompactInteger(match, 'currentRank');
         const requiredRank = RANKS[currentRank];
         if (!requiredRank) throw new Error(`Match currentRank ${currentRank} is outside the supported 0-12 range.`);
@@ -461,12 +504,15 @@ export function createTestWiredBot({ defaultDifficulty = 'medium' } = {}) {
           cards: decision.cardsToPlay.map((card) => card.rankIndex),
           claimedRank: currentRank,
           claimedCount: decision.cardsToPlay.length,
+          role: 'p2',
         });
-        removePlayedCards(handState, decision.cardsToPlay);
-        handState.pendingSize = {
-          before: requireCompactInteger(match, 'p2HandSize'),
-          after: handState.hand.length,
-        };
+        if (!provable) {
+          removePlayedCards(handState, decision.cardsToPlay);
+          handState.pendingSize = {
+            before: requireCompactInteger(match, 'p2HandSize'),
+            after: handState.hand.length,
+          };
+        }
         submittedStateFingerprints.set(matchId, stateFingerprint);
         return {
           status: 'acted',
@@ -479,7 +525,9 @@ export function createTestWiredBot({ defaultDifficulty = 'medium' } = {}) {
       }
 
       if (selectedAction === 'respond-to-p1') {
-        const handState = reconcileBotHand(matchId, match, botHands);
+        const handState = provable
+          ? await provableBotHand(activeSession.api, matchId, match)
+          : reconcileBotHand(matchId, match, botHands, privateSeedForMatch(matchId, match));
         const claimedRankIndex = requireCompactInteger(match, 'lastClaimRank');
         const playerClaimedRank = RANKS[claimedRankIndex];
         if (!playerClaimedRank) {
@@ -541,7 +589,7 @@ export function createTestWiredBot({ defaultDifficulty = 'medium' } = {}) {
       let readinessReason = 'The seed is not finalized yet.';
       if (match.seedFinalized === true) {
         try {
-          reconcileBotHand(matchId, match, botHands);
+          reconcileBotHand(matchId, match, botHands, privateSeedForMatch(matchId, match));
           handReady = true;
           readinessReason = 'P2 wallet session and deterministic hand are ready.';
         } catch (error) {
@@ -610,8 +658,8 @@ export function createBotServer({ defaultDifficulty = 'medium' } = {}) {
       const nextStep = statusCode >= 500
         ? 'Check that the local Midnight stack, contract address, and POB_SEED_P2 are available, then retry.'
         : 'Correct the request using the endpoint contract, then retry.';
-      sendJson(response, statusCode, { status: 'error', error: error.message || String(error), nextStep });
-      if (process.env.POB_VERBOSE && statusCode >= 500) console.error(error);
+      sendJson(response, statusCode, { status: 'error', error: safeErrorMessage(error), nextStep });
+      if (process.env.POB_VERBOSE && statusCode >= 500 && !process.env.BLOCKFROST_PROJECT_ID) console.error(error);
     }
   });
 
@@ -643,9 +691,9 @@ async function main() {
 }
 
 function handleFatalError(error) {
-  console.error(`TestWired bot failed: ${error.message || String(error)}`);
+  console.error(`TestWired bot failed: ${safeErrorMessage(error)}`);
   console.error('Next step: verify the port, P2 seed, persisted contract address, and local stack, then restart.');
-  if (process.env.POB_VERBOSE) console.error(error);
+  if (process.env.POB_VERBOSE && !process.env.BLOCKFROST_PROJECT_ID) console.error(error);
   process.exitCode = 1;
 }
 

@@ -1,9 +1,10 @@
 /**
  * wallet-node.js — headless seed-based wallet for the CLI, v8 SDK.
  *
- * Built around @midnight-ntwrk/wallet-sdk-facade. Mirrors the canonical
- * pattern from midnightntwrk/example-counter/counter-cli/src/api.ts and
- * midnight-local-dev-johns-copy/src/wallet.ts.
+ * Built around the @midnight-ntwrk/wallet-sdk barrel. Mirrors the canonical
+ * pattern from midnightntwrk/example-counter/counter-cli/src/api.ts, the
+ * official midnight-local-dev wallet helpers, and Edda Labs' starter
+ * (eddalabs/midnight-starter-template counter-cli/src/api.ts, Aug 2026).
  *
  * Three sub-wallets back the facade — Shielded (Zswap), Unshielded
  * (NIGHT), Dust — derived from the same HD seed via role-specific paths.
@@ -16,16 +17,21 @@
 import { WebSocket } from 'ws';
 import * as Rx from 'rxjs';
 import * as ledger from '@midnight-ntwrk/ledger-v8';
-import { HDWallet, Roles } from '@midnight-ntwrk/wallet-sdk-hd';
-import { WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
-import { ShieldedWallet } from '@midnight-ntwrk/wallet-sdk-shielded';
-import { DustWallet } from '@midnight-ntwrk/wallet-sdk-dust-wallet';
+// Single-barrel wallet SDK (official public-network matrix: exact 1.2.0).
+// It wraps facade 4.x / dust 4.x / unshielded 3.x; importing the split
+// packages directly pinned us a major behind and produced transactions the
+// current node validated but never included.
 import {
+  HDWallet,
+  Roles,
+  WalletFacade,
+  ShieldedWallet,
+  DustWallet,
   createKeystore,
   InMemoryTransactionHistoryStorage,
   PublicKey as UnshieldedPublicKey,
   UnshieldedWallet,
-} from '@midnight-ntwrk/wallet-sdk-unshielded-wallet';
+} from '@midnight-ntwrk/wallet-sdk';
 import { Buffer } from 'buffer';
 
 import { log } from './log.js';
@@ -63,6 +69,16 @@ function deriveKeysFromSeed(hexSeed) {
   return derivation.keys;
 }
 
+/**
+ * Derive the public unshielded (NIGHT) address for a seed on a network with
+ * NO network access — pure key derivation. Use this to learn where to send
+ * faucet funds before the first (slow) public-network sync.
+ */
+export function deriveUnshieldedAddress(seed, networkId) {
+  const keys = deriveKeysFromSeed(seed);
+  return createKeystore(keys[Roles.NightExternal], networkId).getBech32Address().asString();
+}
+
 function buildFacadeConfig(networkId, endpoints) {
   return {
     networkId,
@@ -90,7 +106,9 @@ export async function buildWalletFromSeed({
   endpoints,
   networkId,
 }) {
-  log.step(`Building wallet from seed (${seed.slice(0, 8)}…) on ${networkId}`);
+  // Never print even a prefix of a production seed. Wallet addresses are
+  // public; seed material is not, including in development logs.
+  log.step(`Building wallet on ${networkId}`);
   const keys = deriveKeysFromSeed(seed);
   const shieldedSecretKeys = ledger.ZswapSecretKeys.fromSeed(keys[Roles.Zswap]);
   const dustSecretKey = ledger.DustSecretKey.fromSeed(keys[Roles.Dust]);
@@ -116,16 +134,23 @@ export async function buildWalletFromSeed({
   const ctx = { wallet: facade, shieldedSecretKeys, dustSecretKey, unshieldedKeystore };
 
   log.info(`  Unshielded address: ${unshieldedKeystore.getBech32Address().asString()}`);
-  log.info('  Waiting for wallet sync…');
+  // Local chains sync in seconds. Public networks replay the chain's ledger
+  // events for a new wallet; the Foundation measured ~67 min for a full
+  // Preprod sync. Blockfrost also slows idle progress updates, so a short
+  // fixed timeout causes false failures. `each` resets on every emission.
+  const syncTimeoutMs = networkId === 'undeployed'
+    ? 120_000
+    : Number(process.env.POB_SYNC_TIMEOUT_MS || 90 * 60_000);
+  log.info(`  Waiting for wallet sync… (timeout ${Math.round(syncTimeoutMs / 60_000)} min)`);
   const synced = await Rx.firstValueFrom(
     facade.state().pipe(
-      Rx.throttleTime(3_000),
+      Rx.throttleTime(10_000),
       Rx.tap((s) => {
         if (!s.isSynced) log.info('    syncing…');
       }),
       Rx.filter((s) => s.isSynced),
       Rx.take(1),
-      Rx.timeout({ each: 120_000 }),
+      Rx.timeout({ each: syncTimeoutMs }),
     )
   );
 

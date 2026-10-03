@@ -36,9 +36,9 @@ export class RealDealGameProvider {
     }
   }
 
-  async _ensureApi() {
+  async _ensureApi(allowDeploy = false) {
     if (!this.api) {
-      this.api = await getContractApi({ walletHandle: this.walletHandle });
+      this.api = await getContractApi({ walletHandle: this.walletHandle, allowDeploy });
     }
     return this.api;
   }
@@ -51,9 +51,10 @@ export class RealDealGameProvider {
     } catch { /* localStorage may be unavailable */ }
   }
 
-  // Player One: deploy + open a new match.
+  // Player One: deploy + open a new match. The ONLY provider method that is
+  // allowed to deploy a fresh contract when no address is stored yet.
   async startGame({ mode = 1, wagerAmount = 5 } = {}) {
-    const api = await this._ensureApi();
+    const api = await this._ensureApi(true);
     const result = await api.createMatch({ mode, wagerAmount });
     this._setActiveMatch(result.matchId);
     return result;
@@ -84,7 +85,9 @@ export class RealDealGameProvider {
 
   // Active player declares a play. `cards` is the actual hand of 1-4
   // ranks (may include a bluff); `claimedRank` is what they declare.
-  async makePlay({ cards, claimedRank, claimedCount = cards.length } = {}) {
+  // `role` and `match` are required by the provably fair state-only contract,
+  // which opens this player's committed hand inside the proof.
+  async makePlay({ cards, claimedRank, claimedCount = cards.length, role = null, match = null } = {}) {
     const api = await this._ensureApi();
     if (!this.activeMatchId) throw new Error('No active match.');
     return api.playCards({
@@ -92,6 +95,8 @@ export class RealDealGameProvider {
       cards,
       claimedRank,
       claimedCount,
+      role,
+      match,
     });
   }
 

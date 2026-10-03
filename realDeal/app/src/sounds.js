@@ -47,7 +47,8 @@ export function unlockAudio() {
  */
 export function setMuted(value) {
   musicMuted = !!value;
-  if (musicMasterGain) musicMasterGain.gain.value = musicMuted ? 0 : 1;
+  if (musicMasterGain) musicMasterGain.gain.value = musicMuted ? 0 : musicVolume;
+  applyTrackElementVolume();
 }
 
 /** Explicit alias for clarity at call sites that know what they're muting. */
@@ -62,6 +63,63 @@ let musicVolume = 1;
 export function setMusicVolume(value) {
   musicVolume = Math.max(0, Math.min(1, Number(value) || 0));
   if (musicMasterGain) musicMasterGain.gain.value = musicMuted ? 0 : musicVolume;
+  applyTrackElementVolume();
+}
+
+// ──────────────────────────────────────────────────────────────
+// Music track selection (synth lounge loop OR one of John's MP3s)
+// ──────────────────────────────────────────────────────────────
+//
+// MP3 tracks play through a looping HTMLAudioElement. They honour the same
+// mute flag and volume slider as the synth loop so one set of controls rules
+// all music. The element is kept at a gentle ceiling so SFX stay audible.
+const TRACK_ELEMENT_CEILING = 0.45;
+let currentTrack = { id: 'lounge-synth', url: null };
+let trackElement = null;
+let musicRequested = false; // true once the player has asked for music
+
+function applyTrackElementVolume() {
+  if (!trackElement) return;
+  trackElement.volume = musicMuted ? 0 : musicVolume * TRACK_ELEMENT_CEILING;
+}
+
+function stopTrackElement() {
+  if (!trackElement) return;
+  trackElement.pause();
+  trackElement.removeAttribute('src');
+  trackElement.load();
+  trackElement = null;
+}
+
+function startTrackElement(url) {
+  if (trackElement && trackElement.dataset.trackUrl === url && !trackElement.paused) return;
+  stopTrackElement();
+  trackElement = new Audio(url);
+  trackElement.loop = true;
+  trackElement.preload = 'auto';
+  trackElement.dataset.trackUrl = url;
+  applyTrackElementVolume();
+  // play() rejects before the first user gesture; the gesture-based unlock in
+  // App.jsx retries, so a rejection here is expected and harmless.
+  trackElement.play().catch(() => {});
+}
+
+/**
+ * Choose which background track plays. Accepts { id, url } from
+ * musicTracks.js. Switching while music is running crossfades to the new
+ * choice immediately; switching before music starts just records the choice.
+ */
+export function setMusicTrack(track) {
+  if (!track || typeof track.id !== 'string') return;
+  currentTrack = { id: track.id, url: track.url || null };
+  if (!musicRequested) return;
+  stopSynthLoop();
+  stopTrackElement();
+  startBackgroundMusic();
+}
+
+export function getMusicTrackId() {
+  return currentTrack.id;
 }
 
 /** Future: an SFX-only mute (currently always on). Left here so we
@@ -299,6 +357,18 @@ let musicGain = null;
  * advance via the AudioContext clock so it stays in tempo.
  */
 export function startBackgroundMusic() {
+  musicRequested = true;
+  // An MP3 track was chosen: play it and make sure the synth loop is silent.
+  if (currentTrack.url) {
+    stopSynthLoop();
+    startTrackElement(currentTrack.url);
+    return;
+  }
+  stopTrackElement();
+  startSynthLoop();
+}
+
+function startSynthLoop() {
   const c = ensureCtx();
   if (!c) return;
   if (musicLoopId) return; // already running
@@ -368,8 +438,14 @@ export function startBackgroundMusic() {
   musicLoopId = setInterval(tick, chords.length * chord * 1000);
 }
 
-/** Stop the lounge music loop. */
+/** Stop whichever background track is playing. */
 export function stopBackgroundMusic() {
+  musicRequested = false;
+  stopTrackElement();
+  stopSynthLoop();
+}
+
+function stopSynthLoop() {
   if (musicLoopId) {
     clearInterval(musicLoopId);
     musicLoopId = null;

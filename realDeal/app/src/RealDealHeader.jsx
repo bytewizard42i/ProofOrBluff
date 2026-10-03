@@ -133,7 +133,8 @@ export default function RealDealHeader() {
     try {
       let api = contractApi;
       if (!api) {
-        api = await getContractApi({ walletHandle: wallet });
+        // Create-match is a deploy-capable entry point by design.
+        api = await getContractApi({ walletHandle: wallet, allowDeploy: true });
         setContractApi(api);
       }
       // Demo defaults — wire a form to these later.

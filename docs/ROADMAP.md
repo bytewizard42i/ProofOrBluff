@@ -14,6 +14,15 @@
 
 > *"Ship the game loop first. Make it fun. Then make it private. Then make it a platform."*
 
+> **Status correction (Oct 2026):** The dated Q2/Q3 table below is historical,
+> not the current build status. demoLand is playable; TestWired's local
+> wagered contract has a partially verified lifecycle; an isolated state-only
+> contract with private seed commitment compiles but has no live e2e yet.
+> Docker WSL integration is required to complete G0/G1. Preprod and mainnet
+> have **not** been deployed. The active gating roadmap is
+> [MAINNET_PLAN.md](MAINNET_PLAN.md) and the consumer-business track is
+> [PRODUCTIZATION_PLAN.md](PRODUCTIZATION_PLAN.md).
+
 > **Related docs**: [Future Functionality](FUTURE_FUNCTIONALITY.md) for detailed feature vision · [Gameplay Design Analysis](GAMEPLAY_RESEARCH.md) for hand-size and game-structure research · [Business Plan](BUSINESS_PLAN.md) for revenue and scaling
 
 ---
