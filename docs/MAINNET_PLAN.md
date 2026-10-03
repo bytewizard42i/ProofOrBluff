@@ -1,10 +1,24 @@
 # Mainnet Plan — FINAL — Proof or Bluff, State-Only Edition
 
-**Status**: IN PROGRESS / NOT READY TO DEPLOY — Oct 2, 2026.
-This is the working handoff and gate checklist. Paths relative to
-`/home/js/DIDzMonolith/ProofOrBluff_MLH_Midnight/`.
+**Status**: ON PREVIEW / NOT READY FOR MAINNET — updated Oct 3, 2026.
+This is the design record and gate history. **The step-by-step execution
+plan now lives in `MAINNET_LAUNCH_RUNBOOK.md`** — read that first. Paths
+relative to `/home/js/DIDzMonolith/ProofOrBluff_MLH_Midnight/`.
 
-### Actual gate status on Oct 2
+### Gate status on Oct 3 (supersedes the Oct 2 table below it)
+
+| Gate | Status | Evidence |
+|---|---|---|
+| G0 deploy-confirmation stall | **FIXED** | Root cause: wallet packages a major behind + local stack 5 months stale. Fixed by the public-network SDK matrix + re-pinned `midnight-local-dev`. Launch log issues #1–#3. |
+| G1 state-only local e2e | **PASSED** | Full lifecycle on local chain, contract `587b0f91…`, all asserts green. |
+| G2 public-network SDK matrix | **DONE** | midnight-js 4.1.1, wallet-sdk 1.2.0, ledger-v8 8.1.2 (root override), indexer api/v4. |
+| G2b **Preview deploy** | **DONE** | `cc75d39e2d11096d160be2524dc2bbc9c6a569f2906d0adade33d6227f06a159`, createMatch block 1129259. e2e steps 1–2 passed; 3–5 running at time of writing. |
+| G2c Preview browser (Lace) match | **NOT STARTED** | Runbook gate P2. |
+| G2d Hosted bot + proof server + `.app`/`.com` live | **NOT STARTED** | Runbook gate P3. Domains are GoDaddy-parked. |
+| G3 Preprod | **NOT STARTED** | Runbook gate M2 (recommended, not mandatory). |
+| G4 Mainnet | **LOCKED** | Runbook M1 (accounts/DUST, John), M3 (security + Foundation authorisation — still listed in the official checklist as of Oct 3), M4 (one approved command). |
+
+### Oct 2 gate table (historical — kept for the record)
 
 | Gate | Status | Evidence / next action |
 |---|---|---|

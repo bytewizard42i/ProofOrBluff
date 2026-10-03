@@ -2727,3 +2727,35 @@ button.active {
 .site-links a:hover, .site-links a:focus-visible { text-decoration: underline; }
 .site-links__dot { color: #3b2e6a; }
 .site-links--compact { font-size: 0.75rem; }
+
+/* Table (contract address) control — lets a player join the published
+   contract instead of accidentally deploying a new one on a public network. */
+.contract-address {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #3b2e6a;
+  border-radius: 8px;
+  background: #1a1530;
+  font-size: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.contract-address__row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.contract-address__row input {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #3b2e6a;
+  background: #120e26;
+  color: #e7e3ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.74rem;
+}
+.contract-address code { color: #bcb1ff; font-size: 0.76rem; }
+.contract-address__missing { color: #ffb86b; }
+.contract-address__message { margin: 0; font-size: 0.76rem; }
+.contract-address__message--ok { color: #74e8a3; }
+.contract-address__message--warn { color: #ffb86b; }
+.contract-address__message--error { color: #ff8a8a; }

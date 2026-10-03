@@ -29,6 +29,7 @@ import {
 import DiagnosticsButton from './diagnostics/DiagnosticsButton.jsx';
 import { buildDiagnosticReport } from './diagnostics/diagnosticReport.js';
 import SiteLinks from './SiteLinks.jsx';
+import ContractAddressControl from './ContractAddressControl.jsx';
 import { ENDPOINTS } from './midnight/config.js';
 
 // Public-network builds get a loud badge so nobody mistakes a Preview match
@@ -814,6 +815,11 @@ export default function TestWiredPanel() {
       {CONTRACT_VARIANT === 'state-only' && !wallet && (
         <ProofServerChoice disabled={busy} />
       )}
+
+      {/* Which deployed contract to join. Essential on public networks, where
+          an unset address makes Start deploy a new copy at the player's
+          expense. Locked while any on-chain call is in flight. */}
+      <ContractAddressControl disabled={onChainLocked} />
 
       <div className="testwired-toolbar">
         {!wallet ? (
