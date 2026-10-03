@@ -16,7 +16,18 @@
 import { getContractApi, importEntropy as importEntropyHex }
   from '../../midnight/contract.js';
 
-const STORAGE_KEY = 'pob:realdeal:active-match';
+const LEGACY_STORAGE_KEY = 'pob:realdeal:active-match';
+
+/**
+ * Saved matches are scoped to the wallet key that created them. A Lace
+ * wallet and a sponsored session key are different players on the
+ * contract, so each keeps its own "resume" slot instead of one wallet being
+ * offered another's match (which the ownership check would then refuse).
+ */
+export function activeMatchStorageKey(walletHandle) {
+  const key = typeof walletHandle?.coinPublicKey === 'string' ? walletHandle.coinPublicKey.slice(-32) : 'unknown';
+  return `pob:realdeal:active-match:${key}`;
+}
 
 export class RealDealGameProvider {
   constructor({ walletHandle }) {
@@ -26,11 +37,20 @@ export class RealDealGameProvider {
     this.walletHandle = walletHandle;
     this.api = null;
     this.activeMatchId = null;
+    this.storageKey = activeMatchStorageKey(walletHandle);
     try {
-      this.activeMatchId =
-        typeof window !== 'undefined'
-          ? window.localStorage.getItem(STORAGE_KEY)
-          : null;
+      if (typeof window !== 'undefined') {
+        this.activeMatchId = window.localStorage.getItem(this.storageKey);
+        // One-time migration: the pre-session build stored a single global
+        // slot. Only a Lace wallet can own it, so hand it to the first Lace
+        // wallet that connects and retire the legacy key.
+        const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (!this.activeMatchId && legacy && walletHandle.kind !== 'session') {
+          this.activeMatchId = legacy;
+          window.localStorage.setItem(this.storageKey, legacy);
+          window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+        }
+      }
     } catch {
       this.activeMatchId = null;
     }
@@ -46,8 +66,8 @@ export class RealDealGameProvider {
   _setActiveMatch(matchId) {
     this.activeMatchId = matchId;
     try {
-      if (matchId) window.localStorage.setItem(STORAGE_KEY, matchId);
-      else window.localStorage.removeItem(STORAGE_KEY);
+      if (matchId) window.localStorage.setItem(this.storageKey, matchId);
+      else window.localStorage.removeItem(this.storageKey);
     } catch { /* localStorage may be unavailable */ }
   }
 

@@ -780,7 +780,7 @@ export default function TestWiredPanel({ audio }) {
   const startMatch = useCallback(() => runLocked(
     wallet?.kind === 'session' ? 'Creating your game. Proving privately — no approval needed.' : 'Creating your game. Approve the transaction in Lace when prompted.',
     async () => {
-      if (!providerRef.current || !wallet) throw new Error('Connect Lace before starting your game.');
+      if (!providerRef.current || !wallet) throw new Error('Enter a game code or connect Lace before starting your game.');
       if (providerRef.current.activeMatchId) throw new Error('A match is already saved. Use Resume my match instead.');
       if (NETWORK_ID !== 'undeployed' && !getContractAddress()) throw new Error('No published game table is configured. Nothing was submitted.');
       const wagerAmount = parseSafeInteger(wagerInput, 'Wager', { minimum: 0 });
