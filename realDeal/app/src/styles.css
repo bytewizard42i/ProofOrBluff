@@ -253,10 +253,83 @@ button.active {
   min-height: 0;
 }
 
+.play-area--floating-log {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: none;
+  padding: 1rem 1.5rem;
+}
+
+/* ────────── Floating (draggable, resizable) panel ────────── */
+.floating-panel {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 8, 24, 0.94);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  /* Native resize from the bottom-right corner. */
+  resize: both;
+  overflow: hidden;
+  max-width: 90vw;
+  max-height: 90vh;
+}
+.floating-panel__handle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(157, 78, 221, 0.12);
+}
+.floating-panel__handle:active { cursor: grabbing; }
+.floating-panel__handle:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.floating-panel__grip { opacity: 0.5; letter-spacing: -0.2em; }
+.floating-panel__title {
+  flex: 1;
+  font-size: 0.75rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 700;
+}
+.floating-panel__extra { display: flex; align-items: center; gap: 0.35rem; }
+.floating-panel__reset {
+  padding: 0 0.4rem;
+  min-width: 0;
+  line-height: 1.4;
+  font-size: 0.9rem;
+}
+.floating-panel__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* The log panel inside a floating panel fills it instead of using its
+ * fixed sidebar sizing. */
+.floating-panel .log-panel.side {
+  position: static;
+  width: auto;
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  flex: 1;
+}
+.floating-panel .log-panel .log-entries { flex: 1; min-height: 0; overflow-y: auto; }
+
 .table {
   /* Two columns: main play surface (3-row stack) + tall scoreboard column. */
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) 180px;
   gap: 1rem;
   min-width: 0;
 }
@@ -274,7 +347,10 @@ button.active {
 /* ────────── Scoreboard ────────── */
 .scoreboard {
   display: grid;
-  grid-template-rows: 1fr auto 1fr;
+  /* Content-sized rows: the score cards must not stretch to the table's
+   * full height. The stats block takes the slack. */
+  grid-template-rows: auto 1fr auto;
+  align-content: start;
   gap: 0.5rem;
   background: linear-gradient(180deg, rgba(157, 78, 221, 0.18) 0%, rgba(10, 10, 20, 0.6) 50%, rgba(255, 214, 10, 0.12) 100%);
   border: 1px solid var(--border);
@@ -305,7 +381,7 @@ button.active {
 }
 
 .score-label {
-  font-size: 1rem;
+  font-size: 0.8rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -318,7 +394,7 @@ button.active {
 
 .score-number {
   font-family: 'Cinzel', serif;
-  font-size: 4.6rem;
+  font-size: 3rem;
   font-weight: 800;
   line-height: 1;
   color: var(--text);
@@ -327,6 +403,12 @@ button.active {
 
 .score-cell.ai .score-number { color: var(--violet); }
 .score-cell.you .score-number { color: var(--gold); }
+
+.score-sub {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
 
 .score-stats {
   display: flex;

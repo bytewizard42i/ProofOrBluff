@@ -43,6 +43,7 @@ import {
   Tutorial,
   usePresentation,
 } from './components/table/index.js';
+import FloatingPanel from './components/table/FloatingPanel.jsx';
 import {
   toTableState,
   diffMatch,
@@ -933,7 +934,7 @@ export default function TestWiredPanel({ audio }) {
   ));
 
   return (
-    <section className="testwired-panel" aria-labelledby="testwired-title">
+    <section className={`testwired-panel${match && tableState ? ' testwired-panel--playing' : ''}`} aria-labelledby="testwired-title">
       <header className="testwired-panel__header">
         <div>
           <p className="testwired-panel__eyebrow">You versus the computer · real privacy proofs</p>
@@ -1042,15 +1043,22 @@ export default function TestWiredPanel({ audio }) {
               <p>{busyMessage || 'The deal is being sealed on Midnight. Keep this page open.'}</p>
             </div>
           ) : (
-            <div className="play-area">
-              <GameLogPanel
-                log={tableState.log}
-                visibleCount={presentation.visibleLogCount}
-                narrationMuted={audio?.narrationMuted ?? false}
-                narrationVolume={audio?.narrationVolume ?? 0.95}
-                onToggleNarration={() => audio?.setNarrationMuted((m) => !m)}
-                onNarrationVolume={(v) => audio?.setNarrationVolume(v)}
-              />
+            <div className="play-area play-area--floating-log">
+              <FloatingPanel
+                storageKey="pob.layout.gameLog.v1"
+                title="Game log"
+                defaultPosition={{ x: 16, y: 140 }}
+                defaultSize={{ width: 300, height: 640 }}
+              >
+                <GameLogPanel
+                  log={tableState.log}
+                  visibleCount={presentation.visibleLogCount}
+                  narrationMuted={audio?.narrationMuted ?? false}
+                  narrationVolume={audio?.narrationVolume ?? 0.95}
+                  onToggleNarration={() => audio?.setNarrationMuted((m) => !m)}
+                  onNarrationVolume={(v) => audio?.setNarrationVolume(v)}
+                />
+              </FloatingPanel>
               <GameTable
                 state={tableState}
                 settings={tableSettings}

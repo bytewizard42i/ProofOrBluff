@@ -179,7 +179,14 @@
 }
 
 /* During play the table takes the full width (same .play-area as the demo)
- * and the developer tools collapse into a strip underneath it. */
+ * and the developer tools collapse into a strip underneath it. The panel
+ * itself drops its setup-width cap so the felt can breathe. */
+.testwired-panel--playing {
+  width: calc(100% - 2rem);
+  max-width: none;
+}
+.testwired-panel--playing .testwired-panel__header { margin-bottom: 0.5rem; }
+.testwired-panel--playing .testwired-panel__intro { display: none; }
 .guided-game-tools--strip {
   margin-top: 1rem;
   padding: 0.75rem 1rem;
