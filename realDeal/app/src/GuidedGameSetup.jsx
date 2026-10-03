@@ -3,7 +3,7 @@ import './guidedGameSetup.css';
 
 const SETUP_STEPS = [
   { key: 'prepare', label: 'Get ready' },
-  { key: 'connect', label: 'Connect wallet' },
+  { key: 'connect', label: 'Code or wallet' },
   { key: 'match', label: 'Start match' },
 ];
 
@@ -35,10 +35,17 @@ export default function GuidedGameSetup({
   onRetryWalletCheck,
   onStart,
   onResume,
+  // Sponsored play: present only when the parent supports game codes.
+  onRedeemCode,
+  gameCode = '',
+  onGameCodeChange = () => {},
+  gameCodeStatus = null,
+  walletKind = null,
   children,
 }) {
   const headingId = useId();
   const difficultyId = useId();
+  const codeId = useId();
   const matchActionDisabled = busy || !walletConnected || !tableConfigured || botHealth !== 'ready';
 
   return (
@@ -83,13 +90,48 @@ export default function GuidedGameSetup({
 
         {step === 'connect' && (
           <>
-            <h2 id={headingId}>2. Connect your wallet</h2>
-            <p>
-              Click Connect Lace. Approve the connection in the Lace popup. Do not paste a seed phrase, password, or wallet address here.
-            </p>
+            <h2 id={headingId}>2. Choose how to play</h2>
             {walletConnected ? (
-              <p>Your wallet is connected. Continue to choose your match.</p>
-            ) : walletAvailable === null ? (
+              <p>{walletKind === 'session' ? 'Your game code is active. Continue to your match — no wallet pop-ups.' : 'Your wallet is connected. Continue to choose your match.'}</p>
+            ) : (
+              <>
+                {onRedeemCode && (
+                  <form
+                    className="guided-game-setup__code"
+                    onSubmit={(event) => { event.preventDefault(); if (gameCode.trim()) onRedeemCode(gameCode); }}
+                  >
+                    <h3>Have a game code?</h3>
+                    <p>
+                      A code pays the network fees for one game. No wallet, no sign-ups, nothing to approve — your moves are signed in this browser.
+                    </p>
+                    <label htmlFor={codeId}>Game code</label>
+                    <div className="guided-game-setup__code-row">
+                      <input
+                        id={codeId}
+                        type="text"
+                        inputMode="text"
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder="POB-XXXX-XXXX"
+                        value={gameCode}
+                        onChange={(event) => onGameCodeChange(event.target.value.toUpperCase())}
+                        disabled={busy}
+                        maxLength={14}
+                      />
+                      <button type="submit" className="guided-game-setup__primary" disabled={busy || gameCode.trim().length < 8}>
+                        Play with code
+                      </button>
+                    </div>
+                    {gameCodeStatus && <p className={`guided-game-setup__${gameCodeStatus.kind}`} role="status">{gameCodeStatus.text}</p>}
+                  </form>
+                )}
+                <h3>{onRedeemCode ? 'Or use your own wallet' : 'Connect your wallet'}</h3>
+                <p>
+                  Click Connect Lace. Approve the connection in the Lace popup. Do not paste a seed phrase, password, or wallet address here.
+                </p>
+              </>
+            )}
+            {walletConnected ? null : walletAvailable === null ? (
               <p role="status">Checking whether Lace is available in this browser.</p>
             ) : walletAvailable === false ? (
               <>

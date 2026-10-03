@@ -52,6 +52,7 @@ import {
   EMPTY_STATS,
 } from './midnight/tableAdapter.js';
 import { loadHandle } from './components/table/Menu.jsx';
+import { createSessionWallet } from './midnight/sessionWallet.js';
 
 // Public-network builds get a loud badge so nobody mistakes a Preview match
 // for a local-chain test (or, later, for mainnet). Local stays quiet.
@@ -432,6 +433,14 @@ export default function TestWiredPanel({ audio }) {
   const [showHowTo, setShowHowTo] = useState(false);
   const previousMatchRef = useRef(null);
   const tableStatsRef = useRef(EMPTY_STATS);
+  // Sponsored play. A ?code= in the URL pre-fills the box (links we hand out).
+  const [gameCode, setGameCode] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('code')?.toUpperCase() || ''; } catch { return ''; }
+  });
+  const [gameCodeStatus, setGameCodeStatus] = useState(null);
+  const [ticketRemaining, setTicketRemaining] = useState(null);
+  const matchIdRef = useRef(null);
+  const walletKindRef = useRef(null);
   const [walletAvailable, setWalletAvailable] = useState(null);
   const [wallet, setWallet] = useState(null);
   const [balances, setBalances] = useState({});
@@ -444,6 +453,7 @@ export default function TestWiredPanel({ audio }) {
   const [busyMessage, setBusyMessage] = useState('');
   const [error, setError] = useState(null);
   const [matchId, setMatchId] = useState(null);
+  useEffect(() => { matchIdRef.current = matchId; }, [matchId]);
   const [match, setMatch] = useState(null);
   const [lastTransactionId, setLastTransactionId] = useState(null);
   const [lastBotAction, setLastBotAction] = useState('');
@@ -628,6 +638,8 @@ export default function TestWiredPanel({ audio }) {
 
   useEffect(() => {
     if (!wallet) return undefined;
+    walletKindRef.current = wallet.kind ?? 'lace';
+    if (wallet.kind === 'session') return undefined;
     return subscribeWalletState(wallet, (next) => {
       if (!mountedRef.current) return;
       if (next?.balances) setBalances(next.balances);
@@ -686,6 +698,41 @@ export default function TestWiredPanel({ audio }) {
     addProgress('Lace connected. No contract was deployed during connection.');
   }), [addProgress, runLocked]);
 
+  /**
+   * Sponsored play. Validates the code with the bot (read-only), then builds
+   * an in-browser session wallet whose key is the player on the contract.
+   * No Lace, no funds, no pop-ups: the sponsor pays DUST per move and the
+   * ticket's allowance is the budget.
+   */
+  const redeemCode = useCallback((typedCode) => runLocked('Checking your game code.', async () => {
+    const code = String(typedCode || '').trim().toUpperCase();
+    setGameCodeStatus({ kind: 'info', text: 'Checking the code…' });
+    const info = await fetchBot(`/api/ticket?code=${encodeURIComponent(code)}`);
+    const ticket = info?.ticket;
+    if (!ticket?.valid) {
+      const why = ticket?.expired ? 'This code has expired.' : ticket?.revoked ? 'This code was cancelled.' : ticket?.remaining === 0 ? 'This code has been used up.' : 'This code is not valid.';
+      setGameCodeStatus({ kind: 'warning', text: why });
+      throw new Error(why);
+    }
+    const handle = createSessionWallet({
+      ticketCode: code,
+      botUrl: BOT_URL,
+      getMatchId: () => matchIdRef.current,
+      onSponsored: (result) => {
+        if (mountedRef.current && Number.isFinite(result?.ticket?.remaining)) setTicketRemaining(result.ticket.remaining);
+      },
+    });
+    if (!mountedRef.current) return;
+    setTicketRemaining(ticket.remaining);
+    setGameCodeStatus({ kind: 'ok', text: `Code accepted — ${ticket.remaining} sponsored moves available.` });
+    setWallet(handle);
+    setBalances({});
+    providerRef.current = new RealDealGameProvider({ walletHandle: handle });
+    setHasSavedMatch(Boolean(providerRef.current.activeMatchId));
+    setSetupStep('match');
+    addProgress(`Game code accepted. Sponsored session key ${shorten(handle.coinPublicKey)}; no wallet pop-ups.`);
+  }), [addProgress, fetchBot, runLocked]);
+
   const finishMatchSetup = useCallback(async (activeMatchId, wagerAmount) => {
     const provider = providerRef.current;
     const contractAddress = requireHex64(getContractAddress(), 'Configured game table');
@@ -713,7 +760,7 @@ export default function TestWiredPanel({ audio }) {
         setLastTransactionId(optionalTransactionId(joined));
       },
       revealSeed: async () => {
-        setBusyMessage('Finalizing the deal. Approve the game transaction in Lace when prompted.');
+        setBusyMessage(wallet?.kind === 'session' ? 'Finalizing the deal. Proving privately — no approval needed.' : 'Finalizing the deal. Approve the game transaction in Lace when prompted.');
         const result = await trackOnChainOperation('Finalize deal', () => provider.revealSeed({ startingRank: 0 }));
         setLastTransactionId(optionalTransactionId(result));
       },
@@ -731,7 +778,7 @@ export default function TestWiredPanel({ audio }) {
   ), [finishMatchSetup, runLocked, wagerInput]);
 
   const startMatch = useCallback(() => runLocked(
-    'Creating your game. Approve the transaction in Lace when prompted.',
+    wallet?.kind === 'session' ? 'Creating your game. Proving privately — no approval needed.' : 'Creating your game. Approve the transaction in Lace when prompted.',
     async () => {
       if (!providerRef.current || !wallet) throw new Error('Connect Lace before starting your game.');
       if (providerRef.current.activeMatchId) throw new Error('A match is already saved. Use Resume my match instead.');
@@ -771,7 +818,9 @@ export default function TestWiredPanel({ audio }) {
    * panel (for example "Play cards"); `description` is the longer log line.
    */
   const transactThenAdvance = useCallback((activityLabel, description, transaction, options = {}) => runLocked(
-    'Proving your move and waiting for confirmation. Approve the request in Lace when prompted.',
+    walletKindRef.current === 'session'
+      ? 'Proving your move and waiting for confirmation. No approval needed.'
+      : 'Proving your move and waiting for confirmation. Approve the request in Lace when prompted.',
     async () => {
       if (!providerRef.current || !matchId) throw new Error('Connect Lace and start a match first.');
       addProgress(description);
@@ -978,6 +1027,11 @@ export default function TestWiredPanel({ audio }) {
           onRetryWalletCheck={checkWalletAvailability}
           onStart={startMatch}
           onResume={resumeMatch}
+          onRedeemCode={CONTRACT_VARIANT === 'state-only' ? redeemCode : undefined}
+          gameCode={gameCode}
+          onGameCodeChange={setGameCode}
+          gameCodeStatus={gameCodeStatus}
+          walletKind={wallet?.kind ?? (wallet ? 'lace' : null)}
         />
 
       {walletAvailable === false && (
@@ -1100,7 +1154,9 @@ export default function TestWiredPanel({ audio }) {
               <div><dt>Pile</dt><dd>{match.pileSize}</dd></div>
               <div><dt>Pending claim</dt><dd>{match.hasPendingPlay ? `${match.lastClaimCount} as ${RANKS[match.lastClaimRank]}` : 'None'}</dd></div>
             </dl>
-            {wallet && <p>Wallet: {shorten(wallet.address)} · {renderedBalances.join(', ')}</p>}
+            {wallet?.kind === 'session'
+              ? <p>Sponsored session · key {shorten(wallet.coinPublicKey)} · {ticketRemaining ?? '…'} sponsored moves left</p>
+              : wallet && <p>Wallet: {shorten(wallet.address)} · {renderedBalances.join(', ')}</p>}
             <p>Match: <code>{matchId || 'Not loaded'}</code></p>
             <p>Last transaction: <code>{lastTransactionId || 'Not available'}</code></p>
             <DiagnosticsButton getReport={() => buildTestWiredDiagnosticReport({ wallet, error })} />

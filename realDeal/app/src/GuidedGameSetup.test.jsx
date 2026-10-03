@@ -78,7 +78,7 @@ describe('GuidedGameSetup preparation', () => {
 describe('GuidedGameSetup connection', () => {
   it('explains the Lace popup and has only Connect Lace and Back', () => {
     const markup = renderSetup({ step: 'connect' });
-    expect(markup).toContain('2. Connect your wallet</h2>');
+    expect(markup).toContain('2. Choose how to play</h2>');
     expect(markup).toContain('Click Connect Lace. Approve the connection in the Lace popup. Do not paste a seed phrase, password, or wallet address here.');
     expect(buttonLabels(markup)).toEqual(['Connect Lace', 'Back']);
     expect(buttonMarkup(markup, 'Connect Lace')).not.toContain('disabled');
@@ -161,7 +161,7 @@ describe('GuidedGameSetup match', () => {
 describe('GuidedGameSetup shared structure', () => {
   it.each([
     ['prepare', 'Get ready', '1. Get ready to play'],
-    ['connect', 'Connect wallet', '2. Connect your wallet'],
+    ['connect', 'Code or wallet', '2. Choose how to play'],
     ['match', 'Start match', '3. Start your match'],
   ])('marks only %s current with a non-clickable ordered step list', (step, label, heading) => {
     const markup = renderSetup({ step });
@@ -198,5 +198,38 @@ describe('GuidedGameSetup shared structure', () => {
       renderSetup({ step, walletConnected: true, hasSavedMatch: true, ...callbacks });
     }
     for (const callback of Object.values(callbacks)) expect(callback).not.toHaveBeenCalled();
+  });
+});
+
+describe('GuidedGameSetup game code (sponsored play)', () => {
+  it('offers no code form unless the parent supports it', () => {
+    expect(renderSetup({ step: 'connect' })).not.toContain('Have a game code?');
+  });
+
+  it('renders the code form above the wallet option and submits the typed code', () => {
+    const onRedeemCode = vi.fn();
+    const markup = renderSetup({ step: 'connect', onRedeemCode, gameCode: 'POB-ABCD-2345' });
+    expect(markup.indexOf('Have a game code?')).toBeLessThan(markup.indexOf('Or use your own wallet'));
+    expect(markup).toContain('placeholder="POB-XXXX-XXXX"');
+    expect(markup).toContain('Play with code');
+    expect(markup).toContain('no sign-ups, nothing to approve');
+  });
+
+  it('disables the code button until something plausible is typed', () => {
+    const short = renderSetup({ step: 'connect', onRedeemCode: () => {}, gameCode: 'POB' });
+    expect(buttonMarkup(short, 'Play with code')).toMatch(/disabled/);
+    const ok = renderSetup({ step: 'connect', onRedeemCode: () => {}, gameCode: 'POB-ABCD-2345' });
+    expect(buttonMarkup(ok, 'Play with code')).not.toMatch(/disabled/);
+  });
+
+  it('shows the code status and the session-mode confirmation', () => {
+    expect(renderSetup({ step: 'connect', onRedeemCode: () => {}, gameCodeStatus: { kind: 'ok', text: '39 moves left' } })).toContain('39 moves left');
+    expect(renderSetup({ step: 'connect', walletConnected: true, walletKind: 'session' })).toContain('no wallet pop-ups');
+  });
+
+  it('never asks for a seed, password or address in the code form', () => {
+    const markup = renderSetup({ step: 'connect', onRedeemCode: () => {} });
+    expect(markup).not.toMatch(/type="password"/);
+    expect(markup).not.toMatch(/seed phrase.*<input/);
   });
 });

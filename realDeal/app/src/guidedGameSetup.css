@@ -198,3 +198,29 @@
 }
 .guided-game-tools--strip .testwired-actions { margin: 0.5rem 0; }
 
+
+/* Game-code (sponsored play) entry on the connect step. */
+.guided-game-setup__code {
+  margin: 0 0 1.25rem;
+  padding: 1rem;
+  border: 1px solid #4b3a8a;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(157, 78, 221, 0.14), rgba(10, 8, 24, 0.4));
+}
+.guided-game-setup__code h3 { margin: 0 0 0.35rem; }
+.guided-game-setup__code label { display: block; font-size: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.8; margin-bottom: 0.35rem; }
+.guided-game-setup__code-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.guided-game-setup__code-row input {
+  flex: 1 1 200px;
+  font-family: 'Inter', monospace;
+  font-size: 1.15rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid #5a4aa0;
+  background: #0e0b1f;
+  color: #f3eeff;
+}
+.guided-game-setup__ok { color: #74e8a3; margin: 0.5rem 0 0; }
+.guided-game-setup__info { color: #bcb1ff; margin: 0.5rem 0 0; }
