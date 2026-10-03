@@ -5,7 +5,7 @@ import topLevelAwait from 'vite-plugin-top-level-await';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, rmSync } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const stateOnlyAssets = resolve(__dirname, '../contracts/managed/proof-or-bluff-mainnet');
@@ -43,6 +43,22 @@ function stateOnlyZkAssetsPlugin() {
           });
         }
       }
+    },
+  };
+}
+
+// public/managed/proof-or-bluff is a symlink to the WAGERED contract's
+// compiled artifacts so the local wagered table can fetch keys in dev.
+// Vite copies public/ into every build, which would ship ~40 MB of the one
+// contract we never deploy publicly. Demo and state-only builds strip it.
+const wageredAssetsInBundle = !stateOnlyBuild && process.env.VITE_POB_MODE !== 'demo';
+function stripWageredAssetsPlugin() {
+  return {
+    name: 'pob-strip-wagered-assets',
+    apply: 'build',
+    closeBundle() {
+      if (wageredAssetsInBundle) return;
+      rmSync(resolve(__dirname, 'dist/managed/proof-or-bluff'), { recursive: true, force: true });
     },
   };
 }
@@ -96,7 +112,7 @@ function proofServerLogsPlugin() {
 // these plugins Vite errors with: "ESM integration proposal for Wasm
 // is not supported currently".
 export default defineConfig({
-  plugins: [react(), wasm(), topLevelAwait(), stateOnlyZkAssetsPlugin(), proofServerLogsPlugin()],
+  plugins: [react(), wasm(), topLevelAwait(), stateOnlyZkAssetsPlugin(), stripWageredAssetsPlugin(), proofServerLogsPlugin()],
   resolve: {
     // Keep symlinks unresolved so the bindings imported via
     // src/contract/ keep their import paths anchored inside realDeal/app/,
