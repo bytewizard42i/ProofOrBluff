@@ -90,7 +90,9 @@ function setupPlayingMatch(table, mode = STANDARD_MODE) {
 
 /** What an honest client does: derive its own hand from committed material. */
 function dealtCounts(salt, seed, round, handSize = HAND_SIZE) {
-  return pureCircuits.handCountsFromRanks(pureCircuits.dealHandRanks(salt, seed, BigInt(round)), handSize);
+  return pureCircuits.handCountsFromRanks(
+    pureCircuits.dealHandRanks(salt, seed, BigInt(round), handSize), handSize,
+  );
 }
 function firstHeldRank(counts) {
   return counts.findIndex((count) => count > 0n);
@@ -133,7 +135,7 @@ describe('provably fair state-only circuits (no chain or funds)', () => {
     expect(dealtCounts(new Uint8Array(32).fill(0xff), seed, 1)).not.toEqual(p1Hand);
     // A new round is a genuinely fresh deal from the same committed material.
     expect(dealtCounts(SALT_ONE, seed, 2)).not.toEqual(p1Hand);
-    pureCircuits.dealHandRanks(SALT_ONE, seed, 1n).forEach((rank) => {
+    pureCircuits.dealHandRanks(SALT_ONE, seed, 1n, HAND_SIZE).forEach((rank) => {
       expect(rank).toBeGreaterThanOrEqual(0n);
       expect(rank).toBeLessThanOrEqual(12n);
     });

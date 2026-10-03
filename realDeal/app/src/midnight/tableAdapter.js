@@ -95,6 +95,11 @@ export function toTableState(match, hand, context = {}) {
 
   return {
     mode: match?.mode === 4 ? 'casino' : 'home',
+    // On-chain each side is dealt from its OWN private 52-card deck
+    // (dealHandRanks in the contract), so the player's cards say nothing
+    // about what the bot can hold. The bluff-odds estimator must not apply
+    // the shared-deck "only 4 exist" reasoning here.
+    privateDecks: true,
     playerHand: hand ?? [],
     aiHand: [],
     aiHandCount: match?.p2HandSize ?? 0,

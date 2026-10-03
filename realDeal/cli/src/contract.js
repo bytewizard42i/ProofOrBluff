@@ -520,7 +520,10 @@ export async function getContractApi({
       const handSize = BigInt(current.mode) === 0n ? 5n : 7n;
       let counts;
       if (!drawn) {
-        counts = pureCircuits.handCountsFromRanks(pureCircuits.dealHandRanks(salt, seed, round), handSize);
+        counts = pureCircuits.handCountsFromRanks(
+          pureCircuits.dealHandRanks(salt, seed, round, handSize),
+          handSize,
+        );
       } else {
         const stored = state.loadHandCounts(matchId, role);
         if (!stored || stored.round !== round) {
