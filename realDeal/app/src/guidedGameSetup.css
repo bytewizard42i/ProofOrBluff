@@ -181,8 +181,8 @@
 /* During play the table takes the full width (same .play-area as the demo)
  * and the developer tools collapse into a strip underneath it. The panel
  * itself drops its setup-width cap so the felt can breathe. */
-.testwired-panel--playing {
-  width: calc(100% - 2rem);
+.testwired-panel.testwired-panel--playing {
+  width: calc(100% - 0.5rem);
   max-width: none;
 }
 .testwired-panel--playing .testwired-panel__header { margin-bottom: 0.5rem; }
@@ -228,10 +228,15 @@
 /* ── Compact play layout ─────────────────────────────────────────────
  * Fit the whole table on one screen: trim the dark margins to a quarter,
  * widen the felt, and stop the centre from hoarding vertical space. */
-.testwired-panel--playing {
+.testwired-panel.testwired-panel--playing {
   width: calc(100% - 0.5rem);
   margin: 0.25rem auto;
   padding: 0.5rem 0.4rem;
+}
+/* The felt itself: drop the 1600px cap so it follows the panel. */
+.testwired-panel.testwired-panel--playing .play-area {
+  max-width: none;
+  width: 100%;
 }
 .testwired-panel--playing .play-area--floating-log {
   padding: 0.25rem 0.4rem;
