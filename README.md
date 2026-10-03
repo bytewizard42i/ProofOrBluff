@@ -15,6 +15,16 @@
 
 > *A loneliness-fighting Ai card game that makes zero-knowledge proofs feel human.*
 
+> **🎯 Talking point — the one-proof game.** Proof or Bluff is designed as a
+> **ZK game rollup**: a whole match plays instantly off-chain, then **one
+> zero-knowledge proof** settles it on Midnight — every shuffle, every claim,
+> every challenge checked at once, in private. The chain never sees a card;
+> it only sees that the game was fair. Two transactions per game instead of
+> dozens, no waiting between moves, and (when stakes exist) **money settles
+> only after that proof verifies — every time.** Spec:
+> [`docs/ZK_GAME_ROLLUP.md`](docs/ZK_GAME_ROLLUP.md). Lead with this whenever
+> we present the game.
+
 ---
 
 ## 🏆 For Judges
@@ -49,6 +59,7 @@ This is not just a card game. It is a social-feeling loop with expressive Ai fac
 | | | |
 |---|---|---|
 | 📜 [Game Rules](docs/RULES.md) | 🏗️ [Architecture](docs/DEMOLAND_VS_REALDEAL.md) | 🗺️ [Roadmap](docs/ROADMAP.md) |
+| 🎯 [**ZK Game Rollup** — one proof per game](docs/ZK_GAME_ROLLUP.md) | | |
 | 💼 [Business Plan](docs/BUSINESS_PLAN.md) | 🎰 [VC / Gaming Market Analysis](docs/VC_GAMING_INDUSTRY_ANALYSIS.md) | 🔮 [Future Functionality](docs/FUTURE_FUNCTIONALITY.md) |
 | 🩺 [Midnight Vitals](docs/MIDNIGHT_VITALS.md) | 🃏 [demoLand](docs/demoLandREADME.md) | 🔐 [realDeal](docs/realDealREADME.md) |
 | 🎲 [Gameplay Design Analysis](docs/GAMEPLAY_RESEARCH.md) | 🏆 [MLH × Midnight Hackathon (active)](docs/MLH_MIDNIGHT_HACKATHON_2026.md) | |

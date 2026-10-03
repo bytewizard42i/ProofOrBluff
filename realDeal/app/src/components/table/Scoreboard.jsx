@@ -98,7 +98,7 @@ export function Scoreboard({ state }) {
           <span className="stat-value">{rounds}</span>
         </div>
         <div className="stat good">
-          <span className="stat-label">🟢 Bluffs caught</span>
+          <span className="stat-label">🟢 Ai bluffs caught</span>
           <span className="stat-value">{aiBluffsCaught}</span>
         </div>
         <div className="stat bad">
