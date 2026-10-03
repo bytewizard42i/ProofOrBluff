@@ -369,3 +369,27 @@ body.pob-playing .pob-activity-panel:not(.pob-activity-panel--active) .pob-activ
 .testwired-panel--playing .player-area { padding: 0.5rem 0.9rem 0.4rem; }
 .testwired-panel--playing .hand { margin-bottom: 0.25rem; }
 .testwired-panel--playing .claim-panel { margin-top: 0.25rem; padding: 0.35rem 0; }
+
+/* 1+3: stop grid rows from soaking up leftover height. Both columns size
+ * to their content; any spare space falls below the table instead of
+ * opening gaps above the hand or inside the scoreboard. */
+.testwired-panel--playing .table { align-items: start; }
+.testwired-panel--playing .table-main { align-content: start; }
+.testwired-panel--playing .scoreboard {
+  grid-template-rows: auto auto auto;
+  align-content: start;
+}
+.testwired-panel--playing .score-stats { padding: 0.35rem 0.25rem; gap: 0.25rem; }
+.testwired-panel--playing .center { padding-bottom: 0.25rem; }
+
+/* 2: centre the cards in the player strip. */
+.testwired-panel--playing .player-area {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 0.5rem 0.9rem;
+}
+.testwired-panel--playing .player-area h3 { align-self: flex-start; margin: 0 0 0.3rem; }
+.testwired-panel--playing .hand { margin: 0; }
+.testwired-panel--playing .claim-panel { width: 100%; justify-content: center; }
