@@ -976,6 +976,13 @@ export default function TestWiredPanel({ audio }) {
     return () => clearTimeout(t);
   }, [match, onChainLocked, presentation.outputComplete, advanceBot, refreshStatus, runLocked, matchId]);
 
+  const playing = Boolean(match && tableState);
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    document.body.classList.toggle('pob-playing', playing);
+    return () => document.body.classList.remove('pob-playing');
+  }, [playing]);
+
   const resetForAnotherGame = useCallback(() => {
     providerRef.current?.resetGame();
     previousMatchRef.current = null;
