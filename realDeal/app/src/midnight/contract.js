@@ -493,7 +493,10 @@ export async function getContractApi({ walletHandle, allowDeploy = false }) {
       const handSize = BigInt(match.mode) === 0n ? 5n : 7n;
       let counts;
       if (!drawn) {
-        counts = pureCircuits.handCountsFromRanks(pureCircuits.dealHandRanks(salt, seed, round), handSize);
+        counts = pureCircuits.handCountsFromRanks(
+          pureCircuits.dealHandRanks(salt, seed, round, handSize),
+          handSize,
+        );
       } else {
         const stored = loadHandCounts(matchId, role);
         if (!stored || stored.round !== round) {

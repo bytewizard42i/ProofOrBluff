@@ -35,9 +35,13 @@
 // discarded; outcomes are settled with points. Only the score-based modes
 // (CASUAL, STANDARD, CASINO) are enabled. Empty-hand modes are deferred.
 //
-// REMAINING LIMITATION: the rank derivation falls back through three hash bytes
-// to avoid modulo bias; the residual bias is about 0.004% and is documented in
-// dealHandRanks. Nothing here proves anything about money — there is none.
+// REMAINING LIMITATION: each player draws without replacement from their own
+// private 52-card deck, so a hand can never hold five of a rank — but the two
+// decks are independent, so a rank may appear more than four times across
+// both hands combined (unavoidable: a shared deck keyed by the public seed
+// would let each player compute the other's cards). The 16-bit draw modulo
+// 46..52 skews a card's odds by at most ~0.03%. Nothing here proves anything
+// about money — there is none.
 
 pragma language_version >= 0.16 && <= 0.23;
 import CompactStandardLibrary;
@@ -178,46 +182,109 @@ export pure circuit commitHandCounts(counts: Vector<13, Uint<8>>, salt: Bytes<32
   });
 }
 
-// Reduce one hash byte to a rank 0..12. 256 = 19*13 + 9, so bytes 247..255
-// would favour ranks 0..8; rankFromBytes skips such bytes where it can.
-circuit byteToRank(b: Uint<8>): Uint<8> {
-  const k: Uint<8> = (
-    (b >= (13 as Uint<8>) ? 1 : 0) + (b >= (26 as Uint<8>) ? 1 : 0) +
-    (b >= (39 as Uint<8>) ? 1 : 0) + (b >= (52 as Uint<8>) ? 1 : 0) +
-    (b >= (65 as Uint<8>) ? 1 : 0) + (b >= (78 as Uint<8>) ? 1 : 0) +
-    (b >= (91 as Uint<8>) ? 1 : 0) + (b >= (104 as Uint<8>) ? 1 : 0) +
-    (b >= (117 as Uint<8>) ? 1 : 0) + (b >= (130 as Uint<8>) ? 1 : 0) +
-    (b >= (143 as Uint<8>) ? 1 : 0) + (b >= (156 as Uint<8>) ? 1 : 0) +
-    (b >= (169 as Uint<8>) ? 1 : 0) + (b >= (182 as Uint<8>) ? 1 : 0) +
-    (b >= (195 as Uint<8>) ? 1 : 0) + (b >= (208 as Uint<8>) ? 1 : 0) +
-    (b >= (221 as Uint<8>) ? 1 : 0) + (b >= (234 as Uint<8>) ? 1 : 0) +
-    (b >= (247 as Uint<8>) ? 1 : 0)
-  ) as Uint<8>;
-  return (b - ((13 as Uint<8>) * k)) as Uint<8>;
+// --- Provably fair deal (v2): a private 52-card deck per player ------------
+//
+// v1 drew 7 ranks independently, which could deal five or more of a rank and
+// produced far more pairs and triples than a real deck. v2 draws WITHOUT
+// REPLACEMENT from a private 52-card deck (four suits x thirteen ranks): a
+// hand is a uniform subset of distinct card indexes, so real-deck
+// frequencies hold and no rank can appear five times. The two players'
+// decks are INDEPENDENT on purpose — deriving both hands from one shared
+// deck keyed by the public seed would let each player compute the other's
+// cards.
+
+// Compact has no / or %, so u mod m is recovered by binary long division:
+// eleven compare-and-subtract steps peel off one quotient bit at a time,
+// keeping only the running remainder. Correct while the true quotient stays
+// below 2048; every divisor used here is at least 46 and the dividend is a
+// Uint<16>, so that always holds.
+circuit u16mod(u: Uint<16>, m: Uint<16>): Uint<16> {
+  const q10 = u >= (1024 as Uint<16>) * m ? (1024 as Uint<16>) : (0 as Uint<16>);
+  const r10 = (u - q10 * m) as Uint<16>;
+  const q9 = r10 >= (512 as Uint<16>) * m ? (512 as Uint<16>) : (0 as Uint<16>);
+  const r9 = (r10 - q9 * m) as Uint<16>;
+  const q8 = r9 >= (256 as Uint<16>) * m ? (256 as Uint<16>) : (0 as Uint<16>);
+  const r8 = (r9 - q8 * m) as Uint<16>;
+  const q7 = r8 >= (128 as Uint<16>) * m ? (128 as Uint<16>) : (0 as Uint<16>);
+  const r7 = (r8 - q7 * m) as Uint<16>;
+  const q6 = r7 >= (64 as Uint<16>) * m ? (64 as Uint<16>) : (0 as Uint<16>);
+  const r6 = (r7 - q6 * m) as Uint<16>;
+  const q5 = r6 >= (32 as Uint<16>) * m ? (32 as Uint<16>) : (0 as Uint<16>);
+  const r5 = (r6 - q5 * m) as Uint<16>;
+  const q4 = r5 >= (16 as Uint<16>) * m ? (16 as Uint<16>) : (0 as Uint<16>);
+  const r4 = (r5 - q4 * m) as Uint<16>;
+  const q3 = r4 >= (8 as Uint<16>) * m ? (8 as Uint<16>) : (0 as Uint<16>);
+  const r3 = (r4 - q3 * m) as Uint<16>;
+  const q2 = r3 >= (4 as Uint<16>) * m ? (4 as Uint<16>) : (0 as Uint<16>);
+  const r2 = (r3 - q2 * m) as Uint<16>;
+  const q1 = r2 >= (2 as Uint<16>) * m ? (2 as Uint<16>) : (0 as Uint<16>);
+  const r1 = (r2 - q1 * m) as Uint<16>;
+  const q0 = r1 >= m ? (1 as Uint<16>) : (0 as Uint<16>);
+  return (r1 - q0 * m) as Uint<16>;
 }
-// Rejection sampling with a bounded depth: use the first of three bytes that
-// is below 247. Probability all three are biased: (9/256)^3 ≈ 0.004%.
-circuit rankFromBytes(b0: Uint<8>, b1: Uint<8>, b2: Uint<8>): Uint<8> {
-  return b0 < (247 as Uint<8>) ? byteToRank(b0)
-    : b1 < (247 as Uint<8>) ? byteToRank(b1)
-    : byteToRank(b2);
+
+// Two digest bytes as a 16-bit draw reduced modulo m. m is a compile-time
+// constant 46..52, so u16mod applies; the 16-in-65536 tail skews a card's
+// odds by at most ~0.03% — a documented, negligible bias.
+circuit boundedDraw(hi: Uint<8>, lo: Uint<8>, m: Uint<16>): Uint<8> {
+  const u = ((hi as Uint<16>) * (256 as Uint<16>) + (lo as Uint<16>)) as Uint<16>;
+  return (u16mod(u, m)) as Uint<8>;
 }
-// The provably fair deal. Exported so clients render exactly what the circuit
-// will later verify. Seven slots are always produced; handSize(mode) decides
-// how many count.
-export pure circuit dealHandRanks(salt: Bytes<32>, seed: Bytes<32>, round: Uint<32>): Vector<7, Uint<8>> {
+
+// Card index 0..51 -> rank 0..12 (four consecutive indices per rank).
+circuit cardToRank(c: Uint<8>): Uint<8> {
+  return ((c >= (4 as Uint<8>) ? 1 : 0)
+        + (c >= (8 as Uint<8>) ? 1 : 0)
+        + (c >= (12 as Uint<8>) ? 1 : 0)
+        + (c >= (16 as Uint<8>) ? 1 : 0)
+        + (c >= (20 as Uint<8>) ? 1 : 0)
+        + (c >= (24 as Uint<8>) ? 1 : 0)
+        + (c >= (28 as Uint<8>) ? 1 : 0)
+        + (c >= (32 as Uint<8>) ? 1 : 0)
+        + (c >= (36 as Uint<8>) ? 1 : 0)
+        + (c >= (40 as Uint<8>) ? 1 : 0)
+        + (c >= (44 as Uint<8>) ? 1 : 0)
+        + (c >= (48 as Uint<8>) ? 1 : 0)) as Uint<8>;
+}
+
+// The provably fair deal. Exported so clients render exactly what the
+// circuit will later verify. Floyd's selection algorithm: slot k draws t
+// uniformly from [0, j]; if t repeats an earlier pick, slot k takes j
+// instead, which earlier picks can never hold (their draws and fallbacks
+// are all below j). The result is provably distinct and uniform over
+// subsets — no witnesses needed, so the circuit alone defines the deal.
+// Seven slots are always produced; `size` decides how many count. A
+// five-card deal sweeps j = 47..51 and a seven-card deal j = 45..51, so the
+// counted cards are always a uniform subset of the full deck.
+export pure circuit dealHandRanks(
+  salt: Bytes<32>, seed: Bytes<32>, round: Uint<32>, size: Uint<32>
+): Vector<7, Uint<8>> {
   const digest = persistentHash<DealInput>(DealInput {
-    separator: pad(32, "pob:deal:v1"), salt: salt, seed: seed, round: round
+    separator: pad(32, "pob:deal:v2"), salt: salt, seed: seed, round: round
   });
   const b = digest as Vector<32, Uint<8>>;
+  const five = size == (5 as Uint<32>);
+  const t0 = boundedDraw(b[0], b[1], five ? (48 as Uint<16>) : (46 as Uint<16>));
+  const c0 = t0;
+  const t1 = boundedDraw(b[2], b[3], five ? (49 as Uint<16>) : (47 as Uint<16>));
+  const c1 = t1 == c0 ? (five ? (48 as Uint<8>) : (46 as Uint<8>)) : t1;
+  const t2 = boundedDraw(b[4], b[5], five ? (50 as Uint<16>) : (48 as Uint<16>));
+  const c2 = (t2 == c0 || t2 == c1) ? (five ? (49 as Uint<8>) : (47 as Uint<8>)) : t2;
+  const t3 = boundedDraw(b[6], b[7], five ? (51 as Uint<16>) : (49 as Uint<16>));
+  const c3 = (t3 == c0 || t3 == c1 || t3 == c2)
+    ? (five ? (50 as Uint<8>) : (48 as Uint<8>)) : t3;
+  const t4 = boundedDraw(b[8], b[9], five ? (52 as Uint<16>) : (50 as Uint<16>));
+  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3)
+    ? (five ? (51 as Uint<8>) : (49 as Uint<8>)) : t4;
+  const t5 = boundedDraw(b[10], b[11], (51 as Uint<16>));
+  const c5 = (t5 == c0 || t5 == c1 || t5 == c2 || t5 == c3 || t5 == c4)
+    ? (50 as Uint<8>) : t5;
+  const t6 = boundedDraw(b[12], b[13], (52 as Uint<16>));
+  const c6 = (t6 == c0 || t6 == c1 || t6 == c2 || t6 == c3 || t6 == c4 || t6 == c5)
+    ? (51 as Uint<8>) : t6;
   return [
-    rankFromBytes(b[0], b[1], b[2]),
-    rankFromBytes(b[3], b[4], b[5]),
-    rankFromBytes(b[6], b[7], b[8]),
-    rankFromBytes(b[9], b[10], b[11]),
-    rankFromBytes(b[12], b[13], b[14]),
-    rankFromBytes(b[15], b[16], b[17]),
-    rankFromBytes(b[18], b[19], b[20])
+    cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3),
+    cardToRank(c4), cardToRank(c5), cardToRank(c6)
   ];
 }
 circuit countRank(ranks: Vector<7, Uint<8>>, size: Uint<32>, target: Uint<8>): Uint<8> {
@@ -426,7 +493,10 @@ export circuit playCards(
   // 3. Establish the hand: freshly dealt in-circuit on the first play of a
   //    round, otherwise the witness must open the stored hand commitment.
   const drawn = isP1 ? m.p1HandDrawn : m.p2HandDrawn;
-  const dealt = handCountsFromRanks(dealHandRanks(salt, seed, m.round), handSize(m.mode));
+  const dealt = handCountsFromRanks(
+    dealHandRanks(salt, seed, m.round, handSize(m.mode)),
+    handSize(m.mode)
+  );
   const claimed = currentHandCounts();
   assert(!drawn || commitHandCounts(claimed, salt, m.round) == (isP1 ? m.p1HandCommit : m.p2HandCommit),
     "Hand does not match commitment");
