@@ -178,3 +178,16 @@
   .guided-game-layout { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* During play the table takes the full width (same .play-area as the demo)
+ * and the developer tools collapse into a strip underneath it. */
+.guided-game-tools--strip {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #3b2e6a;
+  border-radius: 12px;
+  background: #120e26;
+  color: #bcb1ff;
+  overflow-wrap: anywhere;
+}
+.guided-game-tools--strip .testwired-actions { margin: 0.5rem 0; }
+

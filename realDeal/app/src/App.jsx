@@ -64,7 +64,7 @@ export default function App() {
           </div>
           <MusicControls audio={audio} />
         </header>
-        <TestWiredPanel />
+        <TestWiredPanel audio={audio} />
         <SponsorInvite />
         <footer className="footer">
           Midnight {NETWORK_ID === 'undeployed' ? 'local test' : NETWORK_ID} · no real-money play

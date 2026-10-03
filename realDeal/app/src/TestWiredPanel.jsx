@@ -36,6 +36,21 @@ import { completeMatchSetup } from './midnight/matchSetup.js';
 import { getStoredEntropy } from './midnight/contract.js';
 import { ENDPOINTS } from './midnight/config.js';
 import { normalizeCoinPublicKeyHex } from './midnight/coinPublicKey.js';
+import {
+  GameTable,
+  GameLogPanel,
+  ResultOverlay,
+  Tutorial,
+  usePresentation,
+} from './components/table/index.js';
+import {
+  toTableState,
+  diffMatch,
+  nextActor,
+  playerChallengeOutcome,
+  EMPTY_STATS,
+} from './midnight/tableAdapter.js';
+import { loadHandle } from './components/table/Menu.jsx';
 
 // Public-network builds get a loud badge so nobody mistakes a Preview match
 // for a local-chain test (or, later, for mainnet). Local stays quiet.
@@ -402,10 +417,20 @@ function useActivityInFlight() {
   return useSyncExternalStore(subscribeActivity, isOperationInFlight, isOperationInFlight);
 }
 
-export default function TestWiredPanel() {
+export default function TestWiredPanel({ audio }) {
   // Duplicate-submit guard: while any on-chain operation is in flight, every
   // on-chain button is disabled even if `busy` were somehow cleared early.
   const activityInFlight = useActivityInFlight();
+  // Presentation context for the shared GameTable: a running narrative log
+  // and tally derived from consecutive public snapshots (tableAdapter), plus
+  // the cards we most recently played so the "bluff succeeded" banner knows
+  // whether we were honest. None of this is sent anywhere.
+  const [tableLog, setTableLog] = useState([]);
+  const [tableStats, setTableStats] = useState(EMPTY_STATS);
+  const [lastPlayCards, setLastPlayCards] = useState(null);
+  const [showHowTo, setShowHowTo] = useState(false);
+  const previousMatchRef = useRef(null);
+  const tableStatsRef = useRef(EMPTY_STATS);
   const [walletAvailable, setWalletAvailable] = useState(null);
   const [wallet, setWallet] = useState(null);
   const [balances, setBalances] = useState({});
@@ -488,6 +513,15 @@ export default function TestWiredPanel() {
       )
       : nextMatch.combinedSeed;
     const currentMatch = { ...nextMatch, combinedSeed };
+    // Narrate the public transition for the shared table before replacing
+    // the snapshot. Same-snapshot refreshes produce no lines.
+    const { lines, stats } = diffMatch(previousMatchRef.current, nextMatch, tableStatsRef.current);
+    previousMatchRef.current = nextMatch;
+    if (lines.length) setTableLog((current) => [...current, ...lines]);
+    if (stats !== tableStatsRef.current) {
+      tableStatsRef.current = stats;
+      setTableStats(stats);
+    }
     setMatch(currentMatch);
     if (combinedSeed) {
       const nextHand = CONTRACT_VARIANT === 'state-only'
@@ -813,6 +847,87 @@ export default function TestWiredPanel() {
   // that stays true until the SDK call actually settles.
   const onChainLocked = busy || activityInFlight;
 
+  // ── Shared GameTable on Midnight ──
+  // The exact components the demo renders, fed from the public match + the
+  // private hand through tableAdapter. Presentation (staggered log, sounds,
+  // banners, narration) is the same hook the demo uses.
+  const tableState = useMemo(
+    () => (match ? toTableState(match, hand, { log: tableLog, stats: tableStats, lastPlayCards }) : null),
+    [match, hand, tableLog, tableStats, lastPlayCards],
+  );
+  const presentation = usePresentation(tableState);
+  const tableSettings = useMemo(
+    () => ({ difficulty, mode: tableState?.mode ?? 'home', handle: loadHandle() }),
+    [difficulty, tableState?.mode],
+  );
+
+  const tableActions = useMemo(() => ({
+    play: ({ cards }) => {
+      if (!match || cards.length < 1 || cards.length > 4) return undefined;
+      setLastPlayCards(cards);
+      return transactThenAdvance(
+        'Play cards',
+        `Committing ${cards.length} private card rank value(s) while publicly claiming ${RANKS[match.currentRank]}.`,
+        (provider) => provider.makePlay({
+          cards: cards.map((card) => card.rankIndex),
+          claimedRank: match.currentRank,
+          claimedCount: cards.length,
+          role: 'p1',
+          match,
+        }),
+        { removedIds: cards.map((card) => card.id) },
+      );
+    },
+    accept: () => transactThenAdvance('Accept claim', 'Accepting the P2 bot claim.', (provider) => provider.accept()),
+    challenge: async () => {
+      const before = previousMatchRef.current;
+      await transactThenAdvance('Challenge claim', 'Challenging the P2 bot claim; the bot will resolve its witness next.', (provider) => provider.challenge());
+      const outcome = playerChallengeOutcome(before, previousMatchRef.current);
+      return outcome ? { ...outcome, logLength: tableLog.length } : undefined;
+    },
+    // No pass: the contract has no pass circuit.
+  }), [match, transactThenAdvance, tableLog.length]);
+
+  // When the bot challenges, proving is mandatory, not a choice. Run it
+  // automatically once per challenge so the player just watches the proof.
+  const autoProveKeyRef = useRef(null);
+  useEffect(() => {
+    if (!p1MustProve || onChainLocked || !match) return;
+    const key = `${match.matchId}:${match.round}:${match.lastClaimRank}:${match.lastClaimCount}:${match.pileSize}`;
+    if (autoProveKeyRef.current === key) return;
+    autoProveKeyRef.current = key;
+    transactThenAdvance('Prove my play', 'Resolving the bot challenge with P1’s private play witness.', (provider) => provider.resolveChallenge());
+  }, [p1MustProve, onChainLocked, match, transactThenAdvance]);
+
+  // While it is the bot's move, nudge it on a gentle cadence and refresh.
+  // The bot serialises its own operations, so repeated nudges are safe.
+  useEffect(() => {
+    if (!match || nextActor(match) !== 'ai' || onChainLocked) return undefined;
+    if (!presentation.outputComplete) return undefined;
+    const t = setTimeout(() => {
+      runLocked('The computer is thinking.', async () => {
+        await advanceBot(matchId);
+        await refreshStatus({ quiet: true });
+      });
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [match, onChainLocked, presentation.outputComplete, advanceBot, refreshStatus, runLocked, matchId]);
+
+  const resetForAnotherGame = useCallback(() => {
+    providerRef.current?.resetGame();
+    previousMatchRef.current = null;
+    tableStatsRef.current = EMPTY_STATS;
+    setTableLog([]);
+    setTableStats(EMPTY_STATS);
+    setLastPlayCards(null);
+    setHasSavedMatch(false);
+    setMatch(null);
+    setMatchId(null);
+    setHand([]);
+    setDialogue('');
+    setSetupStep('match');
+  }, []);
+
   const renderedBalances = Object.entries(balances).map(([token, amount]) => (
     `${shorten(token, 5, 4)}=${String(amount)}`
   ));
@@ -840,9 +955,11 @@ export default function TestWiredPanel() {
         </div>
       </header>
 
+      {showHowTo && <Tutorial variant="midnight" onClose={() => setShowHowTo(false)} />}
+
+      {!match && (
       <div className="guided-game-layout">
       <div className="guided-game-main">
-      {!match && (
         <GuidedGameSetup
           step={setupStep}
           networkLabel={NETWORK_LABELS[NETWORK_ID] || NETWORK_ID}
@@ -861,7 +978,6 @@ export default function TestWiredPanel() {
           onStart={startMatch}
           onResume={resumeMatch}
         />
-      )}
 
       {walletAvailable === false && (
         <p className="testwired-notice">
@@ -871,134 +987,7 @@ export default function TestWiredPanel() {
       )}
       {busyMessage && <p className="testwired-proof-status" role="status">{busyMessage}</p>}
       {error && <p className="testwired-error" role="alert">{error}</p>}
-
-      {/* Honest Midnight activity status: stage, elapsed time, service
-          reachability and a transition log. It reads the activity store that
-          trackOnChainOperation() writes to, and becomes a modal overlay only
-          during stages where clicking other actions would be unsafe. */}
       <MidnightActivityPanel />
-
-      {match && (
-        <div className="testwired-match">
-          <div className="testwired-match__heading">
-            <div>
-              <h3>Your game</h3>
-              <p>Your cards are private. Claims and scores are public.</p>
-            </div>
-            <button type="button" onClick={() => runLocked('Refreshing public match status.', refreshStatus)} disabled={busy}>
-              Refresh
-            </button>
-          </div>
-
-          <div className="guided-next-task" role="status">
-            <h3>{match.phase === 4 ? 'Game complete' : p1MustProve ? 'The computer challenged you' : pendingBotClaim ? 'Trust the computer or challenge?' : isP1TurnToPlay ? 'Your turn: choose 1 to 4 cards' : 'Waiting for the computer'}</h3>
-            <p>{match.phase === 4 ? 'The final scores are below.' : p1MustProve ? 'Click Prove my play. Your proof will reveal whether your claim was true.' : pendingBotClaim ? 'Click Accept claim to trust the claim, or Challenge claim to demand a proof.' : isP1TurnToPlay ? `Click your cards, then Play selected cards. Your public claim will be ${RANKS[match.currentRank]}; bluffing is allowed.` : 'No wallet action is needed right now. Keep this page open.'}</p>
-          </div>
-          <dl className="testwired-status-grid">
-            <div><dt>Phase</dt><dd>{PHASE_NAMES[match.phase]}</dd></div>
-            <div><dt>Required rank</dt><dd>{RANKS[match.currentRank]}</dd></div>
-            <div><dt>Turn</dt><dd>{match.activePlayerIdx === 0 ? 'You' : 'Computer'}</dd></div>
-            <div><dt>Scores</dt><dd>You {match.p1Score} · Computer {match.p2Score}</dd></div>
-            <div><dt>Cards remaining</dt><dd>You {match.p1HandSize} · Computer {match.p2HandSize}</dd></div>
-            <div><dt>Pile</dt><dd>{match.pileSize}</dd></div>
-            <div><dt>Winner</dt><dd>{match.winner === 0 ? 'Not decided' : match.winner === 1 ? 'You' : 'Computer'}</dd></div>
-            <div><dt>Pending claim</dt><dd>{match.hasPendingPlay ? `${match.lastClaimCount} as ${RANKS[match.lastClaimRank]}` : 'None'}</dd></div>
-          </dl>
-
-          {match.phase === 4 && (
-            <button type="button" className="primary" disabled={onChainLocked} onClick={() => {
-              providerRef.current.resetGame();
-              setHasSavedMatch(false);
-              setMatch(null);
-              setMatchId(null);
-              setHand([]);
-              setSetupStep('match');
-            }}>Set up another game</button>
-          )}
-          {dialogue && <blockquote className="testwired-dialogue">{dialogue}</blockquote>}
-
-          <div className="testwired-hand-area">
-            <div className="testwired-hand-area__heading">
-              <h3>Your private cards</h3>
-              <span>{selectedIds.size}/4 selected</span>
-            </div>
-            {hand.length ? (
-              <div className="testwired-hand" aria-label="Player One hand">
-                {hand.map((card) => {
-                  const selected = selectedIds.has(card.id);
-                  return (
-                    <button
-                      type="button"
-                      className={`testwired-card${selected ? ' testwired-card--selected' : ''}`}
-                      key={card.id}
-                      aria-pressed={selected}
-                      aria-label={`${card.rank} · ${SUIT_LABELS[card.suit] || 'private card'}`}
-                      onClick={() => toggleCard(card.id)}
-                      disabled={busy || !isP1TurnToPlay || (!selected && selectedIds.size >= 4)}
-                    >
-                      <strong>{card.rank}</strong>
-                      <span>{SUIT_LABELS[card.suit] || 'Private'}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="testwired-muted">The P1 hand appears after the combined seed is finalized.</p>
-            )}
-          </div>
-
-          <div className="testwired-actions" aria-label="Player One actions">
-            <button
-              type="button"
-              className="primary"
-              onClick={playSelected}
-              disabled={onChainLocked || !isP1TurnToPlay || selectedCards.length < 1 || selectedCards.length > 4}
-            >
-              Play selected cards ({selectedCards.length}) as {RANKS[match.currentRank]}
-            </button>
-            {p1MustProve && (
-              <button
-                type="button"
-                className="primary"
-                onClick={() => transactThenAdvance('Prove my play', 'Resolving the bot challenge with P1’s private play witness.', (provider) => provider.resolveChallenge())}
-                disabled={onChainLocked}
-              >
-                Prove my play
-              </button>
-            )}
-            {pendingBotClaim && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => transactThenAdvance('Accept claim', 'Accepting the P2 bot claim.', (provider) => provider.accept())}
-                  disabled={onChainLocked}
-                >
-                  Accept claim
-                </button>
-                <button
-                  type="button"
-                  className="danger"
-                  onClick={() => transactThenAdvance('Challenge claim', 'Challenging the P2 bot claim; the bot will resolve its witness next.', (provider) => provider.challenge())}
-                  disabled={onChainLocked}
-                >
-                  Challenge claim
-                </button>
-              </>
-            )}
-            {canClaimPayout && (
-              <button
-                type="button"
-                className="primary"
-                onClick={() => transactThenAdvance('Claim payout', 'Claiming the P1 local-chain payout.', (provider) => provider.claimPayout(), { advance: false })}
-                disabled={onChainLocked}
-              >
-                Claim payout
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
       </div>
       <aside className="guided-game-sidebar" aria-label="Developer tools">
         <details className="guided-game-tools">
@@ -1036,6 +1025,86 @@ export default function TestWiredPanel() {
         </details>
       </aside>
       </div>
+      )}
+
+      {match && tableState && (
+        <>
+          {/* Honest Midnight activity status: stage, elapsed time, service
+              reachability and a transition log. It reads the activity store
+              that trackOnChainOperation() writes to, and becomes a modal
+              overlay only during stages where clicking would be unsafe. */}
+          <MidnightActivityPanel />
+          {error && <p className="testwired-error" role="alert">{error}</p>}
+
+          {tableState.status === 'waiting' ? (
+            <div className="guided-next-task" role="status">
+              <h3>Setting up your table</h3>
+              <p>{busyMessage || 'The deal is being sealed on Midnight. Keep this page open.'}</p>
+            </div>
+          ) : (
+            <div className="play-area">
+              <GameLogPanel
+                log={tableState.log}
+                visibleCount={presentation.visibleLogCount}
+                narrationMuted={audio?.narrationMuted ?? false}
+                narrationVolume={audio?.narrationVolume ?? 0.95}
+                onToggleNarration={() => audio?.setNarrationMuted((m) => !m)}
+                onNarrationVolume={(v) => audio?.setNarrationVolume(v)}
+              />
+              <GameTable
+                state={tableState}
+                settings={tableSettings}
+                actions={tableActions}
+                aiDialogue={dialogue}
+                setAiDialogue={setDialogue}
+                displayedRank={presentation.displayedRank}
+                banner={presentation.banner}
+                skipFutureOutcomeSounds={presentation.skipFutureOutcomeSounds}
+                outputComplete={presentation.outputComplete}
+                busy={onChainLocked || tableState.proving}
+              />
+            </div>
+          )}
+
+          {tableState.status === 'gameover' && (
+            <ResultOverlay
+              winner={tableState.winner}
+              onRematch={resetForAnotherGame}
+              rematchLabel="Set up another game"
+            />
+          )}
+
+          <details className="guided-game-tools guided-game-tools--strip">
+            <summary>Developer controls &amp; diagnostics</summary>
+            <p>Optional technical tools. You do not need these to play.</p>
+            <div className="testwired-actions">
+              <button type="button" onClick={() => runLocked('Refreshing public match status.', refreshStatus)} disabled={busy}>Refresh status</button>
+              <button type="button" onClick={() => setShowHowTo(true)}>How to play</button>
+              {canClaimPayout && (
+                <button type="button" className="primary" disabled={onChainLocked} onClick={() => transactThenAdvance('Claim payout', 'Claiming the P1 local-chain payout.', (provider) => provider.claimPayout(), { advance: false })}>Claim payout</button>
+              )}
+            </div>
+            <dl className="testwired-status-grid">
+              <div><dt>Phase</dt><dd>{PHASE_NAMES[match.phase]}</dd></div>
+              <div><dt>Required rank</dt><dd>{RANKS[match.currentRank]}</dd></div>
+              <div><dt>Scores</dt><dd>You {match.p1Score} · Computer {match.p2Score} · first to {tableState.winThreshold}</dd></div>
+              <div><dt>Cards</dt><dd>You {match.p1HandSize} · Computer {match.p2HandSize}</dd></div>
+              <div><dt>Pile</dt><dd>{match.pileSize}</dd></div>
+              <div><dt>Pending claim</dt><dd>{match.hasPendingPlay ? `${match.lastClaimCount} as ${RANKS[match.lastClaimRank]}` : 'None'}</dd></div>
+            </dl>
+            {wallet && <p>Wallet: {shorten(wallet.address)} · {renderedBalances.join(', ')}</p>}
+            <p>Match: <code>{matchId || 'Not loaded'}</code></p>
+            <p>Last transaction: <code>{lastTransactionId || 'Not available'}</code></p>
+            <DiagnosticsButton getReport={() => buildTestWiredDiagnosticReport({ wallet, error })} />
+            <div className="testwired-log" aria-live="polite" aria-atomic="false">
+              <h3>Operation log</h3>
+              <ol>
+                {progress.map((entry) => <li key={entry.id}>{entry.message}</li>)}
+              </ol>
+            </div>
+          </details>
+        </>
+      )}
     </section>
   );
 }

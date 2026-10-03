@@ -10,6 +10,9 @@ export const SUIT_GLYPH = {
   diamonds: '♦',
   clubs: '♣',
   spades: '♠',
+  // The Midnight contract deals ranks only; suits do not exist on-chain.
+  // Rendering a neutral mark is more honest than inventing one.
+  hidden: '✦',
 };
 
 export const SUIT_COLOR = {
@@ -17,6 +20,7 @@ export const SUIT_COLOR = {
   diamonds: 'red',
   clubs: 'black',
   spades: 'black',
+  hidden: 'midnight',
 };
 
 // Neon palette for pair-group highlights. Each rank present 2+ times in the

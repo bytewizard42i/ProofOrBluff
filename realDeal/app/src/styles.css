@@ -969,6 +969,14 @@ button.active {
   color: var(--card-black);
 }
 
+/* On-chain cards carry a rank only (no suit exists in the contract). */
+.card.midnight {
+  color: #3b2a7a;
+}
+.card.midnight .suit-large {
+  opacity: 0.55;
+}
+
 .card.selected {
   transform: translateY(-14px) scale(1.04);
   background: linear-gradient(180deg, #fff8d4 0%, #fef0a8 100%);
