@@ -380,9 +380,18 @@ export function createTestWiredBot({ defaultDifficulty = 'medium' } = {}) {
     return result;
   }
 
+  // Memoize the *promise*, not the resolved session: a public-network sync
+  // takes minutes, and two requests arriving during it must share one
+  // wallet instead of each opening (and syncing) their own.
+  let sessionPromise = null;
   async function ensureSession() {
-    if (!session) session = await openSession({ player: 'p2' });
-    return session;
+    if (session) return session;
+    if (!sessionPromise) {
+      sessionPromise = openSession({ player: 'p2' })
+        .then((opened) => { session = opened; return opened; })
+        .catch((error) => { sessionPromise = null; throw error; });
+    }
+    return sessionPromise;
   }
 
   function privateSeedForMatch(matchId, match) {
@@ -631,6 +640,7 @@ export function createTestWiredBot({ defaultDifficulty = 'medium' } = {}) {
   async function shutdown() {
     const sessionToClose = session;
     session = null;
+    sessionPromise = null;
     if (sessionToClose) await sessionToClose.walletHandle.shutdown();
   }
 
