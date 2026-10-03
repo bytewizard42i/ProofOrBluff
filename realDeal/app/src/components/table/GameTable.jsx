@@ -157,6 +157,7 @@ export default function GameTable({
   const pileSize = state.pileCount ?? (state.pile.length + (state.lastPlay ? state.lastPlay.cards.length : 0));
   const deckLeft = state.deck?.length ?? 0;
 
+  const aiHandCount = state.aiHandCount ?? state.aiHand.length;
   const claimOwner = state.lastPlay ? state.lastPlay.player : state.turn;
   const ownerName = claimOwner === 'ai' ? 'Ai' : (settings.handle || 'You');
   const claimLabel = state.lastPlay
@@ -176,6 +177,16 @@ export default function GameTable({
           <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.15em' }}>
             {settings.difficulty} · {settings.mode}
           </span>
+        </div>
+        {/* The Ai's hand, face down. Count only — the cards themselves are
+          * private (on Midnight, cryptographically so). */}
+        <div className="ai-hand" aria-label={`Ai holds ${aiHandCount} card${aiHandCount === 1 ? '' : 's'}`}>
+          <div className="ai-hand-cards" style={{ '--count': aiHandCount }}>
+            {Array.from({ length: Math.min(aiHandCount, 26) }).map((_, i) => (
+              <div key={i} className="ai-hand-card" style={{ '--i': i }} aria-hidden="true" />
+            ))}
+          </div>
+          <span className="ai-hand-count">{aiHandCount} in hand</span>
         </div>
       </div>
 

@@ -90,7 +90,7 @@ export function Scoreboard({ state }) {
       <div className="score-cell ai">
         <div className="score-label">{hasScores ? 'Ai score' : 'Ai cards'}</div>
         <div className="score-number">{hasScores ? state.scores.ai : aiCount}</div>
-        {hasScores && <div className="score-sub">{aiCount} cards</div>}
+        {hasScores && <div className="score-sub">{aiCount} in hand</div>}
       </div>
       <div className="score-stats">
         <div className="stat">
@@ -113,7 +113,7 @@ export function Scoreboard({ state }) {
       <div className="score-cell you">
         <div className="score-label">{hasScores ? 'Your score' : 'Your cards'}</div>
         <div className="score-number">{hasScores ? state.scores.player : youCount}</div>
-        {hasScores && <div className="score-sub">{youCount} cards</div>}
+        {hasScores && <div className="score-sub">{youCount} in hand</div>}
       </div>
     </aside>
   );
