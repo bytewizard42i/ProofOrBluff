@@ -219,6 +219,20 @@ because both sides consent.
   work to the player's device and drop our proving cost to ~zero. The design
   is a config switch away from it.
 
+**Masking the proving wait (John, Oct 3 2026).** Play a short clip over both
+ZK moments instead of a spinner:
+
+- *Open* (seconds): "sealing the deck" — animate the two commitments locking.
+  Teaches the fairness model while the open tx confirms.
+- *Close* (1–3 min on 2 vCPU): clip + honest queue status ("sealing your game,
+  N ahead") + **Play Again is available immediately**; the previous game keeps
+  proving in the background and its result badge flips to "verified ✓" when
+  the proof lands. The win is only recorded once proven — the clip buys
+  patience, it does not pre-announce a result.
+- Rules: skippable, never longer than the wait (cut to result when the proof
+  finishes early), no sound by default, cached so it never adds load time.
+  Three or four variants so repeat players don't see the same one twice.
+
 Capacity math (to be replaced by measured numbers): if a 64-move `closeGame`
 proof takes ~2–4 minutes on 2 vCPU / 6 GB, one 8 GB box seals ~20–30 games an
 hour. Boxes are stateless and horizontally scaled; game codes (`tickets.js`)

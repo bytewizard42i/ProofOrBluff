@@ -1,0 +1,412 @@
+// Proof or Bluff — Season 1 "one proof per game" rollup. No stakes, state only.
+//
+// Spec: docs/ZK_GAME_ROLLUP.md. Fairness model carried over unchanged from the
+// per-move Preview contract (proof-or-bluff-mainnet.compact):
+//   1. unbiasable seed — both players commit entropy before either reveals;
+//   2. private hand salt — each hand is dealt in-circuit from (salt, seed, round);
+//   3. proven moves — every PLAY's real cards are checked against the running
+//      hand and removed; bluffing the CLAIM stays legal, forging CARDS does not;
+//   4. fair reshuffle — a new round re-deals from (salt, seed, round + 1).
+// The difference: all of it is checked ONCE, at closeGame, over the whole game.
+//
+// Chain footprint per game: openGame (4 commitments) + closeGame (1 proof).
+// The chain never sees a card. It sees who played, the mode, the final score,
+// the winner and a hash of the move list.
+//
+// Circuit-cost rules (spec §6a): the transcript chain and every per-move hash
+// are TRANSIENT (circuit-native). SHA-256 (persistentHash) is used only for the
+// values that already live on the ledger: the four commitment openings, the
+// seed, and one deal digest per player per round.
+//
+// NO MONEY. This contract holds no funds and never receives a coin. Any future
+// wagered edition settles ONLY after a verified closing proof (spec §3).
+
+pragma language_version >= 0.16 && <= 0.23;
+import CompactStandardLibrary;
+
+// ---------------------------------------------------------------------------
+// Sizes. Fixed at compile time; measured before freezing (spec §6a.3).
+//   MAX_MOVES  = 64  transcript slots (PLAY / ACCEPT / CHALLENGE / NOOP padding)
+//   MAX_ROUNDS = 6   deals per player; a game needing more ends as a draw
+// A game that fills every slot without reaching the threshold is a draw.
+// ---------------------------------------------------------------------------
+
+export enum GameMode { CASUAL, STANDARD, STRATEGIC, CLASSIC, CASINO }
+
+// What the ledger stores per game.
+struct GameRecord {
+  playerOne: Bytes<32>;          // session public key (any 32-byte identity)
+  playerTwo: Bytes<32>;
+  mode: Uint<8>;
+  p1EntropyCommit: Bytes<32>;
+  p2EntropyCommit: Bytes<32>;
+  p1SaltCommit: Bytes<32>;
+  p2SaltCommit: Bytes<32>;
+  openedAt: Uint<64>;
+  closed: Boolean;
+  transcriptRoot: Field;         // transient-domain hash chain head
+  p1Score: Uint<8>;
+  p2Score: Uint<8>;
+  winner: Uint<8>;               // 0 draw · 1 · 2
+  closedAt: Uint<64>;
+}
+
+// One transcript slot. kind: 0 NOOP (padding after game end) · 1 PLAY ·
+// 2 ACCEPT · 3 CHALLENGE. `cards`/`playSalt` are private (PLAY only).
+struct Move {
+  kind: Uint<8>;
+  rank: Uint<8>;
+  count: Uint<8>;
+  cards: Vector<4, Uint<8>>;
+  playSalt: Field;
+}
+
+// Snapshot of the table between moves. hands are per-rank counts.
+struct GameState {
+  hand0: Vector<13, Uint<8>>;
+  hand1: Vector<13, Uint<8>>;
+  turn: Uint<8>;
+  currentRank: Uint<8>;
+  pending: Boolean;
+  claimRank: Uint<8>;
+  claimCount: Uint<8>;
+  claimCards: Vector<4, Uint<8>>;
+  claimer: Uint<8>;
+  score0: Uint<8>;
+  score1: Uint<8>;
+  round: Uint<8>;                // 1-based; 0 never occurs after the open deal
+  ended: Boolean;
+  chain: Field;
+}
+
+struct GameIdInput { separator: Bytes<32>; playerOne: Bytes<32>; playerTwo: Bytes<32>; mode: Uint<8>; openedAt: Uint<64>; }
+struct SeedInput { separator: Bytes<32>; p1Entropy: Bytes<32>; p2Entropy: Bytes<32>; }
+struct EntropyCommitInput { separator: Bytes<32>; entropy: Bytes<32>; }
+struct HandSaltCommitInput { separator: Bytes<32>; salt: Bytes<32>; }
+struct DealInput { separator: Bytes<32>; salt: Bytes<32>; seed: Bytes<32>; round: Uint<32>; }
+
+// Private witnesses for closeGame. The prover (the player's browser, or our
+// proof server acting for it) holds everything; none of it is disclosed.
+witness entropyPair(): [Bytes<32>, Bytes<32>];
+witness saltPair(): [Bytes<32>, Bytes<32>];
+witness transcript(): Vector<64, Move>;
+witness snapshots(): Vector<65, GameState>;
+
+export ledger games: Map<Bytes<32>, GameRecord>;
+export ledger totalGamesOpened: Counter;
+export ledger totalGamesClosed: Counter;
+export ledger totalGamesPruned: Counter;
+
+// ---------------------------------------------------------------------------
+// Commitments (same separators as the per-move contract: clients reuse code).
+// ---------------------------------------------------------------------------
+export pure circuit commitEntropy(entropy: Bytes<32>): Bytes<32> {
+  return persistentHash<EntropyCommitInput>(EntropyCommitInput { separator: pad(32, "pob:entropy:v1"), entropy: entropy });
+}
+export pure circuit combineEntropy(p1Entropy: Bytes<32>, p2Entropy: Bytes<32>): Bytes<32> {
+  return persistentHash<SeedInput>(SeedInput { separator: pad(32, "pob:seed:v1"), p1Entropy: p1Entropy, p2Entropy: p2Entropy });
+}
+export pure circuit commitHandSalt(salt: Bytes<32>): Bytes<32> {
+  return persistentHash<HandSaltCommitInput>(HandSaltCommitInput { separator: pad(32, "pob:hand-salt:v1"), salt: salt });
+}
+// Transient-domain play commitment: published to the opponent at play time so
+// the cards cannot change after a challenge. Exported so clients compute it.
+export pure circuit commitPlayCards(cards: Vector<4, Uint<8>>, playSalt: Field): Field {
+  return transientCommit<Vector<4, Uint<8>>>(cards, playSalt);
+}
+// One link of the transcript chain. Exported so both clients and the bot
+// maintain exactly the chain the circuit will verify.
+export pure circuit chainMove(prev: Field, kind: Uint<8>, rank: Uint<8>, count: Uint<8>, playCommit: Field): Field {
+  return transientHash<[Field, Uint<8>, Uint<8>, Uint<8>, Field]>([prev, kind, rank, count, playCommit]);
+}
+
+// ---------------------------------------------------------------------------
+// Provably fair deal (v2, shipped Oct 3 2026) — identical to the per-move
+// contract so dealHandRanks conformance tests apply unchanged.
+// ---------------------------------------------------------------------------
+circuit boundedDraw(hi: Uint<8>, lo: Uint<8>, m: Uint<16>): Uint<8> {
+  const u = ((hi as Uint<16>) * (256 as Uint<16>) + (lo as Uint<16>)) as Uint<16>;
+  const p = ((u as Uint<32>) * (m as Uint<32>)) as Uint<32>;
+  const pb = (p as Bytes<32>) as Vector<32, Uint<8>>;
+  return pb[2];
+}
+circuit cardToRank(c: Uint<8>): Uint<8> {
+  return ((c >= (4 as Uint<8>) ? 1 : 0) + (c >= (8 as Uint<8>) ? 1 : 0) + (c >= (12 as Uint<8>) ? 1 : 0)
+        + (c >= (16 as Uint<8>) ? 1 : 0) + (c >= (20 as Uint<8>) ? 1 : 0) + (c >= (24 as Uint<8>) ? 1 : 0)
+        + (c >= (28 as Uint<8>) ? 1 : 0) + (c >= (32 as Uint<8>) ? 1 : 0) + (c >= (36 as Uint<8>) ? 1 : 0)
+        + (c >= (40 as Uint<8>) ? 1 : 0) + (c >= (44 as Uint<8>) ? 1 : 0) + (c >= (48 as Uint<8>) ? 1 : 0)) as Uint<8>;
+}
+circuit dealSeven(b: Vector<32, Uint<8>>): Vector<7, Uint<8>> {
+  const c0 = boundedDraw(b[0], b[1], 46);
+  const t1 = boundedDraw(b[2], b[3], 47);
+  const c1 = t1 == c0 ? (46 as Uint<8>) : t1;
+  const t2 = boundedDraw(b[4], b[5], 48);
+  const c2 = (t2 == c0 || t2 == c1) ? (47 as Uint<8>) : t2;
+  const t3 = boundedDraw(b[6], b[7], 49);
+  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (48 as Uint<8>) : t3;
+  const t4 = boundedDraw(b[8], b[9], 50);
+  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (49 as Uint<8>) : t4;
+  const t5 = boundedDraw(b[10], b[11], 51);
+  const c5 = (t5 == c0 || t5 == c1 || t5 == c2 || t5 == c3 || t5 == c4) ? (50 as Uint<8>) : t5;
+  const t6 = boundedDraw(b[12], b[13], 52);
+  const c6 = (t6 == c0 || t6 == c1 || t6 == c2 || t6 == c3 || t6 == c4 || t6 == c5) ? (51 as Uint<8>) : t6;
+  return [cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3), cardToRank(c4), cardToRank(c5), cardToRank(c6)];
+}
+circuit dealFive(b: Vector<32, Uint<8>>): Vector<7, Uint<8>> {
+  const c0 = boundedDraw(b[0], b[1], 48);
+  const t1 = boundedDraw(b[2], b[3], 49);
+  const c1 = t1 == c0 ? (48 as Uint<8>) : t1;
+  const t2 = boundedDraw(b[4], b[5], 50);
+  const c2 = (t2 == c0 || t2 == c1) ? (49 as Uint<8>) : t2;
+  const t3 = boundedDraw(b[6], b[7], 51);
+  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (50 as Uint<8>) : t3;
+  const t4 = boundedDraw(b[8], b[9], 52);
+  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (51 as Uint<8>) : t4;
+  return [cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3), cardToRank(c4), 0, 0];
+}
+export pure circuit dealHandRanks(salt: Bytes<32>, seed: Bytes<32>, round: Uint<32>, size: Uint<32>): Vector<7, Uint<8>> {
+  const digest = persistentHash<DealInput>(DealInput { separator: pad(32, "pob:deal:v2"), salt: salt, seed: seed, round: round });
+  const b = digest as Vector<32, Uint<8>>;
+  return size == (5 as Uint<32>) ? dealFive(b) : dealSeven(b);
+}
+circuit countRank(ranks: Vector<7, Uint<8>>, size: Uint<32>, target: Uint<8>): Uint<8> {
+  const c0: Uint<8> = (size >= (1 as Uint<32>) && ranks[0] == target) ? 1 : 0;
+  const c1: Uint<8> = (size >= (2 as Uint<32>) && ranks[1] == target) ? 1 : 0;
+  const c2: Uint<8> = (size >= (3 as Uint<32>) && ranks[2] == target) ? 1 : 0;
+  const c3: Uint<8> = (size >= (4 as Uint<32>) && ranks[3] == target) ? 1 : 0;
+  const c4: Uint<8> = (size >= (5 as Uint<32>) && ranks[4] == target) ? 1 : 0;
+  const c5: Uint<8> = (size >= (6 as Uint<32>) && ranks[5] == target) ? 1 : 0;
+  const c6: Uint<8> = (size >= (7 as Uint<32>) && ranks[6] == target) ? 1 : 0;
+  return (c0 + c1 + c2 + c3 + c4 + c5 + c6) as Uint<8>;
+}
+export pure circuit handCountsFromRanks(ranks: Vector<7, Uint<8>>, size: Uint<32>): Vector<13, Uint<8>> {
+  return [
+    countRank(ranks, size, 0), countRank(ranks, size, 1), countRank(ranks, size, 2), countRank(ranks, size, 3),
+    countRank(ranks, size, 4), countRank(ranks, size, 5), countRank(ranks, size, 6), countRank(ranks, size, 7),
+    countRank(ranks, size, 8), countRank(ranks, size, 9), countRank(ranks, size, 10), countRank(ranks, size, 11),
+    countRank(ranks, size, 12)
+  ];
+}
+circuit handSize(mode: Uint<8>): Uint<32> { return mode == (0 as Uint<8>) ? 5 : 7; }
+circuit winThreshold(mode: Uint<8>): Uint<8> {
+  if (mode == (0 as Uint<8>)) { return 10; }
+  if (mode == (1 as Uint<8>)) { return 15; }
+  return 20;
+}
+// Starting rank derived from the seed (no extra hash, no extra message).
+circuit startingRank(seed: Bytes<32>): Uint<8> {
+  const b = seed as Vector<32, Uint<8>>;
+  return boundedDraw(b[30], b[31], 13);
+}
+
+// ---------------------------------------------------------------------------
+// Move semantics (transient domain). Mirrors the per-move circuits.
+// ---------------------------------------------------------------------------
+circuit played(cards: Vector<4, Uint<8>>, count: Uint<8>, target: Uint<8>): Uint<8> {
+  const a: Uint<8> = (count >= (1 as Uint<8>) && cards[0] == target) ? 1 : 0;
+  const b: Uint<8> = (count >= (2 as Uint<8>) && cards[1] == target) ? 1 : 0;
+  const c: Uint<8> = (count >= (3 as Uint<8>) && cards[2] == target) ? 1 : 0;
+  const d: Uint<8> = (count >= (4 as Uint<8>) && cards[3] == target) ? 1 : 0;
+  return (a + b + c + d) as Uint<8>;
+}
+// Membership + removal: every played card must be held.
+circuit removeFrom(hand: Vector<13, Uint<8>>, cards: Vector<4, Uint<8>>, count: Uint<8>): Vector<13, Uint<8>> {
+  const taken = [...map((target: Uint<8>): Uint<8> => { return played(cards, count, target); },
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])];
+  for (const i of 0..13) { assert(hand[i] >= taken[i], "card not held"); }
+  return [...map((h: Uint<8>, t: Uint<8>): Uint<8> => { return (h - t) as Uint<8>; }, hand, taken)];
+}
+circuit handEmpty(hand: Vector<13, Uint<8>>): Boolean {
+  const total = fold((acc: Uint<8>, v: Uint<8>): Uint<8> => { return (acc + v) as Uint<8>; }, 0, hand);
+  return total == (0 as Uint<8>);
+}
+// The hand dealt for `round` (1..6). Rounds beyond MAX_ROUNDS deal nothing,
+// which empties both hands and forces repeated rollovers — caught by the
+// "round in range" assert in applyMove.
+circuit selectHand(hands: Vector<6, Vector<13, Uint<8>>>, round: Uint<8>): Vector<13, Uint<8>> {
+  return [...map((i: Uint<8>): Uint<8> => {
+    return ((round == (1 as Uint<8>) ? hands[0][i] : (0 as Uint<8>))
+          + (round == (2 as Uint<8>) ? hands[1][i] : (0 as Uint<8>))
+          + (round == (3 as Uint<8>) ? hands[2][i] : (0 as Uint<8>))
+          + (round == (4 as Uint<8>) ? hands[3][i] : (0 as Uint<8>))
+          + (round == (5 as Uint<8>) ? hands[4][i] : (0 as Uint<8>))
+          + (round == (6 as Uint<8>) ? hands[5][i] : (0 as Uint<8>))) as Uint<8>;
+  }, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])];
+}
+circuit nextRankOf(rank: Uint<8>): Uint<8> { return rank >= (12 as Uint<8>) ? 0 : (rank + 1) as Uint<8>; }
+circuit minusOneFloor(score: Uint<8>): Uint<8> { return score == (0 as Uint<8>) ? 0 : (score - 1) as Uint<8>; }
+
+circuit applyMove(
+  s: GameState, m: Move, threshold: Uint<8>,
+  hands0: Vector<6, Vector<13, Uint<8>>>, hands1: Vector<6, Vector<13, Uint<8>>>
+): GameState {
+  const noop = m.kind == (0 as Uint<8>);
+  const isPlay = m.kind == (1 as Uint<8>);
+  const isAccept = m.kind == (2 as Uint<8>);
+  const isChallenge = m.kind == (3 as Uint<8>);
+  assert(noop || isPlay || isAccept || isChallenge, "unknown move kind");
+  // Padding is allowed ONLY after the game has ended: a game that is not over
+  // must fill every slot (and is then a draw). Nobody closes a losing game early.
+  assert(!noop || s.ended, "padding before game end");
+  assert(noop || !s.ended, "move after game end");
+  assert(!isPlay || !s.pending, "play while claim pending");
+  assert(!(isAccept || isChallenge) || s.pending, "response without claim");
+  assert(!isPlay || (m.rank == s.currentRank && m.count >= (1 as Uint<8>) && m.count <= (4 as Uint<8>)), "bad claim");
+
+  // PLAY: the mover's hand must hold the cards; remove them.
+  const moverIs0 = s.turn == (0 as Uint<8>);
+  const playCount: Uint<8> = isPlay ? m.count : 0;
+  const h0 = moverIs0 ? removeFrom(s.hand0, m.cards, playCount) : s.hand0;
+  const h1 = moverIs0 ? s.hand1 : removeFrom(s.hand1, m.cards, playCount);
+
+  // CHALLENGE (by the player on turn, against s.claimer): truthful iff every
+  // played card matches the claimed rank. Truthful → challenger −1 (floor 0).
+  // Bluff caught → challenger +3. Matches resolveChallenge in the per-move edition.
+  const truthful = played(s.claimCards, s.claimCount, s.claimRank) == s.claimCount;
+  const challengerIs0 = s.turn == (0 as Uint<8>);
+  const sc0: Uint<8> = !isChallenge ? s.score0
+    : challengerIs0 ? (truthful ? minusOneFloor(s.score0) : ((s.score0 + 3) as Uint<8>)) : s.score0;
+  const sc1: Uint<8> = !isChallenge ? s.score1
+    : challengerIs0 ? s.score1 : (truthful ? minusOneFloor(s.score1) : ((s.score1 + 3) as Uint<8>));
+  const ended = s.ended || sc0 >= threshold || sc1 >= threshold;
+
+  // Round rollover when a hand empties after a resolved claim (accept or
+  // challenge). The pile is discarded, both hands re-dealt for round + 1.
+  const resolved = isAccept || isChallenge;
+  const rollover = resolved && (handEmpty(h0) || handEmpty(h1)) && !ended;
+  const nextRound = rollover ? ((s.round + 1) as Uint<8>) : s.round;
+  assert(!rollover || nextRound <= (6 as Uint<8>), "round limit exceeded");
+  const nh0 = rollover ? selectHand(hands0, nextRound) : h0;
+  const nh1 = rollover ? selectHand(hands1, nextRound) : h1;
+
+  // Transcript chain over PUBLIC parts only; cards enter via a blinded commit.
+  const playCommit = isPlay ? commitPlayCards(m.cards, m.playSalt) : (0 as Field);
+  const chain = noop ? s.chain : chainMove(s.chain, m.kind, m.rank, m.count, playCommit);
+
+  const nextRank = resolved ? nextRankOf(s.currentRank) : s.currentRank;
+  const nextTurn: Uint<8> = noop ? s.turn : (s.turn == (0 as Uint<8>) ? 1 : 0);
+
+  return GameState {
+    hand0: noop ? s.hand0 : nh0, hand1: noop ? s.hand1 : nh1,
+    turn: nextTurn, currentRank: noop ? s.currentRank : nextRank,
+    pending: noop ? s.pending : isPlay,
+    claimRank: isPlay ? m.rank : s.claimRank, claimCount: isPlay ? m.count : s.claimCount,
+    claimCards: isPlay ? m.cards : s.claimCards, claimer: isPlay ? s.turn : s.claimer,
+    score0: sc0, score1: sc1, round: nextRound, ended: noop ? s.ended : ended, chain: chain
+  };
+}
+
+circuit assertRecentBlockTime(currentTime: Uint<64>): [] {
+  assert(blockTimeGte(disclose(currentTime)), "Timestamp is in the future");
+  assert(blockTimeLte(disclose((currentTime + 120) as Uint<64>)), "Timestamp is too old");
+}
+
+// ---------------------------------------------------------------------------
+// openGame — one sponsored transaction. Both players' commitments were
+// exchanged off-chain first; each player checks the on-chain record matches
+// what they committed before revealing any entropy. Nothing about cards
+// exists yet; the seed does not exist until both entropies are revealed.
+// ---------------------------------------------------------------------------
+export circuit openGame(
+  playerOne: Bytes<32>, playerTwo: Bytes<32>, mode: Uint<8>,
+  p1EntropyCommit: Bytes<32>, p1SaltCommit: Bytes<32>,
+  p2EntropyCommit: Bytes<32>, p2SaltCommit: Bytes<32>,
+  currentTime: Uint<64>
+): Bytes<32> {
+  assertRecentBlockTime(currentTime);
+  assert(disclose(mode) == (0 as Uint<8>) || disclose(mode) == (1 as Uint<8>) || disclose(mode) == (4 as Uint<8>),
+    "Only score-based modes (CASUAL, STANDARD, CASINO) are enabled");
+  assert(disclose(playerOne) != disclose(playerTwo), "Players must differ");
+  const gameId = persistentHash<GameIdInput>(GameIdInput {
+    separator: pad(32, "pob:game:v1"), playerOne: playerOne, playerTwo: playerTwo, mode: mode, openedAt: currentTime
+  });
+  assert(!games.member(disclose(gameId)), "Game already exists");
+  games.insert(disclose(gameId), disclose(GameRecord {
+    playerOne: playerOne, playerTwo: playerTwo, mode: mode,
+    p1EntropyCommit: p1EntropyCommit, p2EntropyCommit: p2EntropyCommit,
+    p1SaltCommit: p1SaltCommit, p2SaltCommit: p2SaltCommit,
+    openedAt: currentTime, closed: false, transcriptRoot: 0,
+    p1Score: 0, p2Score: 0, winner: 0, closedAt: 0
+  }));
+  totalGamesOpened.increment(1);
+  return disclose(gameId);
+}
+
+// ---------------------------------------------------------------------------
+// closeGame — the one proof. Public: gameId, transcript root, final scores,
+// winner. Private: both entropies, both salts, every move with its cards, and
+// every intermediate snapshot (verify-the-trace keeps the circuit linear).
+// ---------------------------------------------------------------------------
+export circuit closeGame(
+  gameId: Bytes<32>, transcriptRoot: Field, p1Score: Uint<8>, p2Score: Uint<8>,
+  winner: Uint<8>, currentTime: Uint<64>
+): [] {
+  assert(games.member(disclose(gameId)), "Game not found");
+  const g = games.lookup(disclose(gameId));
+  assert(!g.closed, "Game already closed");
+  assertRecentBlockTime(currentTime);
+
+  // 1. Open the four commitments stored at openGame.
+  const e = entropyPair();
+  const salts = saltPair();
+  assert(commitEntropy(e[0]) == g.p1EntropyCommit, "P1 entropy mismatch");
+  assert(commitEntropy(e[1]) == g.p2EntropyCommit, "P2 entropy mismatch");
+  assert(commitHandSalt(salts[0]) == g.p1SaltCommit, "P1 salt mismatch");
+  assert(commitHandSalt(salts[1]) == g.p2SaltCommit, "P2 salt mismatch");
+
+  // 2. Seed, then every round's hand for both players (one SHA-256 each).
+  const seed = combineEntropy(e[0], e[1]);
+  const size = handSize(g.mode);
+  const hands0 = [...map((r: Uint<32>): Vector<13, Uint<8>> => {
+    return handCountsFromRanks(dealHandRanks(salts[0], seed, r, size), size);
+  }, [1, 2, 3, 4, 5, 6])];
+  const hands1 = [...map((r: Uint<32>): Vector<13, Uint<8>> => {
+    return handCountsFromRanks(dealHandRanks(salts[1], seed, r, size), size);
+  }, [1, 2, 3, 4, 5, 6])];
+
+  // 3. The opening snapshot is fully determined by the ledger + the seed.
+  const states = snapshots();
+  const moves = transcript();
+  const opening = GameState {
+    hand0: hands0[0], hand1: hands1[0], turn: 0, currentRank: startingRank(seed),
+    pending: false, claimRank: 0, claimCount: 0, claimCards: [0, 0, 0, 0], claimer: 0,
+    score0: 0, score1: 0, round: 1, ended: false, chain: 0
+  };
+  assert(states[0] == opening, "opening snapshot mismatch");
+
+  // 4. Replay: each supplied snapshot must be exactly the rules applied to the
+  //    previous one. Linear in MAX_MOVES.
+  const threshold = winThreshold(g.mode);
+  for (const i of 0..64) {
+    assert(applyMove(states[i], moves[i], threshold, hands0, hands1) == states[i + 1], "invalid transition");
+  }
+
+  // 5. The final snapshot must match the public result. Not ended after 64
+  //    moves (every slot used, enforced by the padding rule) is a draw.
+  const fin = states[64];
+  assert(fin.chain == transcriptRoot, "transcript root mismatch");
+  assert(fin.score0 == p1Score && fin.score1 == p2Score, "final score mismatch");
+  const w: Uint<8> = !fin.ended ? 0 : (fin.score0 >= threshold ? 1 : 2);
+  assert(w == winner, "winner mismatch");
+
+  games.insert(disclose(gameId), disclose(GameRecord {
+    playerOne: g.playerOne, playerTwo: g.playerTwo, mode: g.mode,
+    p1EntropyCommit: g.p1EntropyCommit, p2EntropyCommit: g.p2EntropyCommit,
+    p1SaltCommit: g.p1SaltCommit, p2SaltCommit: g.p2SaltCommit,
+    openedAt: g.openedAt, closed: true, transcriptRoot: transcriptRoot,
+    p1Score: p1Score, p2Score: p2Score, winner: winner, closedAt: currentTime
+  }));
+  totalGamesClosed.increment(1);
+}
+
+// An opened game that is never closed is simply not a game (spec §3). Anyone
+// may prune it after OPEN_TTL (7 days) to keep the map tidy.
+export circuit pruneExpired(gameId: Bytes<32>, currentTime: Uint<64>): [] {
+  assert(games.member(disclose(gameId)), "Game not found");
+  const g = games.lookup(disclose(gameId));
+  assert(!g.closed, "Game already closed");
+  assertRecentBlockTime(currentTime);
+  assert(blockTimeGte(disclose((g.openedAt + 604800) as Uint<64>)), "Game not yet expired");
+  games.remove(disclose(gameId));
+  totalGamesPruned.increment(1);
+}

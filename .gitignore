@@ -26,3 +26,6 @@ realDeal/app/.env
 /media/prooforbluff mini vid.mp4
 # Windows alternate-data-stream metadata that leaks into WSL via /mnt/c
 *:Zone.Identifier
+/realDeal/contracts/managed/proof-or-bluff-rollup/keys/
+/realDeal/contracts/managed/proof-or-bluff-rollup/zkir/
+/realDeal/contracts/managed/proof-or-bluff-rollup/compiler/
