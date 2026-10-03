@@ -413,6 +413,21 @@ export function createTestWiredBot({ defaultDifficulty = 'medium' } = {}) {
       if (activeSession.variant === 'state-only' && request.wagerAmount !== 0) {
         throw new HttpError(400, 'State-only matches never take a wager; send wagerAmount: 0.');
       }
+      const existingMatch = await activeSession.api.getMatch(request.matchId);
+      const phase = requireCompactInteger(existingMatch, 'phase');
+      if (phase !== 0) {
+        const p2Entropy = state.getEntropy(request.matchId, 'p2');
+        if (!p2Entropy || state.getEntropy(request.matchId, 'p1') !== request.p1Entropy) {
+          throw new HttpError(409, 'The computer cannot recover this match from its stored state. No join was submitted.');
+        }
+        return {
+          matchId: request.matchId,
+          p2Entropy,
+          txId: null,
+          contractAddress: activeSession.api.address,
+          status: 'already-joined',
+        };
+      }
       activeSession.api.importEntropy(request.matchId, 'p1', request.p1Entropy);
       const result = await activeSession.api.joinMatch({
         matchId: request.matchId,
@@ -589,9 +604,11 @@ export function createTestWiredBot({ defaultDifficulty = 'medium' } = {}) {
       let readinessReason = 'The seed is not finalized yet.';
       if (match.seedFinalized === true) {
         try {
-          reconcileBotHand(matchId, match, botHands, privateSeedForMatch(matchId, match));
+          const activeSession = await ensureSession();
+          if (activeSession.variant === 'state-only') await provableBotHand(activeSession.api, matchId, match);
+          else reconcileBotHand(matchId, match, botHands, privateSeedForMatch(matchId, match));
           handReady = true;
-          readinessReason = 'P2 wallet session and deterministic hand are ready.';
+          readinessReason = 'The computer wallet session and committed hand are ready.';
         } catch (error) {
           readinessReason = error.message;
         }

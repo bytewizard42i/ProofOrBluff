@@ -30,7 +30,12 @@ import DiagnosticsButton from './diagnostics/DiagnosticsButton.jsx';
 import { buildDiagnosticReport } from './diagnostics/diagnosticReport.js';
 import SiteLinks from './SiteLinks.jsx';
 import ContractAddressControl from './ContractAddressControl.jsx';
+import { optionalTransactionId } from './midnight/transactionId.js';
+import GuidedGameSetup from './GuidedGameSetup.jsx';
+import { completeMatchSetup } from './midnight/matchSetup.js';
+import { getStoredEntropy } from './midnight/contract.js';
 import { ENDPOINTS } from './midnight/config.js';
+import { normalizeCoinPublicKeyHex } from './midnight/coinPublicKey.js';
 
 // Public-network builds get a loud badge so nobody mistakes a Preview match
 // for a local-chain test (or, later, for mainnet). Local stays quiet.
@@ -133,12 +138,6 @@ function requireHex64(value, label) {
     throw new Error(`${label} must contain exactly 64 hexadecimal characters.`);
   }
   return clean.toLowerCase();
-}
-
-function optionalTransactionId(result) {
-  const value = result?.txId ?? result?.txHash ?? result?.transactionId ?? null;
-  if (value == null) return null;
-  return requireHex64(value, 'Transaction ID');
 }
 
 function shorten(value, head = 8, tail = 6) {
@@ -413,6 +412,8 @@ export default function TestWiredPanel() {
   const [botHealth, setBotHealth] = useState('checking');
   const [wagerInput, setWagerInput] = useState(CONTRACT_VARIANT === 'state-only' ? '0' : '5');
   const [difficulty, setDifficulty] = useState('medium');
+  const [setupStep, setSetupStep] = useState('prepare');
+  const [hasSavedMatch, setHasSavedMatch] = useState(false);
   const [busy, setBusy] = useState(false);
   const [busyMessage, setBusyMessage] = useState('');
   const [error, setError] = useState(null);
@@ -590,7 +591,7 @@ export default function TestWiredPanel() {
         if (!refreshed || !botHasAction(refreshed) || !mountedRef.current) return;
         setBusy(true);
         setBusyMessage(
-          'The P2 bot is generating or submitting its next proof. This may take about 45 seconds; watch ProofServerLog.',
+          'The computer is proving its next move. Keep this page open; no wallet action is needed.',
         );
         try {
           await advanceBot(matchId);
@@ -613,7 +614,7 @@ export default function TestWiredPanel() {
   }, [advanceBot, busy, match, matchId, refreshStatus]);
 
   const connect = useCallback(() => runLocked('Waiting for Lace connection approval.', async () => {
-    addProgress('Requesting a Lace connection on the local Undeployed network.');
+    addProgress(`Requesting a Lace connection on ${NETWORK_LABELS[NETWORK_ID] || NETWORK_ID}.`);
     // Connecting is the one step where we genuinely know we are waiting on
     // Lace, so `connecting-wallet` is an honest stage here.
     const handle = await trackOnChainOperation('Connect Lace', () => connectWallet(), {
@@ -626,13 +627,61 @@ export default function TestWiredPanel() {
     // Exactly one provider belongs to this connected handle. Construction is
     // side-effect free: it does not locate or deploy a contract until Start.
     providerRef.current = new RealDealGameProvider({ walletHandle: handle });
+    setHasSavedMatch(Boolean(providerRef.current.activeMatchId));
+    setSetupStep('match');
     addProgress('Lace connected. No contract was deployed during connection.');
   }), [addProgress, runLocked]);
 
-  const startMatch = useCallback(() => runLocked(
-    'Generating proofs and submitting local-chain transactions. This can take about 45 seconds; watch ProofServerLog for proof-server progress.',
+  const finishMatchSetup = useCallback(async (activeMatchId, wagerAmount) => {
+    const provider = providerRef.current;
+    const contractAddress = requireHex64(getContractAddress(), 'Configured game table');
+    const p1Entropy = requireHex64(getStoredEntropy(activeMatchId, 'p1'), 'Saved match setup');
+    setMatchId(activeMatchId);
+    const readMatch = async () => {
+      const raw = await provider.getGameState();
+      const connectedKeyHex = normalizeCoinPublicKeyHex(wallet?.coinPublicKey);
+      if (requireHex64(raw?.playerOne?.bytes, 'Player wallet') !== connectedKeyHex) {
+        throw new Error('This match belongs to another wallet. Connect the Lace wallet that created it.');
+      }
+      return raw;
+    };
+    const completed = await completeMatchSetup({
+      readMatch,
+      hasOpponentEntropy: () => Boolean(getStoredEntropy(activeMatchId, 'p2')),
+      joinBot: async () => {
+        setBusyMessage('The computer is joining your saved match. Keep this page open.');
+        addProgress('Asking the computer to join or recover its confirmed join.');
+        const joined = await fetchBot('/api/testwired/join', {
+          method: 'POST',
+          body: JSON.stringify({ matchId: activeMatchId, wagerAmount, p1Entropy, contractAddress, difficulty }),
+        });
+        provider.importEntropy('p2', requireHex64(joined.p2Entropy, 'Computer setup response'));
+        setLastTransactionId(optionalTransactionId(joined));
+      },
+      revealSeed: async () => {
+        setBusyMessage('Finalizing the deal. Approve the game transaction in Lace when prompted.');
+        const result = await trackOnChainOperation('Finalize deal', () => provider.revealSeed({ startingRank: 0 }));
+        setLastTransactionId(optionalTransactionId(result));
+      },
+    });
+    applyMatch(normalizeMatchResponse({ match: completed }, activeMatchId));
+    await advanceBot(activeMatchId);
+  }, [addProgress, advanceBot, applyMatch, difficulty, fetchBot, wallet]);
+
+  const resumeMatch = useCallback(() => runLocked(
+    'Checking your saved match before submitting anything.',
     async () => {
-      if (!providerRef.current || !wallet) throw new Error('Connect Lace before starting TestWired.');
+      const savedMatchId = requireHex64(providerRef.current?.activeMatchId, 'Saved match ID');
+      await finishMatchSetup(savedMatchId, parseSafeInteger(wagerInput, 'Wager', { minimum: 0 }));
+    },
+  ), [finishMatchSetup, runLocked, wagerInput]);
+
+  const startMatch = useCallback(() => runLocked(
+    'Creating your game. Approve the transaction in Lace when prompted.',
+    async () => {
+      if (!providerRef.current || !wallet) throw new Error('Connect Lace before starting your game.');
+      if (providerRef.current.activeMatchId) throw new Error('A match is already saved. Use Resume my match instead.');
+      if (NETWORK_ID !== 'undeployed' && !getContractAddress()) throw new Error('No published game table is configured. Nothing was submitted.');
       const wagerAmount = parseSafeInteger(wagerInput, 'Wager', { minimum: 0 });
       setProgress([]);
       setHand([]);
@@ -651,48 +700,16 @@ export default function TestWiredPanel() {
         wagerAmount,
       }));
       const newMatchId = requireHex64(created?.matchId, 'Created match ID');
-      const p1Entropy = requireHex64(created?.entropy, 'P1 entropy');
+      setHasSavedMatch(true);
       const createTransactionId = optionalTransactionId(created);
       if (!mountedRef.current) return;
       setMatchId(newMatchId);
       setLastTransactionId(createTransactionId);
       addProgress(`Match ${shorten(newMatchId)} created${createTransactionId ? ` in tx ${shorten(createTransactionId)}` : ''}.`);
 
-      const savedContractAddress = getContractAddress();
-      if (typeof savedContractAddress !== 'string' || savedContractAddress.trim() === '') {
-        throw new Error('No deployed contract address was saved after createMatch. Check Lace and the local indexer.');
-      }
-      const contractAddress = requireHex64(savedContractAddress, 'Contract address');
-      addProgress('Sending P1 entropy and contract address to the localhost P2 bot for joining.');
-      const joined = await fetchBot('/api/testwired/join', {
-        method: 'POST',
-        body: JSON.stringify({
-          matchId: newMatchId,
-          wagerAmount,
-          p1Entropy,
-          contractAddress,
-          difficulty,
-        }),
-      });
-      const p2Entropy = requireHex64(joined.p2Entropy, 'Bot P2 entropy');
-      addProgress('P2 joined and returned a valid entropy reveal. Importing it only for this match.');
-      providerRef.current.importEntropy('p2', p2Entropy);
-
-      addProgress('Revealing the combined seed with starting rank 2 (rank index 0).');
-      const revealed = await trackOnChainOperation(
-        'Reveal seed',
-        () => providerRef.current.revealSeed({ startingRank: 0 }),
-      );
-      const revealTransactionId = optionalTransactionId(revealed);
-      if (mountedRef.current) setLastTransactionId(revealTransactionId);
-      addProgress(`Seed reveal submitted${revealTransactionId ? ` in tx ${shorten(revealTransactionId)}` : ''}.`);
-
-      addProgress('Reading the first normalized public state.');
-      const statusData = await fetchBot(`/api/testwired/status?matchId=${encodeURIComponent(newMatchId)}`);
-      applyMatch(normalizeMatchResponse(statusData, newMatchId));
-      await advanceBot(newMatchId);
+      await finishMatchSetup(newMatchId, wagerAmount);
     },
-  ), [addProgress, advanceBot, applyMatch, difficulty, fetchBot, runLocked, wagerInput, wallet]);
+  ), [addProgress, finishMatchSetup, runLocked, wagerInput, wallet]);
 
   /**
    * Runs one P1 on-chain action, then lets the bot respond and refreshes.
@@ -700,7 +717,7 @@ export default function TestWiredPanel() {
    * panel (for example "Play cards"); `description` is the longer log line.
    */
   const transactThenAdvance = useCallback((activityLabel, description, transaction, options = {}) => runLocked(
-    'Generating a zero-knowledge proof and submitting the transaction. Allow about 45 seconds and watch ProofServerLog for live proof progress.',
+    'Proving your move and waiting for confirmation. Approve the request in Lace when prompted.',
     async () => {
       if (!providerRef.current || !matchId) throw new Error('Connect Lace and start a match first.');
       addProgress(description);
@@ -785,9 +802,9 @@ export default function TestWiredPanel() {
     <section className="testwired-panel" aria-labelledby="testwired-title">
       <header className="testwired-panel__header">
         <div>
-          <p className="testwired-panel__eyebrow">Browser P1 versus localhost P2 bot</p>
+          <p className="testwired-panel__eyebrow">You versus the computer · real privacy proofs</p>
           <h2 id="testwired-title">
-            TestWired · {NETWORK_LABELS[NETWORK_ID] || NETWORK_ID}
+            Play Proof or Bluff · {NETWORK_LABELS[NETWORK_ID] || NETWORK_ID}
             {' '}
             <span className={`network-badge network-badge--${(NETWORK_BADGES[NETWORK_ID] || NETWORK_BADGES.undeployed).tone}`}>
               {(NETWORK_BADGES[NETWORK_ID] || { text: NETWORK_ID.toUpperCase() }).text}
@@ -799,65 +816,32 @@ export default function TestWiredPanel() {
               : 'This developer control panel uses the local Midnight node, indexer, proof server, and bot. Tokens and wagers belong to the disposable local chain; this is not mainnet.'}
           </p>
         </div>
-        <dl className="testwired-vitals" aria-label="Connection status">
-          <div><dt>Lace</dt><dd>{wallet ? 'Connected' : walletAvailable === false ? 'Not detected' : walletAvailable ? 'Detected' : 'Checking'}</dd></div>
-          <div><dt>Bot</dt><dd>{botHealth === 'ready' ? 'Ready' : botHealth === 'offline' ? 'Offline' : 'Checking'}</dd></div>
-          <div><dt>Mode</dt><dd>STANDARD (1)</dd></div>
-        </dl>
         <div className="testwired-panel__meta">
           <SiteLinks compact />
-          <DiagnosticsButton getReport={() => buildTestWiredDiagnosticReport({ wallet, error })} />
         </div>
       </header>
 
-      {/* The choice must be made before connecting: the proof provider is
-          built once per connection from the selected proof-server URL. */}
-      {CONTRACT_VARIANT === 'state-only' && !wallet && (
-        <ProofServerChoice disabled={busy} />
+      <div className="guided-game-layout">
+      <div className="guided-game-main">
+      {!match && (
+        <GuidedGameSetup
+          step={setupStep}
+          networkLabel={NETWORK_LABELS[NETWORK_ID] || NETWORK_ID}
+          walletAvailable={walletAvailable}
+          botHealth={botHealth}
+          walletConnected={Boolean(wallet)}
+          hasSavedMatch={hasSavedMatch}
+          tableConfigured={NETWORK_ID === 'undeployed' || Boolean(getContractAddress())}
+          busy={onChainLocked}
+          difficulty={difficulty}
+          onDifficultyChange={setDifficulty}
+          onContinue={() => setSetupStep(setupStep === 'prepare' ? 'connect' : 'match')}
+          onBack={() => setSetupStep(setupStep === 'match' ? 'connect' : 'prepare')}
+          onConnect={connect}
+          onStart={startMatch}
+          onResume={resumeMatch}
+        />
       )}
-
-      {/* Which deployed contract to join. Essential on public networks, where
-          an unset address makes Start deploy a new copy at the player's
-          expense. Locked while any on-chain call is in flight. */}
-      <ContractAddressControl disabled={onChainLocked} />
-
-      <div className="testwired-toolbar">
-        {!wallet ? (
-          <button type="button" className="primary" onClick={connect} disabled={onChainLocked || walletAvailable === false}>
-            {busy ? 'Connecting…' : 'Connect Lace'}
-          </button>
-        ) : (
-          <div className="testwired-wallet">
-            <strong>Wallet:</strong> {shorten(wallet.address || wallet.coinPublicKey)}
-            <span><strong>Network:</strong> {wallet.networkId || 'unknown'}</span>
-            <span><strong>Balances:</strong> {renderedBalances.length ? renderedBalances.join(', ') : 'none reported'}</span>
-          </div>
-        )}
-        {CONTRACT_VARIANT !== 'state-only' && (
-          <label>
-            Wager
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={wagerInput}
-              onChange={(event) => setWagerInput(event.target.value)}
-              disabled={busy}
-            />
-          </label>
-        )}
-        <label>
-          Bot difficulty
-          <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} disabled={busy}>
-            <option value="easy">Easy</option>
-            <option value="medium">Medium</option>
-            <option value="hard">Hard</option>
-          </select>
-        </label>
-        <button type="button" className="primary" onClick={startMatch} disabled={onChainLocked || !wallet}>
-          Start STANDARD match
-        </button>
-      </div>
 
       {walletAvailable === false && (
         <p className="testwired-notice">
@@ -878,33 +862,44 @@ export default function TestWiredPanel() {
         <div className="testwired-match">
           <div className="testwired-match__heading">
             <div>
-              <h3>Public match status</h3>
-              <p className="testwired-identifiers">
-                Match <code title={matchId}>{shorten(matchId)}</code>
-                {' · '}Last tx <code title={lastTransactionId || ''}>{shorten(lastTransactionId)}</code>
-              </p>
+              <h3>Your game</h3>
+              <p>Your cards are private. Claims and scores are public.</p>
             </div>
             <button type="button" onClick={() => runLocked('Refreshing public match status.', refreshStatus)} disabled={busy}>
               Refresh
             </button>
           </div>
 
+          <div className="guided-next-task" role="status">
+            <h3>{match.phase === 4 ? 'Game complete' : p1MustProve ? 'The computer challenged you' : pendingBotClaim ? 'Trust the computer or challenge?' : isP1TurnToPlay ? 'Your turn: choose 1 to 4 cards' : 'Waiting for the computer'}</h3>
+            <p>{match.phase === 4 ? 'The final scores are below.' : p1MustProve ? 'Click Prove my play. Your proof will reveal whether your claim was true.' : pendingBotClaim ? 'Click Accept claim to trust the claim, or Challenge claim to demand a proof.' : isP1TurnToPlay ? `Click your cards, then Play selected cards. Your public claim will be ${RANKS[match.currentRank]}; bluffing is allowed.` : 'No wallet action is needed right now. Keep this page open.'}</p>
+          </div>
           <dl className="testwired-status-grid">
             <div><dt>Phase</dt><dd>{PHASE_NAMES[match.phase]}</dd></div>
             <div><dt>Required rank</dt><dd>{RANKS[match.currentRank]}</dd></div>
-            <div><dt>Turn</dt><dd>{match.activePlayerIdx === 0 ? 'P1 (Lace)' : 'P2 (bot)'}</dd></div>
-            <div><dt>Scores</dt><dd>P1 {match.p1Score} · P2 {match.p2Score}</dd></div>
-            <div><dt>Hand sizes</dt><dd>P1 {match.p1HandSize} · P2 {match.p2HandSize}</dd></div>
+            <div><dt>Turn</dt><dd>{match.activePlayerIdx === 0 ? 'You' : 'Computer'}</dd></div>
+            <div><dt>Scores</dt><dd>You {match.p1Score} · Computer {match.p2Score}</dd></div>
+            <div><dt>Cards remaining</dt><dd>You {match.p1HandSize} · Computer {match.p2HandSize}</dd></div>
             <div><dt>Pile</dt><dd>{match.pileSize}</dd></div>
-            <div><dt>Winner</dt><dd>{match.winner === 0 ? 'None' : match.winner === 1 ? 'P1' : 'P2'}</dd></div>
+            <div><dt>Winner</dt><dd>{match.winner === 0 ? 'Not decided' : match.winner === 1 ? 'You' : 'Computer'}</dd></div>
             <div><dt>Pending claim</dt><dd>{match.hasPendingPlay ? `${match.lastClaimCount} as ${RANKS[match.lastClaimRank]}` : 'None'}</dd></div>
           </dl>
 
+          {match.phase === 4 && (
+            <button type="button" className="primary" disabled={onChainLocked} onClick={() => {
+              providerRef.current.resetGame();
+              setHasSavedMatch(false);
+              setMatch(null);
+              setMatchId(null);
+              setHand([]);
+              setSetupStep('match');
+            }}>Set up another game</button>
+          )}
           {dialogue && <blockquote className="testwired-dialogue">{dialogue}</blockquote>}
 
           <div className="testwired-hand-area">
             <div className="testwired-hand-area__heading">
-              <h3>P1 deterministic hand</h3>
+              <h3>Your private cards</h3>
               <span>{selectedIds.size}/4 selected</span>
             </div>
             {hand.length ? (
@@ -917,12 +912,12 @@ export default function TestWiredPanel() {
                       className={`testwired-card${selected ? ' testwired-card--selected' : ''}`}
                       key={card.id}
                       aria-pressed={selected}
-                      aria-label={`${card.rank} of ${SUIT_LABELS[card.suit]}`}
+                      aria-label={`${card.rank} · ${SUIT_LABELS[card.suit] || 'private card'}`}
                       onClick={() => toggleCard(card.id)}
                       disabled={busy || !isP1TurnToPlay || (!selected && selectedIds.size >= 4)}
                     >
                       <strong>{card.rank}</strong>
-                      <span>{SUIT_LABELS[card.suit]}</span>
+                      <span>{SUIT_LABELS[card.suit] || 'Private'}</span>
                     </button>
                   );
                 })}
@@ -939,7 +934,7 @@ export default function TestWiredPanel() {
               onClick={playSelected}
               disabled={onChainLocked || !isP1TurnToPlay || selectedCards.length < 1 || selectedCards.length > 4}
             >
-              Play {selectedCards.length || 'N'} as {RANKS[match.currentRank]}
+              Play selected cards ({selectedCards.length}) as {RANKS[match.currentRank]}
             </button>
             {p1MustProve && (
               <button
@@ -958,7 +953,7 @@ export default function TestWiredPanel() {
                   onClick={() => transactThenAdvance('Accept claim', 'Accepting the P2 bot claim.', (provider) => provider.accept())}
                   disabled={onChainLocked}
                 >
-                  Accept
+                  Accept claim
                 </button>
                 <button
                   type="button"
@@ -966,7 +961,7 @@ export default function TestWiredPanel() {
                   onClick={() => transactThenAdvance('Challenge claim', 'Challenging the P2 bot claim; the bot will resolve its witness next.', (provider) => provider.challenge())}
                   disabled={onChainLocked}
                 >
-                  Proof or Bluff
+                  Challenge claim
                 </button>
               </>
             )}
@@ -984,13 +979,42 @@ export default function TestWiredPanel() {
         </div>
       )}
 
+      </div>
+      <aside className="guided-game-sidebar" aria-label="Developer tools">
+        <details className="guided-game-tools">
+          <summary>Developer controls &amp; diagnostics</summary>
+          <p>Optional technical tools. You do not need these to play.</p>
+          <dl className="testwired-vitals" aria-label="Connection status">
+            <div><dt>Lace</dt><dd>{wallet ? 'Connected' : walletAvailable ? 'Detected' : 'Not detected'}</dd></div>
+            <div><dt>Computer service</dt><dd>{botHealth === 'ready' ? 'Reachable (wallet sync separate)' : botHealth}</dd></div>
+            <div><dt>Network</dt><dd>{NETWORK_LABELS[NETWORK_ID] || NETWORK_ID}</dd></div>
+          </dl>
+          {wallet && <p>Wallet: {shorten(wallet.address)} · {renderedBalances.join(', ')}</p>}
+          <p>Match: <code>{matchId || 'Not loaded'}</code></p>
+          <p>Last transaction: <code>{lastTransactionId || 'Not available'}</code></p>
+          <DiagnosticsButton getReport={() => buildTestWiredDiagnosticReport({ wallet, error })} />
+          {/* The choice must be made before connecting: the proof provider is
+              built once per connection from the selected proof-server URL. */}
+          {CONTRACT_VARIANT === 'state-only' && !wallet && <ProofServerChoice disabled={busy} />}
+          {/* Which deployed contract to join. Essential on public networks, where
+              an unset address makes Start deploy a new copy at the player's
+              expense. Locked while any on-chain call is in flight. */}
+          <ContractAddressControl disabled={onChainLocked || Boolean(wallet) || hasSavedMatch} />
+          {CONTRACT_VARIANT !== 'state-only' && (
+            <label>Local test wager
+              <input type="number" min="0" step="1" value={wagerInput} onChange={event => setWagerInput(event.target.value)} disabled={onChainLocked} />
+            </label>
+          )}
       <div className="testwired-log" aria-live="polite" aria-atomic="false">
-        <h3>TestWired progress</h3>
+        <h3>Operation log</h3>
         <ol>
           {progress.length
             ? progress.map((entry) => <li key={entry.id}>{entry.message}</li>)
-            : <li>Connect Lace, confirm the bot is ready, then start a local match.</li>}
+            : <li>Follow the setup screens in the main panel.</li>}
         </ol>
+      </div>
+        </details>
+      </aside>
       </div>
     </section>
   );

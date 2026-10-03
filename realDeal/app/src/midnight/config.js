@@ -89,9 +89,14 @@ const CONTRACT_ADDRESS_KEY = CONTRACT_VARIANT === 'state-only'
   ? `pob:state-only:${NETWORK_ID}:contract-address`
   : 'pob:realdeal:contract-address';
 
+const configuredContractAddress = env.VITE_CONTRACT_ADDRESS || null;
+if (configuredContractAddress && !/^[0-9a-fA-F]{64}$/.test(configuredContractAddress)) {
+  throw new Error('VITE_CONTRACT_ADDRESS must be a 64-character hexadecimal contract address.');
+}
+
 export function getContractAddress() {
-  if (typeof window === 'undefined') return null;
-  return window.localStorage.getItem(CONTRACT_ADDRESS_KEY);
+  const stored = typeof window === 'undefined' ? null : window.localStorage.getItem(CONTRACT_ADDRESS_KEY);
+  return stored || configuredContractAddress?.toLowerCase() || null;
 }
 
 export function setContractAddress(address) {

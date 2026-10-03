@@ -45,6 +45,7 @@ import SponsorRail, { SponsorInvite } from './SponsorRail.jsx';
 import MusicPicker from './MusicPicker.jsx';
 import TestWiredPanel from './TestWiredPanel.jsx';
 import ProTeaser from './ProTeaser.jsx';
+import { NETWORK_ID } from './midnight/config.js';
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -1248,8 +1249,8 @@ export default function App() {
         <ProofServerLog />
         <header className="header">
           <div>
-            <h1>Proof or Bluff <span className="badge">TestWired</span></h1>
-            <div className="tagline">Local chain. Real proofs. Scripted opponent.</div>
+            <h1>Proof or Bluff <span className="badge">{NETWORK_ID === 'undeployed' ? 'Local test' : NETWORK_ID}</span></h1>
+            <div className="tagline">Bluff in public. Prove in private. Play against the computer.</div>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <MusicPicker compact />
@@ -1259,7 +1260,7 @@ export default function App() {
         <TestWiredPanel />
         <SponsorInvite />
         <footer className="footer">
-          TestWired build · local Midnight environment · not mainnet
+          Midnight {NETWORK_ID === 'undeployed' ? 'local test' : NETWORK_ID} · no real-money play
         </footer>
       </div>
     );

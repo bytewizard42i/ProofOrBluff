@@ -51,6 +51,13 @@ describe('activityStore', () => {
     expect(archived.log.map((entry) => entry.at)).toEqual([1_000, 2_000, 3_000]);
   });
 
+  it('retains the tagged transaction identifier returned by Midnight', () => {
+    const transactionIdentifier = `00ff${PUBLIC_TX_ID}`;
+    const operationId = startOperation('Create match');
+    finishOperation(operationId, { txId: transactionIdentifier });
+    expect(getState().history[0].txId).toBe(transactionIdentifier);
+  });
+
   it('archives a failed operation with the plain error string', () => {
     const operationId = startOperation('Challenge');
     failOperation(operationId, 'Bot unreachable');

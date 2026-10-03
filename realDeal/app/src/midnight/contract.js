@@ -28,7 +28,8 @@ import { setNetworkId } from
 import * as ledger from '@midnight-ntwrk/ledger-v8';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
 
-import { Contract, pureCircuits } from '@pob/contract';
+import { Contract, pureCircuits, ledger as decodeContractLedger } from '@pob/contract';
+import { readPublicMatch } from '../../../shared/publicMatch.js';
 import {
   ENDPOINTS, NETWORK_ID, CONTRACT_VARIANT, CONTRACT_ASSET_NAME,
   getContractAddress, setContractAddress,
@@ -425,18 +426,13 @@ export async function getContractApi({ walletHandle, allowDeploy = false }) {
       || getContractAddress(),
 
     async getMatch(matchId) {
-      const r = await ensure('getMatch')(hexToBytes(matchId));
-      return extractResult(r);
+      return readPublicMatch(providers.publicDataProvider, decodeContractLedger, this.address, matchId);
     },
     async getMatchPhase(matchId) {
-      const r = await ensure('getMatchPhase')(hexToBytes(matchId));
-      const v = extractResult(r);
-      return v == null ? null : Number(v);
+      return Number((await this.getMatch(matchId)).phase);
     },
     async getWinner(matchId) {
-      const r = await ensure('getWinner')(hexToBytes(matchId));
-      const v = extractResult(r);
-      return v == null ? null : Number(v);
+      return Number((await this.getMatch(matchId)).winner);
     },
 
     async createMatch({ mode, wagerAmount }) {

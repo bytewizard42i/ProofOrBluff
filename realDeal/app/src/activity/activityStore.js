@@ -64,8 +64,8 @@ export const HISTORY_LIMIT = 20;
 /** Longest text we will store for any free-form field, to keep the log readable. */
 const MAX_TEXT_LENGTH = 300;
 
-/** Public tx ids on Midnight are 64 hex characters. Anything else is not shown as a tx id. */
-const TX_ID_PATTERN = /^(0x)?[0-9a-fA-F]{64}$/;
+/** Public hashes and tagged Midnight transaction identifiers have different encoded lengths. */
+const TX_ID_PATTERN = /^(0x)?(?:[0-9a-fA-F]{64}|[0-9a-fA-F]{68})$/;
 
 // ---------------------------------------------------------------------------
 // Internal state

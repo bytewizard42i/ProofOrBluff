@@ -33,6 +33,7 @@ import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
 
 import * as state from './state.js';
+import { readPublicMatch } from '../../shared/publicMatch.js';
 
 // ---------------------------------------------------------------------------
 // Bindings loader
@@ -271,7 +272,7 @@ export async function getContractApi({
     );
   }
 
-  const { Contract, pureCircuits } = await loadContractModule(managedDir);
+  const { Contract, pureCircuits, ledger: decodeContractLedger } = await loadContractModule(managedDir);
 
   // Witness staging. Each value is set immediately before the circuit call
   // that needs it and cleared afterwards, so a stale witness can never leak
@@ -633,20 +634,15 @@ export async function getContractApi({
     },
 
     async getMatch(matchId) {
-      const r = await ensure('getMatch')(hexToBytes(matchId));
-      return extractResult(r);
+      return readPublicMatch(providers.publicDataProvider, decodeContractLedger, this.address, matchId);
     },
 
     async getMatchPhase(matchId) {
-      const r = await ensure('getMatchPhase')(hexToBytes(matchId));
-      const v = extractResult(r);
-      return v == null ? null : Number(v);
+      return Number((await this.getMatch(matchId)).phase);
     },
 
     async getWinner(matchId) {
-      const r = await ensure('getWinner')(hexToBytes(matchId));
-      const v = extractResult(r);
-      return v == null ? null : Number(v);
-    },
+      return Number((await this.getMatch(matchId)).winner);
+    }
   };
 }
