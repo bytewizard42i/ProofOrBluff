@@ -194,6 +194,7 @@ export default function GameTable({
         * re-mounts each time the rank advances, triggering the
         * hand-transition CSS animation defined in styles.css. */}
       <div className="center">
+        <div className="center-stage">
         <div
           className="required-rank"
           key={`hand-${displayedRank ?? state.currentRank}-${state.turn}-${state.lastPlay?.player ?? 'none'}`}
@@ -257,9 +258,10 @@ export default function GameTable({
             <span className="play-banner-text">{banner.title}</span>
           </div>
         )}
+        </div> {/* /center-stage */}
 
         {playerMustRespond && (
-          <>
+          <div className="center-side">
             <div className="center-actions">
               <button className="primary" onClick={handleAccept}>
                 ✅ Accept
@@ -276,7 +278,7 @@ export default function GameTable({
               </button>
             </div>
             {showOdds && <BluffOddsBadge estimate={bluffEstimate} />}
-          </>
+          </div>
         )}
       </div>
 

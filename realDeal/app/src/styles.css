@@ -2893,3 +2893,9 @@ button.active {
 .contract-address__message--ok { color: #74e8a3; }
 .contract-address__message--warn { color: #ffb86b; }
 .contract-address__message--error { color: #ff8a8a; }
+
+/* Centre wrappers (shared by demo and Midnight tables). In the demo's
+ * flex-column centre these simply stack; the play layout turns them into
+ * stage + side columns. */
+.center-stage { display: flex; flex-direction: column; align-items: center; gap: 1rem; min-width: 0; }
+.center-side { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; }

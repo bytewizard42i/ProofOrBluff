@@ -333,3 +333,39 @@ body.pob-playing .pob-activity-panel:not(.pob-activity-panel--active) .pob-activ
 }
 .testwired-panel--playing .pile-display { margin: 0; }
 .testwired-panel--playing .required-rank { margin: 0; }
+
+/* Response buttons sit to the right of the pile during play, not under it. */
+.testwired-panel--playing .center {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 1.25rem;
+}
+.testwired-panel--playing .center-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.testwired-panel--playing .center-side {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  padding-right: 1.5rem;
+  min-width: 170px;
+}
+.testwired-panel--playing .center-side .center-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+}
+.testwired-panel--playing .center-side .center-actions button { width: 100%; }
+.testwired-panel--playing .center-side .bluff-odds { max-width: 260px; }
+
+/* Less air under the player's cards. */
+.testwired-panel--playing .player-area { padding: 0.5rem 0.9rem 0.4rem; }
+.testwired-panel--playing .hand { margin-bottom: 0.25rem; }
+.testwired-panel--playing .claim-panel { margin-top: 0.25rem; padding: 0.35rem 0; }
