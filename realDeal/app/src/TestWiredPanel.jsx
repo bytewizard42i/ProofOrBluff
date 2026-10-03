@@ -4,6 +4,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 
 import {
@@ -15,6 +16,59 @@ import RealDealGameProvider from './providers/realdeal/gameProvider.js';
 import { getContractAddress, CONTRACT_VARIANT, NETWORK_ID } from './midnight/config.js';
 import { dealFromSeed, RANKS } from '../../shared/dealing.js';
 import ProofServerChoice from './ProofServerChoice.jsx';
+import MidnightActivityPanel, { probeMidnightHealth } from './activity/MidnightActivityPanel.jsx';
+import {
+  failOperation,
+  finishOperation,
+  getState as getActivityState,
+  isOperationInFlight,
+  setStage,
+  startOperation,
+  subscribe as subscribeActivity,
+} from './activity/activityStore.js';
+import DiagnosticsButton from './diagnostics/DiagnosticsButton.jsx';
+import { buildDiagnosticReport } from './diagnostics/diagnosticReport.js';
+import SiteLinks from './SiteLinks.jsx';
+import { ENDPOINTS } from './midnight/config.js';
+
+// Public-network builds get a loud badge so nobody mistakes a Preview match
+// for a local-chain test (or, later, for mainnet). Local stays quiet.
+const NETWORK_BADGES = Object.freeze({
+  undeployed: { text: 'LOCAL CHAIN', tone: 'local' },
+  preview: { text: 'PREVIEW TESTNET · NO REAL MONEY', tone: 'testnet' },
+  preprod: { text: 'PREPROD TESTNET · NO REAL MONEY', tone: 'testnet' },
+  mainnet: { text: 'MIDNIGHT MAINNET · NO WAGERS', tone: 'mainnet' },
+});
+
+/**
+ * Builds the sanitized "Copy diagnostic report" payload. Called on click, not
+ * on render. Runs a fresh health probe so the report says what the services
+ * looked like at the moment the player asked for help, not minutes earlier.
+ * Everything passes through the redaction layer in diagnostics/; only the
+ * first 12 characters of the wallet address survive.
+ */
+async function buildTestWiredDiagnosticReport({ wallet, error }) {
+  const health = await probeMidnightHealth((...args) => window.fetch(...args));
+  const activity = getActivityState();
+  return buildDiagnosticReport({
+    networkId: NETWORK_ID,
+    contractVariant: CONTRACT_VARIANT,
+    contractAddress: getContractAddress(),
+    endpoints: ENDPOINTS,
+    activityHistory: [...(activity.history || []), ...(activity.current ? [activity.current] : [])],
+    walletSummary: {
+      connected: Boolean(wallet),
+      networkLabel: wallet?.networkId || NETWORK_ID,
+      address: wallet?.address || null,
+    },
+    healthSnapshot: {
+      proofServer: { reachable: health.proofServer.status === 'reachable' },
+      indexer: { reachable: health.indexer.status === 'reachable', blockHeight: health.indexer.blockHeight },
+    },
+    errors: error ? [error] : [],
+    userAgent: navigator.userAgent,
+  });
+}
 
 const NETWORK_LABELS = Object.freeze({
   undeployed: 'local chain',
@@ -309,7 +363,49 @@ function formatError(error) {
   return error?.message || String(error);
 }
 
+/**
+ * WHAT: Reports one on-chain SDK call to the Midnight activity store so the
+ * MidnightActivityPanel can show the player what is happening.
+ *
+ * WHY the stages are coarse: a provider call such as makePlay() runs proving,
+ * wallet signing, submission and indexer confirmation inside one promise, and
+ * the SDK gives us no per-stage callback. Being honest means we report only
+ * what we can observe: we enter `proving` right before the call (with a
+ * message explaining the call also signs and submits), then `confirmed` when
+ * the promise resolves (with the public tx id if one came back), or `failed`
+ * if it throws. We never invent `awaiting-signature` because we cannot see it.
+ *
+ * PRIVACY: only the label, a fixed message and the public tx id reach the
+ * store. The result object itself (which may hold entropy) is never passed.
+ */
+async function trackOnChainOperation(label, performCall, {
+  stage = 'proving',
+  message = 'Proving, signing and submitting via your wallet',
+} = {}) {
+  const operationId = startOperation(label);
+  try {
+    setStage(operationId, stage, { message });
+    const result = await performCall();
+    const publicTransactionId = result?.txId ?? result?.txHash ?? result?.transactionId;
+    finishOperation(operationId, {
+      txId: typeof publicTransactionId === 'string' ? publicTransactionId : undefined,
+    });
+    return result;
+  } catch (caught) {
+    failOperation(operationId, formatError(caught) || 'Cancelled before completion.');
+    throw caught;
+  }
+}
+
+/** Lets React re-render when the activity store's in-flight flag changes. */
+function useActivityInFlight() {
+  return useSyncExternalStore(subscribeActivity, isOperationInFlight, isOperationInFlight);
+}
+
 export default function TestWiredPanel() {
+  // Duplicate-submit guard: while any on-chain operation is in flight, every
+  // on-chain button is disabled even if `busy` were somehow cleared early.
+  const activityInFlight = useActivityInFlight();
   const [walletAvailable, setWalletAvailable] = useState(null);
   const [wallet, setWallet] = useState(null);
   const [balances, setBalances] = useState({});
@@ -517,7 +613,12 @@ export default function TestWiredPanel() {
 
   const connect = useCallback(() => runLocked('Waiting for Lace connection approval.', async () => {
     addProgress('Requesting a Lace connection on the local Undeployed network.');
-    const handle = await connectWallet();
+    // Connecting is the one step where we genuinely know we are waiting on
+    // Lace, so `connecting-wallet` is an honest stage here.
+    const handle = await trackOnChainOperation('Connect Lace', () => connectWallet(), {
+      stage: 'connecting-wallet',
+      message: 'Approve the connection request in Lace',
+    });
     if (!mountedRef.current) return;
     setWallet(handle);
     setBalances(handle.balances || {});
@@ -544,10 +645,10 @@ export default function TestWiredPanel() {
       addProgress(CONTRACT_VARIANT === 'state-only'
         ? 'Creating a no-stakes STANDARD match on the selected network.'
         : `Creating a STANDARD mode match with local-chain wager ${wagerAmount}.`);
-      const created = await providerRef.current.startGame({
+      const created = await trackOnChainOperation('Create match', () => providerRef.current.startGame({
         mode: STANDARD_MODE,
         wagerAmount,
-      });
+      }));
       const newMatchId = requireHex64(created?.matchId, 'Created match ID');
       const p1Entropy = requireHex64(created?.entropy, 'P1 entropy');
       const createTransactionId = optionalTransactionId(created);
@@ -577,7 +678,10 @@ export default function TestWiredPanel() {
       providerRef.current.importEntropy('p2', p2Entropy);
 
       addProgress('Revealing the combined seed with starting rank 2 (rank index 0).');
-      const revealed = await providerRef.current.revealSeed({ startingRank: 0 });
+      const revealed = await trackOnChainOperation(
+        'Reveal seed',
+        () => providerRef.current.revealSeed({ startingRank: 0 }),
+      );
       const revealTransactionId = optionalTransactionId(revealed);
       if (mountedRef.current) setLastTransactionId(revealTransactionId);
       addProgress(`Seed reveal submitted${revealTransactionId ? ` in tx ${shorten(revealTransactionId)}` : ''}.`);
@@ -589,12 +693,20 @@ export default function TestWiredPanel() {
     },
   ), [addProgress, advanceBot, applyMatch, difficulty, fetchBot, runLocked, wagerInput, wallet]);
 
-  const transactThenAdvance = useCallback((description, transaction, options = {}) => runLocked(
+  /**
+   * Runs one P1 on-chain action, then lets the bot respond and refreshes.
+   * `activityLabel` is the short public name shown in the Midnight activity
+   * panel (for example "Play cards"); `description` is the longer log line.
+   */
+  const transactThenAdvance = useCallback((activityLabel, description, transaction, options = {}) => runLocked(
     'Generating a zero-knowledge proof and submitting the transaction. Allow about 45 seconds and watch ProofServerLog for live proof progress.',
     async () => {
       if (!providerRef.current || !matchId) throw new Error('Connect Lace and start a match first.');
       addProgress(description);
-      const result = await transaction(providerRef.current);
+      const result = await trackOnChainOperation(
+        activityLabel,
+        () => transaction(providerRef.current),
+      );
       const transactionId = optionalTransactionId(result);
       if (mountedRef.current) setLastTransactionId(transactionId);
       addProgress(`Transaction submitted${transactionId ? `: ${shorten(transactionId)}` : '.'}`);
@@ -634,6 +746,7 @@ export default function TestWiredPanel() {
     if (!match || selectedCards.length < 1 || selectedCards.length > 4) return;
     const removedIds = selectedCards.map((card) => card.id);
     transactThenAdvance(
+      'Play cards',
       `Committing ${selectedCards.length} private card rank value(s) while publicly claiming ${RANKS[match.currentRank]}.`,
       (provider) => provider.makePlay({
         cards: selectedCards.map((card) => card.rankIndex),
@@ -658,6 +771,11 @@ export default function TestWiredPanel() {
   const canClaimPayout = CONTRACT_VARIANT !== 'state-only'
     && match?.phase === 4 && match.winner === 1 && !match.escrowReleased;
 
+  // On-chain buttons lock on either signal. `busy` covers this component's own
+  // run loop; `activityInFlight` is the store-level duplicate-submit guard
+  // that stays true until the SDK call actually settles.
+  const onChainLocked = busy || activityInFlight;
+
   const renderedBalances = Object.entries(balances).map(([token, amount]) => (
     `${shorten(token, 5, 4)}=${String(amount)}`
   ));
@@ -667,7 +785,13 @@ export default function TestWiredPanel() {
       <header className="testwired-panel__header">
         <div>
           <p className="testwired-panel__eyebrow">Browser P1 versus localhost P2 bot</p>
-          <h2 id="testwired-title">TestWired · {NETWORK_LABELS[NETWORK_ID] || NETWORK_ID}</h2>
+          <h2 id="testwired-title">
+            TestWired · {NETWORK_LABELS[NETWORK_ID] || NETWORK_ID}
+            {' '}
+            <span className={`network-badge network-badge--${(NETWORK_BADGES[NETWORK_ID] || NETWORK_BADGES.undeployed).tone}`}>
+              {(NETWORK_BADGES[NETWORK_ID] || { text: NETWORK_ID.toUpperCase() }).text}
+            </span>
+          </h2>
           <p className="testwired-panel__intro">
             {CONTRACT_VARIANT === 'state-only'
               ? 'No-stakes game: public claims, private challenge witnesses, and a committed deal seed. No wagers or payouts. Players still need DUST for transaction fees.'
@@ -679,6 +803,10 @@ export default function TestWiredPanel() {
           <div><dt>Bot</dt><dd>{botHealth === 'ready' ? 'Ready' : botHealth === 'offline' ? 'Offline' : 'Checking'}</dd></div>
           <div><dt>Mode</dt><dd>STANDARD (1)</dd></div>
         </dl>
+        <div className="testwired-panel__meta">
+          <SiteLinks compact />
+          <DiagnosticsButton getReport={() => buildTestWiredDiagnosticReport({ wallet, error })} />
+        </div>
       </header>
 
       {/* The choice must be made before connecting: the proof provider is
@@ -689,7 +817,7 @@ export default function TestWiredPanel() {
 
       <div className="testwired-toolbar">
         {!wallet ? (
-          <button type="button" className="primary" onClick={connect} disabled={busy || walletAvailable === false}>
+          <button type="button" className="primary" onClick={connect} disabled={onChainLocked || walletAvailable === false}>
             {busy ? 'Connecting…' : 'Connect Lace'}
           </button>
         ) : (
@@ -720,7 +848,7 @@ export default function TestWiredPanel() {
             <option value="hard">Hard</option>
           </select>
         </label>
-        <button type="button" className="primary" onClick={startMatch} disabled={busy || !wallet}>
+        <button type="button" className="primary" onClick={startMatch} disabled={onChainLocked || !wallet}>
           Start STANDARD match
         </button>
       </div>
@@ -733,6 +861,12 @@ export default function TestWiredPanel() {
       )}
       {busyMessage && <p className="testwired-proof-status" role="status">{busyMessage}</p>}
       {error && <p className="testwired-error" role="alert">{error}</p>}
+
+      {/* Honest Midnight activity status: stage, elapsed time, service
+          reachability and a transition log. It reads the activity store that
+          trackOnChainOperation() writes to, and becomes a modal overlay only
+          during stages where clicking other actions would be unsafe. */}
+      <MidnightActivityPanel />
 
       {match && (
         <div className="testwired-match">
@@ -797,7 +931,7 @@ export default function TestWiredPanel() {
               type="button"
               className="primary"
               onClick={playSelected}
-              disabled={busy || !isP1TurnToPlay || selectedCards.length < 1 || selectedCards.length > 4}
+              disabled={onChainLocked || !isP1TurnToPlay || selectedCards.length < 1 || selectedCards.length > 4}
             >
               Play {selectedCards.length || 'N'} as {RANKS[match.currentRank]}
             </button>
@@ -805,8 +939,8 @@ export default function TestWiredPanel() {
               <button
                 type="button"
                 className="primary"
-                onClick={() => transactThenAdvance('Resolving the bot challenge with P1’s private play witness.', (provider) => provider.resolveChallenge())}
-                disabled={busy}
+                onClick={() => transactThenAdvance('Prove my play', 'Resolving the bot challenge with P1’s private play witness.', (provider) => provider.resolveChallenge())}
+                disabled={onChainLocked}
               >
                 Prove my play
               </button>
@@ -815,16 +949,16 @@ export default function TestWiredPanel() {
               <>
                 <button
                   type="button"
-                  onClick={() => transactThenAdvance('Accepting the P2 bot claim.', (provider) => provider.accept())}
-                  disabled={busy}
+                  onClick={() => transactThenAdvance('Accept claim', 'Accepting the P2 bot claim.', (provider) => provider.accept())}
+                  disabled={onChainLocked}
                 >
                   Accept
                 </button>
                 <button
                   type="button"
                   className="danger"
-                  onClick={() => transactThenAdvance('Challenging the P2 bot claim; the bot will resolve its witness next.', (provider) => provider.challenge())}
-                  disabled={busy}
+                  onClick={() => transactThenAdvance('Challenge claim', 'Challenging the P2 bot claim; the bot will resolve its witness next.', (provider) => provider.challenge())}
+                  disabled={onChainLocked}
                 >
                   Proof or Bluff
                 </button>
@@ -834,8 +968,8 @@ export default function TestWiredPanel() {
               <button
                 type="button"
                 className="primary"
-                onClick={() => transactThenAdvance('Claiming the P1 local-chain payout.', (provider) => provider.claimPayout(), { advance: false })}
-                disabled={busy}
+                onClick={() => transactThenAdvance('Claim payout', 'Claiming the P1 local-chain payout.', (provider) => provider.claimPayout(), { advance: false })}
+                disabled={onChainLocked}
               >
                 Claim payout
               </button>

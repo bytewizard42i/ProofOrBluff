@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Proof or Bluff — Bluff in public. Prove in private.</title>
+  <meta name="description" content="Proof or Bluff is a two-player bluffing card game on the Midnight Network. Your cards stay private, every move carries a zero-knowledge proof, and a challenge reveals only whether the claim was true.">
+  <link rel="canonical" href="https://prooforbluff.com/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Proof or Bluff">
+  <meta property="og:title" content="Proof or Bluff — Bluff in public. Prove in private.">
+  <meta property="og:description" content="A zero-knowledge bluffing card game on the Midnight Network. Private hands, public claims, provable truth.">
+  <meta property="og:url" content="https://prooforbluff.com/">
+  <meta property="og:image" content="https://prooforbluff.com/assets/pob-banner.webp">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#0a0a14">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <div class="status-banner" role="status">
+    <strong>Now in public testing</strong> on the Midnight Preview testnet. No real money. No wagers.
+  </div>
+
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="index.html">
+        <img src="assets/pob-logo.webp" alt="" width="36" height="36">
+        <span>Proof or Bluff</span>
+      </a>
+      <a class="btn btn-primary btn-sm" href="https://prooforbluff.app">Play</a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Toggle navigation">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <nav class="site-nav" id="site-nav" aria-label="Primary">
+        <a href="index.html" aria-current="page">Home</a>
+        <a href="rules.html">Rules</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="pro.html">Pro</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="wrap">
+        <div>
+          <p class="hero-tagline">Bluff in public. Prove in private.</p>
+          <h1>A card game where the dealer provably cannot cheat.</h1>
+          <p class="lede">
+            Proof or Bluff is a two-player bluffing card game, based on the classic "Cheat", rebuilt for the Midnight Network.
+            You and a talkative computer opponent each hold a private hand, take turns playing cards face down, and make public claims about what you played — truthful or not.
+            When someone calls "Proof or Bluff!", a zero-knowledge proof settles it on-chain, revealing only whether the claim was true.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary btn-lg" href="https://prooforbluff.app">Play Proof or Bluff</a>
+            <a class="btn btn-secondary" href="rules.html">Read the rules</a>
+          </div>
+          <p class="hero-fineprint">Free to play. Requires a Midnight-compatible wallet on the Preview testnet and a small amount of test DUST for transaction fees.</p>
+        </div>
+        <div class="hero-art">
+          <img src="assets/pob-banner.webp" alt="Proof or Bluff banner art: playing cards on a dark purple table." width="1536" height="1024">
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="how-privacy-works" aria-labelledby="privacy-heading">
+      <div class="wrap">
+        <h2 id="privacy-heading">How privacy works</h2>
+        <p class="section-intro">
+          You never need to understand zero-knowledge proofs to play. But if you are curious, here is what the game actually guarantees, in plain English.
+        </p>
+        <div class="grid grid-3">
+          <article class="card">
+            <span class="num" aria-hidden="true">1</span>
+            <h3>Your cards stay private</h3>
+            <p>
+              Your hand is committed on-chain, not published. The public chain holds only commitments — cryptographic fingerprints — of your hand, your plays, and the shuffle seed.
+              Your opponent never sees your cards, and the chain itself never learns them.
+            </p>
+          </article>
+          <article class="card">
+            <span class="num" aria-hidden="true">2</span>
+            <h3>The dealer provably can't cheat</h3>
+            <p>
+              Every move — yours <em>and</em> the computer's — carries a zero-knowledge proof that the cards played were actually dealt to that player.
+              Play a card you were not dealt and the proof simply fails; the transaction can never confirm.
+              The shuffle uses commit-reveal entropy from both sides, so neither player can pick the deck.
+            </p>
+          </article>
+          <article class="card">
+            <span class="num" aria-hidden="true">3</span>
+            <h3>The chain only learns true or false</h3>
+            <p>
+              When a claim is challenged, the contract checks the hidden cards against the public claim and discloses exactly one bit: the claim was honest, or it was a bluff.
+              It does not reveal what the cards were, and it reveals nothing about the rest of either hand.
+            </p>
+          </article>
+        </div>
+        <div class="note">
+          <p>
+            <strong>An honest note about proving.</strong>
+            When you use our hosted proof server, that server processes your private cards while generating your proof.
+            Advanced players can run their own proof server for full privacy.
+            The game's fairness is enforced by the contract either way — this choice only decides who can <em>see</em>.
+            <a href="privacy.html">Read the full privacy and trust model.</a>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="loop-heading">
+      <div class="wrap">
+        <h2 id="loop-heading">A round in thirty seconds</h2>
+        <ol class="steps">
+          <li><strong>Deal.</strong> Both sides commit random entropy, the shared seed is revealed, and each hand is dealt from it inside the proof. Nobody chose the cards.</li>
+          <li><strong>Play and claim.</strong> On your turn, play one to four cards face down and declare the current required rank — "Two Kings". The cards can be anything.</li>
+          <li><strong>Accept or challenge.</strong> Your opponent either accepts (the pile grows, the rank advances) or calls "Proof or Bluff!".</li>
+          <li><strong>Resolve.</strong> A zero-knowledge proof reveals whether the claim was true. The pile is discarded and points are awarded. First to the mode's target score wins.</li>
+        </ol>
+        <p class="mt-md"><a href="rules.html">Full rules, modes, and scoring</a></p>
+      </div>
+    </section>
+
+    <section class="section section-alt sponsors" aria-labelledby="sponsors-heading">
+      <div class="wrap">
+        <h2 id="sponsors-heading">Sponsors</h2>
+        <p class="section-intro">The free table is supported by sponsor tiles. Nothing is live yet.</p>
+        <div class="grid grid-3">
+          <div class="sponsor-tile">Advertize your Blockchain service here! Coming soon!</div>
+          <div class="sponsor-tile">Advertize your Blockchain service here! Coming soon!</div>
+          <div class="sponsor-tile">Advertize your Blockchain service here! Coming soon!</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div class="cta-band">
+          <h2>Ready to call a bluff?</h2>
+          <p>Sit down with the computer opponent and feel selective privacy for yourself.</p>
+          <a class="btn btn-primary btn-lg" href="https://prooforbluff.app">Play Proof or Bluff</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div>
+        <strong>Proof or Bluff</strong> — a Midnight-native bluffing card game.
+        <small>Public testing on the Midnight Preview testnet. No real money, no wagers, no accounts. All rights reserved.</small>
+      </div>
+      <ul class="footer-links">
+        <li><a href="rules.html">Rules</a></li>
+        <li><a href="privacy.html">Privacy</a></li>
+        <li><a href="pro.html">Pro</a></li>
+        <li><a href="https://github.com/bytewizard42i/ProofOrBluff_MLH_Midnight" rel="noopener">GitHub</a></li>
+        <li><a href="https://midnight.network" rel="noopener">Midnight Network</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <script src="site.js" defer></script>
+</body>
+</html>

@@ -2477,3 +2477,253 @@ button.active {
     font-size: 0.74rem;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Midnight activity panel (realDeal/app/src/activity/MidnightActivityPanel.jsx)
+ *
+ * Shows what the app is genuinely waiting on during an on-chain action. The
+ * spinner is a CSS-only rotating ring that only spins while an operation is
+ * in flight; with prefers-reduced-motion it becomes a gently pulsing dot.
+ * Palette matches the dark purple realDeal theme.
+ * ------------------------------------------------------------------------- */
+.pob-activity-panel {
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.8rem;
+  color: #e6e1ff;
+  background: #1a1530;
+  border: 1px solid #3b2e6a;
+  border-left: 3px solid #3b2e6a;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.pob-activity-panel--active {
+  border-left-color: #bcb1ff;
+}
+
+.pob-activity-panel h3,
+.pob-activity-panel h4,
+.pob-activity-panel p {
+  margin: 0;
+}
+
+.pob-activity-panel h3 {
+  margin-bottom: 0.6rem;
+  color: #bcb1ff;
+  font-size: 1rem;
+}
+
+.pob-activity-headline {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.pob-activity-headline > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pob-activity-operation {
+  color: #bcb1ff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pob-activity-status {
+  color: #e6e1ff;
+}
+
+.pob-activity-elapsed {
+  flex: none;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(188, 177, 255, 0.12);
+  color: #bcb1ff;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+/* Spinner: an idle grey ring; while active, the top edge is tinted and spins. */
+.pob-activity-spinner {
+  flex: none;
+  display: inline-block;
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 2px solid #3b2e6a;
+  border-radius: 50%;
+}
+
+.pob-activity-spinner--active {
+  border-top-color: #74e8a3;
+  animation: pob-activity-spin 0.9s linear infinite;
+}
+
+@keyframes pob-activity-spin {
+  to { transform: rotate(360deg); }
+}
+
+.pob-activity-slow {
+  margin-top: 0.5rem !important;
+  color: #ffb86b;
+}
+
+.pob-activity-health {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: #a79fd0;
+  font-size: 0.74rem;
+}
+
+.pob-activity-details {
+  margin-top: 0.55rem;
+  color: #a79fd0;
+  font-size: 0.74rem;
+}
+
+.pob-activity-details summary {
+  cursor: pointer;
+  color: #bcb1ff;
+}
+
+.pob-activity-log {
+  margin-top: 0.45rem;
+}
+
+.pob-activity-log h4 {
+  color: #e6e1ff;
+  font-size: 0.76rem;
+}
+
+.pob-activity-log ol {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.pob-activity-log__entry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.pob-activity-log__entry time {
+  font-variant-numeric: tabular-nums;
+}
+
+.pob-activity-log__stage {
+  color: #74e8a3;
+  font-weight: 700;
+}
+
+.pob-activity-log code,
+.pob-activity-log h4 code {
+  color: #bcb1ff;
+  font-size: 0.72rem;
+}
+
+.pob-activity-not-cancelled {
+  margin-top: 0.6rem !important;
+  color: #ffb86b;
+  font-size: 0.76rem;
+}
+
+/* Modal overlay for the blocking stages (signature, submit, confirm). */
+.pob-activity-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(10, 8, 20, 0.72);
+}
+
+.pob-activity-panel--modal {
+  width: min(520px, 100%);
+  margin: 0;
+  padding: 1rem 1.1rem;
+  border: 1px solid #bcb1ff;
+  border-left-width: 1px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+
+.pob-activity-minimize {
+  margin-top: 0.75rem;
+  padding: 0.4rem 0.9rem;
+  background: transparent;
+  border: 1px solid #bcb1ff;
+  border-radius: 6px;
+  color: #bcb1ff;
+  cursor: pointer;
+  font: inherit;
+}
+
+.pob-activity-minimize:hover,
+.pob-activity-minimize:focus-visible {
+  background: rgba(188, 177, 255, 0.12);
+}
+
+/* Reduced motion: no rotating ring. The active state becomes a slow pulse of
+   the whole dot so "still working" remains visible without spinning. */
+@media (prefers-reduced-motion: reduce) {
+  .pob-activity-spinner--active {
+    border-color: #74e8a3;
+    background: #74e8a3;
+    animation: pob-activity-pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes pob-activity-pulse {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 1; }
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Network badge + header meta row (Rules/Privacy links, diagnostics).
+   The badge exists so a Preview (or later Mainnet) build can never be
+   mistaken for a local test at a glance. Colours follow the panel palette.
+   --------------------------------------------------------------------- */
+.network-badge {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 0.35rem;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border: 1px solid #3b2e6a;
+  color: #e7e3ff;
+  background: #1a1530;
+}
+.network-badge--local   { color: #bcb1ff; }
+.network-badge--testnet { color: #0a0a14; background: #ffb86b; border-color: #ffb86b; }
+.network-badge--mainnet { color: #0a0a14; background: #74e8a3; border-color: #74e8a3; }
+
+.testwired-panel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  flex-basis: 100%;
+}
+
+.site-links {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+}
+.site-links a { color: #bcb1ff; text-decoration: none; }
+.site-links a:hover, .site-links a:focus-visible { text-decoration: underline; }
+.site-links__dot { color: #3b2e6a; }
+.site-links--compact { font-size: 0.75rem; }

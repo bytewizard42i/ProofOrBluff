@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rules — Proof or Bluff</title>
+  <meta name="description" content="How to play Proof or Bluff: setup, turns, claims, challenges, scoring, and the three launch modes (Casual, Standard, Casino) of the provably fair edition.">
+  <link rel="canonical" href="https://prooforbluff.com/rules.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Proof or Bluff">
+  <meta property="og:title" content="Rules — Proof or Bluff">
+  <meta property="og:description" content="Setup, turns, claims, challenges, scoring, and the three launch modes of the provably fair edition.">
+  <meta property="og:url" content="https://prooforbluff.com/rules.html">
+  <meta property="og:image" content="https://prooforbluff.com/assets/pob-banner.webp">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#0a0a14">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <div class="status-banner" role="status">
+    <strong>Now in public testing</strong> on the Midnight Preview testnet. No real money. No wagers.
+  </div>
+
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="index.html">
+        <img src="assets/pob-logo.webp" alt="" width="36" height="36">
+        <span>Proof or Bluff</span>
+      </a>
+      <a class="btn btn-primary btn-sm" href="https://prooforbluff.app">Play</a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Toggle navigation">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <nav class="site-nav" id="site-nav" aria-label="Primary">
+        <a href="index.html">Home</a>
+        <a href="rules.html" aria-current="page">Rules</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="pro.html">Pro</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="wrap">
+      <header class="page-header">
+        <h1>How to play</h1>
+        <p>
+          Proof or Bluff is a two-player bluffing game based on the classic "Cheat" / "Bullshit".
+          Your hand is private, your claims are public, and only a disputed claim gets checked — by a zero-knowledge proof, not by flipping the cards over.
+        </p>
+        <ul class="toc" aria-label="On this page">
+          <li><a href="#modes">Modes</a></li>
+          <li><a href="#setup">Setup</a></li>
+          <li><a href="#turn">Your turn</a></li>
+          <li><a href="#challenge">Challenges</a></li>
+          <li><a href="#scoring">Scoring</a></li>
+          <li><a href="#example">Example round</a></li>
+          <li><a href="#edition">Launch edition notes</a></li>
+        </ul>
+      </header>
+
+      <div class="prose">
+        <h2 id="modes">Game modes</h2>
+        <p>The launch edition ships three <strong>score-based</strong> modes. They differ in hand size and in how many points it takes to win.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th scope="col">Mode</th><th scope="col">Hand size</th><th scope="col">Cards per play</th><th scope="col">Win condition</th><th scope="col">Feel</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Casual</strong></td><td>5 cards</td><td>1 to 4</td><td>First to 10 points</td><td>Quick, forgiving, good for learning</td></tr>
+              <tr><td><strong>Standard</strong></td><td>7 cards</td><td>1 to 4</td><td>First to 15 points</td><td>The default table</td></tr>
+              <tr><td><strong>Casino</strong></td><td>7 cards</td><td>1 to 4</td><td>First to 20 points</td><td>Longer match, more swings</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="setup">Setup</h2>
+        <ol>
+          <li>Both players commit a secret random value (entropy) and a secret <em>hand salt</em>. Commitments are published; the values are not.</li>
+          <li>Both entropies are revealed and combined into a shared seed. Because each side committed before seeing the other's value, neither can bias the seed. Only a commitment to the seed is published.</li>
+          <li>Each player's hand is dealt <em>inside the zero-knowledge proof</em> from their own salt plus the shared seed. Your opponent never learns your salt, so they cannot reconstruct your hand.</li>
+          <li>A starting required rank is set. Player one goes first. The pile starts empty and both scores start at zero.</li>
+        </ol>
+
+        <h3>Card ranks</h3>
+        <p>Standard ranks, low to high: <code>2, 3, 4, 5, 6, 7, 8, 9, 10, Jack, Queen, King, Ace</code>. Suits are decorative and do not affect play. Only rank matters.</p>
+
+        <h2 id="turn">Your turn</h2>
+        <h3>Play cards and make a claim</h3>
+        <ul>
+          <li>Choose <strong>1 to 4 cards</strong> from your hand and play them face down onto the pile.</li>
+          <li>Declare a claim of the form <em>count + rank</em>, for example "Two Kings".</li>
+          <li>The claimed rank <strong>must</strong> be the current required rank, and the count must match the number of cards you placed.</li>
+          <li>The cards themselves can be anything. Whether they really are Kings is your secret. Bluffing is legal and expected.</li>
+        </ul>
+        <p>Your play is accompanied by a proof that every card you placed was genuinely in your dealt hand. That proof says nothing about which cards they are.</p>
+
+        <h3>Respond to your opponent's claim</h3>
+        <p>When your opponent has just played, you must choose one of two responses:</p>
+        <ul>
+          <li><strong>Accept</strong> — the cards stay face down on the pile, the required rank advances by one, and it becomes your turn to play.</li>
+          <li><strong>Challenge</strong> ("Proof or Bluff!") — demand proof. See below.</li>
+        </ul>
+
+        <h3>Rank progression</h3>
+        <p>Every accepted play and every resolved challenge advances the required rank by one:</p>
+        <p><code>2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → Jack → Queen → King → Ace → 2 → …</code></p>
+        <p>With a small hand and thirteen ranks in rotation, you will be forced to bluff on many turns. That pressure is the engine of the game.</p>
+
+        <h2 id="challenge">Challenge resolution</h2>
+        <p>When a challenge is called, the player who made the claim must respond with a zero-knowledge proof. The contract compares the hidden cards with the public claim and discloses exactly one fact:</p>
+        <ul>
+          <li><strong>Claim was true</strong> — every played card matched the declared rank. The <em>challenger</em> loses the challenge.</li>
+          <li><strong>Claim was false</strong> — at least one card did not match. The <em>bluffer</em> loses the challenge.</li>
+        </ul>
+        <p>Then, regardless of outcome:</p>
+        <ol>
+          <li>The entire pile is <strong>discarded</strong>. Nobody picks it up; those cards are out of play.</li>
+          <li>Points are awarded (see <a href="#scoring">Scoring</a>).</li>
+          <li>The required rank advances by one and the challenger takes the next turn.</li>
+        </ol>
+        <div class="note note-accent">
+          <p>
+            <strong>Why nobody picks up the pile.</strong> In the classic game the loser scoops up the pile. In the provably fair edition the pile's contents are private, so handing them to a player cannot be proven. Discarding the pile and settling with points keeps every card a player holds provably legitimate.
+          </p>
+        </div>
+        <p>A challenged player who never produces a proof is treated as caught bluffing once the timeout window passes. A player who abandons an idle turn for the timeout period forfeits the match.</p>
+
+        <h3>Running out of cards</h3>
+        <p>When either hand empties, the round ends and both players receive a fresh hand dealt from the same committed seed material — as fair as the first deal. Scores carry over. The match continues until someone reaches the target score.</p>
+
+        <h2 id="scoring">Scoring</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th scope="col">Event</th><th scope="col">Points</th></tr></thead>
+            <tbody>
+              <tr><td>Successful challenge — you catch a bluff</td><td class="yes">+3 to the challenger</td></tr>
+              <tr><td>Failed challenge — you challenge a truthful claim</td><td class="partial">−1 to the challenger (scores never go below 0)</td></tr>
+              <tr><td>Challenged player never proves (timeout)</td><td class="yes">+3 to the challenger</td></tr>
+              <tr><td>Accepted play, truthful or bluff</td><td class="no">0</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The first player to reach the mode's target score (10, 15, or 20) wins the match. Accepted plays score nothing directly — but getting a bluff accepted is still how you empty your hand and keep the pressure on your opponent.</p>
+
+        <h2 id="example">Example round (Standard mode)</h2>
+        <ol class="steps">
+          <li><strong>Deal.</strong> You and the computer each receive 7 cards. The required rank starts at <em>7</em>. Score 0 to 0.</li>
+          <li><strong>You play.</strong> You hold one 7, so you place two cards face down and claim "Two Sevens". One of them is actually a Jack. Your proof confirms both cards were in your dealt hand — and nothing else.</li>
+          <li><strong>The computer accepts.</strong> The pile holds 2 cards. The rank advances to <em>8</em>. It is the computer's turn.</li>
+          <li><strong>The computer plays.</strong> It places three cards and claims "Three Eights". It smiles. You do not trust the smile.</li>
+          <li><strong>You challenge.</strong> "Proof or Bluff!" The computer must submit its proof. The chain reports: <strong>false</strong> — the claim was a bluff.</li>
+          <li><strong>Resolution.</strong> The 5-card pile is discarded. You gain +3 (3 to 0). The rank advances to <em>9</em> and, as the challenger, you take the next turn. Nobody learns what the three cards were.</li>
+        </ol>
+
+        <h2 id="edition">Launch edition notes</h2>
+        <ul>
+          <li>Only the three score-based modes are enabled. Empty-hand modes (Strategic, Classic) are designed but deferred.</li>
+          <li>There is no "pass" action in the launch edition: on your turn you play, and when a claim is on the table you accept or challenge.</li>
+          <li>There are no wagers, stakes, or payouts. Players pay only the network's normal transaction fee (test DUST on the Preview testnet).</li>
+          <li>The original design document, including roadmap mechanics not yet built, lives in the project repository: <a href="https://github.com/bytewizard42i/ProofOrBluff_MLH_Midnight/blob/main/docs/RULES.md" rel="noopener">docs/RULES.md</a>.</li>
+        </ul>
+
+        <div class="cta-band mt-xl">
+          <h2>Got it? Go call a bluff.</h2>
+          <a class="btn btn-primary btn-lg" href="https://prooforbluff.app">Play Proof or Bluff</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div>
+        <strong>Proof or Bluff</strong> — a Midnight-native bluffing card game.
+        <small>Public testing on the Midnight Preview testnet. No real money, no wagers, no accounts. All rights reserved.</small>
+      </div>
+      <ul class="footer-links">
+        <li><a href="rules.html">Rules</a></li>
+        <li><a href="privacy.html">Privacy</a></li>
+        <li><a href="pro.html">Pro</a></li>
+        <li><a href="https://github.com/bytewizard42i/ProofOrBluff_MLH_Midnight" rel="noopener">GitHub</a></li>
+        <li><a href="https://midnight.network" rel="noopener">Midnight Network</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <script src="site.js" defer></script>
+</body>
+</html>

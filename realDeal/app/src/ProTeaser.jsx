@@ -1,5 +1,11 @@
 import React, { useRef } from 'react';
 
+import { SITE_URLS } from './siteLinks.js';
+
+// The game lives on prooforbluff.app; explanations live on prooforbluff.com.
+// The Pro dialog stays short and points to the .com page for the long form.
+const PRO_INFO_URL = SITE_URLS.pro;
+
 export default function ProTeaser() {
   const triggerRef = useRef(null);
   const dialogRef = useRef(null);
@@ -37,6 +43,12 @@ export default function ProTeaser() {
             <li><strong>Optional play for money</strong> only after fairness, safety, and legal checks are ready.</li>
           </ul>
           <p className="pro-teaser__notice">These are ideas, not live features. No payment or subscription is available yet.</p>
+          <p className="pro-teaser__more">
+            Want the full picture?{' '}
+            <a href={PRO_INFO_URL} target="_blank" rel="noopener noreferrer">
+              Read more at prooforbluff.com
+            </a>
+          </p>
           <button type="button" className="primary" onClick={() => dialogRef.current?.close()}>
             Back to the game
           </button>

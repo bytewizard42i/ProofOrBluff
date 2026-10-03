@@ -165,7 +165,7 @@ export async function buildWalletFromSeed({
   // Skip if there's already DUST or no NIGHT to register.
   if (dustBalance === 0n && unshieldedNight > 0n) {
     log.step('Registering NIGHT UTXOs for DUST generation…');
-    await registerNightForDust(ctx);
+    await registerNightForDust(ctx, networkId);
   }
 
   return {
@@ -184,7 +184,7 @@ export async function buildWalletFromSeed({
  * separate on-chain tx that costs no fees (it's the bootstrap path) and
  * unblocks the wallet's ability to pay future tx fees in DUST.
  */
-async function registerNightForDust(ctx) {
+async function registerNightForDust(ctx, networkId) {
   const state = await Rx.firstValueFrom(
     ctx.wallet.state().pipe(Rx.filter((s) => s.isSynced))
   );
@@ -204,12 +204,27 @@ async function registerNightForDust(ctx) {
   const finalized = await ctx.wallet.finalizeRecipe(recipe);
   const txId = await ctx.wallet.submitTransaction(finalized);
   log.info(`  DUST-registration tx: ${txId}`);
+  // DUST generation is linear from zero once the registration lands. On a
+  // local chain that is seconds; on Preview the first registration run
+  // (2026-10-02) was INCLUDED in block 1128568 yet the wallet still showed
+  // DUST 0 for well over 2 minutes, and the old fixed 120 s wait aborted
+  // the whole e2e even though nothing was wrong. Public networks therefore
+  // get a long, env-overridable wait and a periodic heartbeat so a human
+  // watching the terminal can tell "waiting" from "stuck".
+  const dustWaitMs = networkId === 'undeployed'
+    ? 120_000
+    : Number(process.env.POB_DUST_WAIT_MS || 30 * 60_000);
+  log.info(`  Waiting for DUST to accrue… (up to ${Math.round(dustWaitMs / 60_000)} min; tx id above is already submitted — do NOT re-register if this times out)`);
   await Rx.firstValueFrom(
     ctx.wallet.state().pipe(
-      Rx.throttleTime(3_000),
+      Rx.throttleTime(15_000),
+      Rx.tap((s) => {
+        const dust = s.dust?.balance(new Date()) ?? 0n;
+        if (dust === 0n) log.info('    DUST still 0 — generation pending…');
+      }),
       Rx.filter((s) => (s.dust?.balance(new Date()) ?? 0n) > 0n),
       Rx.take(1),
-      Rx.timeout({ each: 120_000 }),
+      Rx.timeout({ each: dustWaitMs }),
     )
   );
   log.ok('  DUST registered and accruing.');

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy &amp; Trust Model — Proof or Bluff</title>
+  <meta name="description" content="Exactly what is public, what is private, and who can see what when you play Proof or Bluff on the Midnight Network — including the hosted proof server trade-off.">
+  <link rel="canonical" href="https://prooforbluff.com/privacy.html">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Proof or Bluff">
+  <meta property="og:title" content="Privacy &amp; Trust Model — Proof or Bluff">
+  <meta property="og:description" content="What is public, what is private, and who can see what — stated precisely.">
+  <meta property="og:url" content="https://prooforbluff.com/privacy.html">
+  <meta property="og:image" content="https://prooforbluff.com/assets/pob-banner.webp">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#0a0a14">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <div class="status-banner" role="status">
+    <strong>Now in public testing</strong> on the Midnight Preview testnet. No real money. No wagers.
+  </div>
+
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="index.html">
+        <img src="assets/pob-logo.webp" alt="" width="36" height="36">
+        <span>Proof or Bluff</span>
+      </a>
+      <a class="btn btn-primary btn-sm" href="https://prooforbluff.app">Play</a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Toggle navigation">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <nav class="site-nav" id="site-nav" aria-label="Primary">
+        <a href="index.html">Home</a>
+        <a href="rules.html">Rules</a>
+        <a href="privacy.html" aria-current="page">Privacy</a>
+        <a href="pro.html">Pro</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="wrap">
+      <header class="page-header">
+        <h1>Privacy and trust model</h1>
+        <p>
+          Proof or Bluff is built on selective disclosure: the game publishes what fairness requires and nothing more.
+          This page states precisely what is public, what is private, who can see what, and what we do not do.
+          We would rather be exact than impressive.
+        </p>
+        <ul class="toc" aria-label="On this page">
+          <li><a href="#public">What is public</a></li>
+          <li><a href="#private">What is private</a></li>
+          <li><a href="#who">Who can see what</a></li>
+          <li><a href="#proof-server">The proof server choice</a></li>
+          <li><a href="#guarantees">What the contract guarantees</a></li>
+          <li><a href="#not">What we do not do</a></li>
+        </ul>
+      </header>
+
+      <div class="prose">
+        <h2 id="public">What is public</h2>
+        <p>The following is written to the Midnight public ledger and can be read by anyone:</p>
+        <ul>
+          <li><strong>Claims</strong> — every declaration ("Two Kings"), including its count and rank.</li>
+          <li><strong>Scores, mode, phase, and turn order</strong> — the full public match state.</li>
+          <li><strong>Challenge outcomes</strong> — a single bit per challenge: the claim was true, or it was false.</li>
+          <li><strong>Commitments</strong> — cryptographic fingerprints of each player's entropy, hand salt, current hand, each play, and the shared seed. A commitment does not reveal the value behind it.</li>
+          <li><strong>Hand sizes</strong> — how many cards each player holds, not which ones.</li>
+          <li><strong>Transaction ids and wallet public keys</strong> of the two players, as with any on-chain activity.</li>
+          <li><strong>Timestamps</strong> supplied with each move, used for timeout handling.</li>
+        </ul>
+
+        <h2 id="private">What is private</h2>
+        <p>The following never appears on-chain. It enters the zero-knowledge proof only as a private witness on the prover's side:</p>
+        <ul>
+          <li><strong>Your cards</strong> — the actual ranks in your hand and in each play you make.</li>
+          <li><strong>Your hand salt</strong> — the secret that, together with the shared seed, determines your deal.</li>
+          <li><strong>The shared seed</strong> — only its commitment is published; both players hold the seed itself.</li>
+        </ul>
+        <p>When a bluff is caught, the chain learns that the claim was false. It does not learn what the cards actually were.</p>
+
+        <h2 id="who">Who can see what</h2>
+        <p>This is the table that matters. "Hosted proof server" means the proof server we operate for convenience; see the <a href="#proof-server">next section</a> for how to avoid it.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Data</th>
+                <th scope="col">You</th>
+                <th scope="col">Opponent bot</th>
+                <th scope="col">Our hosted proof server</th>
+                <th scope="col">Public chain</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Your cards</th><td class="yes">Yes</td><td class="no">No</td><td class="partial">Yes, during proving only (if you use it)</td><td class="no">No</td></tr>
+              <tr><th scope="row">Your hand salt</th><td class="yes">Yes</td><td class="no">No</td><td class="partial">Yes, during proving only (if you use it)</td><td class="no">No, commitment only</td></tr>
+              <tr><th scope="row">Shared seed</th><td class="yes">Yes</td><td class="yes">Yes</td><td class="partial">Yes, during proving only (if you use it)</td><td class="no">No, commitment only</td></tr>
+              <tr><th scope="row">The bot's cards</th><td class="no">No</td><td class="yes">Yes</td><td class="partial">Yes, when proving the bot's moves</td><td class="no">No</td></tr>
+              <tr><th scope="row">Your claims</th><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+              <tr><th scope="row">Challenge result (true / false)</th><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+              <tr><th scope="row">Scores and match state</th><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+              <tr><th scope="row">Your wallet public key</th><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="mt-sm">
+          Two things follow from this table. First, the opponent bot — and whoever operates it — provably cannot see your cards: your hand is derived from a salt the bot never learns.
+          Second, if you use our hosted proof server, <strong>we can see your cards during proving</strong>. We never store them, but you are trusting that statement rather than a proof.
+        </p>
+
+        <h2 id="proof-server">The proof server choice</h2>
+        <p>Generating a zero-knowledge proof requires the private inputs. Whoever runs the proof server sees them while the proof is being built. This is the one privacy decision a player actually makes, and the game asks you directly:</p>
+        <div class="note note-accent">
+          <p><strong>Who generates your proofs?</strong><br>
+          Your cards never go on-chain, but the proof server sees them while proving. The game's fairness is enforced by the contract either way.</p>
+          <ul>
+            <li><strong>Hosted (easy)</strong> — our proof server. No setup. We can see your cards during proving; we never store them.</li>
+            <li><strong>My own (private)</strong> — a proof server you run on your own machine. Nobody else ever sees your cards.</li>
+          </ul>
+        </div>
+        <p>
+          Running your own proof server means running the standard Midnight proof server locally (typically in Docker) and pointing the game at it. Instructions live in the
+          <a href="https://github.com/bytewizard42i/ProofOrBluff_MLH_Midnight" rel="noopener">project repository</a>.
+          With a local proof server, your cards, salt, and seed never leave your computer.
+        </p>
+        <p>Either way the chain rejects cheating. The proof server choice decides only who can <em>see</em>, not who can <em>cheat</em>.</p>
+
+        <h2 id="guarantees">What the contract guarantees</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th scope="col">Guarantee</th><th scope="col">Mechanism</th></tr></thead>
+            <tbody>
+              <tr><td>Nobody can bias the deal</td><td>Commit-reveal of two entropies produces the shared seed; each side commits before seeing the other's value.</td></tr>
+              <tr><td>Nobody, including the dealer, can see your hand</td><td>Your hand is dealt in-circuit from a secret hand salt committed before the seed existed. The salt cannot be ground for a good hand and the opponent never learns it.</td></tr>
+              <tr><td>You cannot play a card you were not dealt</td><td>Each play proves the cards open the public play commitment and belong to the committed hand, then stores the remainder commitment.</td></tr>
+              <tr><td>Bluffing stays legal</td><td>The claim is public, the cards are private; challenge resolution discloses one bit.</td></tr>
+              <tr><td>Reshuffles are as fair as the first deal</td><td>When a hand empties, the round counter increments and a fresh hand is derived from the same committed material.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="mt-sm">
+          Known limitation: the in-circuit rank derivation uses a three-byte rejection fallback to avoid modulo bias; the residual bias is roughly 0.004% and is documented in the contract source.
+        </p>
+
+        <h2 id="not">What we do not do (v1)</h2>
+        <ul>
+          <li><strong>No wagers.</strong> The launch contract holds no funds and never receives a coin. Players pay only normal network transaction fees.</li>
+          <li><strong>No payments.</strong> There is nothing to buy. See <a href="pro.html">Pro</a> for what might come later.</li>
+          <li><strong>No accounts.</strong> There is no sign-up, password, or profile. Your wallet is your identity on-chain, as with any Midnight DApp.</li>
+          <li><strong>No analytics.</strong> This website and the v1 game include no analytics, tracking pixels, or third-party scripts.</li>
+          <li><strong>No storage of private witnesses.</strong> Our hosted proof server processes your cards in memory to build a proof and does not retain them.</li>
+        </ul>
+        <p>
+          Things we cannot promise: that a hosting provider or network intermediary keeps no logs of ordinary connection metadata (IP address, timing), or that the public chain will ever forget what is public. If you need the strongest guarantee available, run your own proof server.
+        </p>
+
+        <div class="cta-band mt-xl">
+          <h2>Privacy you can feel at the table.</h2>
+          <a class="btn btn-primary btn-lg" href="https://prooforbluff.app">Play Proof or Bluff</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div>
+        <strong>Proof or Bluff</strong> — a Midnight-native bluffing card game.
+        <small>Public testing on the Midnight Preview testnet. No real money, no wagers, no accounts. All rights reserved.</small>
+      </div>
+      <ul class="footer-links">
+        <li><a href="rules.html">Rules</a></li>
+        <li><a href="privacy.html">Privacy</a></li>
+        <li><a href="pro.html">Pro</a></li>
+        <li><a href="https://github.com/bytewizard42i/ProofOrBluff_MLH_Midnight" rel="noopener">GitHub</a></li>
+        <li><a href="https://midnight.network" rel="noopener">Midnight Network</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <script src="site.js" defer></script>
+</body>
+</html>
