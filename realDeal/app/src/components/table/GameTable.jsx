@@ -157,6 +157,12 @@ export default function GameTable({
   const pileSize = state.pileCount ?? (state.pile.length + (state.lastPlay ? state.lastPlay.cards.length : 0));
   const deckLeft = state.deck?.length ?? 0;
 
+  const claimOwner = state.lastPlay ? state.lastPlay.player : state.turn;
+  const ownerName = claimOwner === 'ai' ? 'Ai' : (settings.handle || 'You');
+  const claimLabel = state.lastPlay
+    ? `${ownerName}: I have ${state.lastPlay.claimedCount} of:`
+    : `${ownerName}, how many do you have of:`;
+
   return (
     <div className="table">
       <div className="table-main">
@@ -182,16 +188,13 @@ export default function GameTable({
           key={`hand-${displayedRank ?? state.currentRank}-${state.turn}-${state.lastPlay?.player ?? 'none'}`}
         >
           <span className="required-label">
-            {/* The label addresses whoever owns the current CLAIM.
-              * - If lastPlay exists, the claim belongs to lastPlay.player.
-              * - Otherwise the next claim will belong to state.turn.
+            {/* One sentence for whoever owns the moment, completed by the
+              * big rank below it:
+              *   no claim yet  -> "<who>, how many do you have of:"  <rank>
+              *   claim pending -> "<who>: I have <n> of:"           <rank>
               * (state.turn flips after a play to mean "must respond",
-              *  so we can't just key off it for the label.) */}
-            {(state.lastPlay ? state.lastPlay.player : state.turn) === 'ai'
-              ? 'Ai, how many do you have of:'
-              : settings.handle
-                ? `${settings.handle}, how many:`
-                : 'How many'}
+              *  so the owner comes from lastPlay when one exists.) */}
+            {claimLabel}
           </span>
           <span className="rank-display">
             <span className="rank-glow" aria-hidden="true" />
@@ -205,7 +208,7 @@ export default function GameTable({
           // hand size. Capped by engine's MAX_CLAIM, so always ≤ 4.
           <div className="ai-thinking">
             <div className="ai-thinking-text">
-              I have {state.lastPlay.claimedCount} card{state.lastPlay.claimedCount === 1 ? '' : 's'}
+              {state.lastPlay.claimedCount} card{state.lastPlay.claimedCount === 1 ? '' : 's'} face down
             </div>
             <div
               className="ai-thinking-cards"

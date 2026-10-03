@@ -68,7 +68,15 @@ describe('GameTable on Midnight state', () => {
     const markup = render({ ...previewMatch, phase: PHASE.AWAITING_RESPONSE, hasPendingPlay: true, lastPlayerIdx: 1, lastClaimRank: 3, lastClaimCount: 2 });
     expect(markup).toContain('Accept');
     expect(markup).toContain('Prove it!');
-    expect(markup).toContain('I have 2 cards');
+    expect(markup).toContain('Ai: I have 2 of:');
+    expect(markup).toContain('2 cards face down');
+  });
+
+  it('phrases the prompt as one sentence for whoever owns the moment', () => {
+    expect(render(previewMatch)).toContain('John, how many do you have of:');
+    expect(render({ ...previewMatch, activePlayerIdx: 1 })).toContain('Ai, how many do you have of:');
+    const mine = render({ ...previewMatch, phase: PHASE.AWAITING_RESPONSE, hasPendingPlay: true, lastPlayerIdx: 0, lastClaimRank: 3, lastClaimCount: 1 });
+    expect(mine).toContain('John: I have 1 of:');
   });
 
   it('locks the hand while a proof is in flight', () => {
