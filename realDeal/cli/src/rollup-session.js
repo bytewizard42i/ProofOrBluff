@@ -223,13 +223,15 @@ function applyPublicMove(state, { kind, rank, count, playCommit, truthful, moveI
     : challengerIsHuman ? (truthful ? minusOneFloor(state.score0) : state.score0 + 3n) : state.score0;
   const score1 = !isChallenge ? state.score1
     : challengerIsHuman ? state.score1 : (truthful ? minusOneFloor(state.score1) : state.score1 + 3n);
-  const ended = score0 >= threshold || score1 >= threshold;
+  const scored = state.ended || score0 >= threshold || score1 >= threshold;
 
   // Rollover: a resolved claim that leaves a hand empty re-deals both hands.
   const resolved = isAccept || isChallenge;
-  const rollover = resolved && (handSize0 === 0n || handSize1 === 0n) && !ended;
+  const wantsRollover = resolved && (handSize0 === 0n || handSize1 === 0n) && !scored;
+  const outOfRounds = wantsRollover && state.round >= BigInt(MAX_ROUNDS);
+  const ended = scored || outOfRounds;
+  const rollover = wantsRollover && !outOfRounds;
   const nextRound = rollover ? state.round + 1n : state.round;
-  if (rollover && nextRound > BigInt(MAX_ROUNDS)) throw new Error('round limit exceeded');
 
   // A PLAY always passes the turn to the responder. Who plays after the
   // response is the circuit's call — see probeTurnRule().
@@ -353,7 +355,7 @@ export function createRollupSession({
 
   function winnerSeatNumber() {
     if (!publicState?.ended) return 0n;
-    return publicState.score0 >= threshold ? 1n : 2n;
+    return publicState.score0 >= threshold ? 1n : publicState.score1 >= threshold ? 2n : 0n;
   }
 
   /** Append one move: advance the public machine + chain, handle rollover and game end. */

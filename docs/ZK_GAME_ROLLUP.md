@@ -6,12 +6,14 @@
 > verified result. The chain never sees a card. It only ever sees that the game
 > was fair.
 
-Status: **design, approved direction (Oct 3 2026).** Not implemented. This
-document is the specification the "Season 1" mainnet contract will be built
-against. The per-move Preview contract (`proof-or-bluff-mainnet.compact`) is
-the predecessor; its fairness model (committed entropy, private hand salt,
-in-circuit deal, proven moves) carries over unchanged — it just runs once at
-the end instead of once per move.
+Status: **prototype implemented; not deployment-ready (Oct 3 2026).**
+Compact source, a referee, an in-memory session, chain bindings and receipt
+interfaces exist. Simulator execution is not an actual proof or deployment.
+Authenticated transcript approval and independent correctness regressions
+remain launch gates; proving-key generation and real proving are being measured.
+This document describes the Season 1 target, not an already-shipped protocol.
+The per-move Preview contract (`proof-or-bluff-mainnet.compact`) is its
+predecessor, not the Mainnet launch target.
 
 ---
 
@@ -283,29 +285,65 @@ branches `deal/resample-cap4` — safe but statistically clumpy — and
 
 ## 6a. Circuit-cost rules for `closeGame` (from Midnight Expert's cost model)
 
-These are **design constraints**, decided before the circuit is written:
+Current implementation and measured constraints (Compact 0.31.1, ZKIR v2):
 
-1. **The transcript chain is transient.** `persistentHash` is SHA-256 and
-   costs 10–50× the circuit-native `transientHash`. The per-move Preview
-   `playCards` makes 6 SHA-256 calls and its prover key is 76 MB; 64 moves
-   of that would be unprovable. Inside `closeGame`, every snapshot link and
-   every hand commitment uses `transientHash` / `transientCommit`. Only the
-   two values that touch the ledger — the opening snapshot and the final
-   state — are persistent, bridged with `upgradeFromTransient` /
-   `degradeToTransient` at the boundary. Same binding, ~30× smaller.
-2. **One SHA-256 per round, not per move.** The deal digest stays
-   `persistentHash` (it is committed at open), so SHA cost is
-   `MAX_ROUNDS`, not `MAX_MOVES`.
-3. **Measure before fixing `MAX_MOVES`.** Benchmarks: 2^16 rows ≈ 2 s,
-   2^18 ≈ 7 s, linear after. Post-game proving may take 30–60 s, so the
-   budget is ~2^21 rows — *only* with rule 1. Build a probe circuit for one
-   move transition, read its ZKIR instruction count, and size `MAX_MOVES`
-   from the measurement (the deal was validated the same way).
-4. **Use `fold`/`map` over the move vector**, not hand-unrolled chains, and
-   keep per-step `const` dependency depth shallow (Quirk 5).
-5. **If one circuit still cannot fit:** split into `closeMoves` and
-   `closeShuffles` (John's two-proof fallback). Same snapshots, two
-   transactions. Decide from measurements, not in advance.
+1. **Keep persistent commitments at the opening boundary.** The four
+   entropy/salt commitments use `persistentHash`. The v3 rollup's seed,
+   deal digests and transcript links use transient hashes; `closeGame`
+   contains four persistent and 141 transient hash operations. Its seed
+   and deal outputs therefore differ from the per-move predecessor's
+   SHA-based deal. Clients must use the rollup bindings. The all-transient
+   opening-commitment experiment is not adopted: reducing hash count alone
+   did not solve the cost problem. The stored transient transcript root
+   still needs an explicit version/persistence policy before launch.
+2. **Byte conversions can dominate hashing.** `boundedDraw` computes
+   `floor(u*m/65536)` by reading byte 2 of `u*m`. With `u <= 65535` and
+   literal ranges at most 52, the product is at most 3,407,820 and fits
+   in `Bytes<3>`. Expanding it into `Bytes<32>` wasted repeated full-field
+   decompositions. The change preserves the algorithm, move limit, round
+   limit and commitments. It is not permission to truncate hash digests.
+3. **Measure rows, not just instruction counts.** Use the installed
+   compiler's `zkir mock-compile <circuit.zkir>` before key generation.
+   This models synthesis and reports `k` and rows; it neither generates
+   keys nor proves a game. It can be slow for large circuits. Instruction
+   counts, generic 2025 benchmark timings and current CPU activity cannot
+   establish proving latency or memory fit on the production VPS.
+4. **Avoid repeated or deeply dependent computation.** Loops, `map` and
+   `fold` are unrolled; a conditional selection does not make its two
+   computed alternatives free. Keep dependency depth shallow and measure
+   actual emitted constraints when sharing computation.
+5. **Preserve one closing proof as the target.** Do not reduce rounds or
+   change commitments merely to make a build finish. John's two-proof
+   fallback remains a design option if measured costs require it, but
+   splitting needs secure binding of both proofs to the same game.
+
+Measured evidence from the Oct 3 investigation:
+
+| Circuit / experiment | k | Rows | Evidence scope |
+|---|---:|---:|---|
+| Original 64-move shape probe | 19 | 293,455 | Placeholder rules; not the game contract |
+| 64 moves with unverified witness-supplied deals | 19 | 306,541 | Cost isolation only; insecure, never deploy |
+| Eight moves with all 12 v3 deals | 21 | 1,854,749 | Confirms deal work dominates |
+| All-transient opening experiment, wide product bytes | 21 | 2,071,146 | Experimental only; not adopted |
+| One bounded draw, 32-byte product conversion | 14 | 11,284 | Original arithmetic probe |
+| Same bounded draw, three-byte product conversion | 10 | 839 | Equivalent arithmetic probe |
+| Full v3 closeGame with three-byte products | 20 | 621,400 | All 64 moves, 12 deals, four persistent openings |
+
+The two full-contract variants above have different commitment types; their
+row counts are not a controlled one-variable comparison. The single-draw
+pair is. Compiled wide/narrow helpers matched the integer reference for all
+65,536 inputs at each range in `{13, 46, 47, 48, 49, 50, 51, 52}` (524,288
+comparisons). Another 1,536 full deals matched the pre-change bindings
+across both hand sizes and all six rounds. Six fixed deal vectors are
+pinned in `proof-or-bluff-rollup.sim.test.js`.
+
+Official source corroborates the mechanism: the ledger-8 implementation of
+[`DivModPowerOfTwo`](https://github.com/midnightntwrk/midnight-ledger/blob/9f9842ebed66cdff0f54d3fb09efc6a7cd077ed8/zkir/src/ir_vm.rs#L716-L726)
+uses full-field bit decomposition before rebuilding quotient and remainder.
+[`mock-compile`](https://github.com/midnightntwrk/midnight-ledger/blob/9f9842ebed66cdff0f54d3fb09efc6a7cd077ed8/zkir/src/main.rs#L152-L159)
+prints the circuit model, not a generated proof. These ledger-8 sources
+corroborate the local 0.31.1 measurements; newer main-branch changes are not
+assumed available in this installed compiler.
 
 ## 7. Build plan
 

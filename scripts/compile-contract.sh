@@ -22,8 +22,10 @@ CONTRACTS_DIR="$SCRIPT_DIR/../realDeal/contracts"
 CONTRACT_NAME="proof-or-bluff"
 if [[ "${1:-}" == "--mainnet" ]]; then
   CONTRACT_NAME="proof-or-bluff-mainnet"
+elif [[ "${1:-}" == "--rollup" ]]; then
+  CONTRACT_NAME="proof-or-bluff-rollup"
 elif [[ $# -gt 0 ]]; then
-  echo "Usage: $0 [--mainnet]" >&2
+  echo "Usage: $0 [--mainnet|--rollup]" >&2
   exit 2
 fi
 SOURCE_FILE="$CONTRACTS_DIR/$CONTRACT_NAME.compact"

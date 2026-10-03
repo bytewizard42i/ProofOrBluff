@@ -50,7 +50,7 @@ function finalizedTx(result, { txHash = 'deadbeef', blockHeight = 4242 } = {}) {
 }
 
 /** Builds a fake midnight-js layer and records every call for assertions. */
-function fakeChain({ ledgerGames = new Map(), counters = { opened: 0n, closed: 0n, pruned: 0n } } = {}) {
+function fakeChain({ ledgerGames = new Map(), counters = { opened: 0n, closed: 0n, pruned: 0n }, beforeWitnessRead } = {}) {
   const recorded = { calls: [], witnessSnapshotsDuringCall: [], witnesses: null };
   const fakeLedgerDecoder = () => ({
     games: {
@@ -69,6 +69,7 @@ function fakeChain({ ledgerGames = new Map(), counters = { opened: 0n, closed: 0
     // then records what it saw, so tests can prove the slot was populated
     // DURING the call and cleared AFTER it.
     const circuit = (name, result) => async (...args) => {
+      await beforeWitnessRead?.(name, args);
       const context = { privateState: {} };
       const seen = Object.fromEntries(
         Object.entries(recorded.witnesses).map(([witnessName, fn]) => [witnessName, fn(context)[1]]),
@@ -124,6 +125,290 @@ async function attachedApi(overrides = {}) {
   await api.joinAt(CONTRACT_ADDRESS);
   return { api, ...chain };
 }
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((complete) => { resolve = complete; });
+  return { promise, resolve };
+}
+
+function submissionGate() {
+  const started = deferred();
+  const released = deferred();
+  return {
+    started: started.promise,
+    release: released.resolve,
+    async wait() {
+      started.resolve();
+      await released.promise;
+    },
+  };
+}
+
+function closeRequest(marker) {
+  const witnesses = realisticCloseWitnesses();
+  witnesses.entropyPair[0].fill(marker);
+  witnesses.saltPair[0] = marker.toString(16).padStart(2, '0').repeat(32);
+  witnesses.transcript[0].playSalt = BigInt(marker);
+  witnesses.snapshots[1].chain = BigInt(marker);
+  return {
+    gameId: marker.toString(16).padStart(2, '0').repeat(32),
+    publicInputs: { transcriptRoot: BigInt(marker), p1Score: marker, p2Score: 0, winner: 1 },
+    witnesses,
+  };
+}
+
+function expectCloseSubmission(recorded, index, request) {
+  expect(recorded.calls[index].name).toBe('closeGame');
+  expect(recorded.calls[index].args).toEqual([
+    hexToBytes32(request.gameId), request.publicInputs.transcriptRoot,
+    BigInt(request.publicInputs.p1Score), 0n, 1n, FIXED_NOW,
+  ]);
+  expect(recorded.witnessSnapshotsDuringCall[index].seen).toEqual({
+    ...request.witnesses,
+    saltPair: request.witnesses.saltPair.map((value) => hexToBytes32(value)),
+  });
+}
+
+function openRequest() {
+  return {
+    playerOne: PLAYER_ONE, playerTwo: PLAYER_TWO, mode: 1,
+    p1EntropyCommit: 'aa'.repeat(32), p1SaltCommit: 'bb'.repeat(32),
+    p2EntropyCommit: 'cc'.repeat(32), p2SaltCommit: 'dd'.repeat(32),
+  };
+}
+
+describe('rollup-contract: serialized mutations', () => {
+  it('keeps concurrent closeGame inputs paired through lazy witness reads and peer cleanup', async () => {
+    const gates = [submissionGate(), submissionGate()];
+    let submission = 0;
+    const { api, recorded } = await attachedApi({
+      beforeWitnessRead: () => gates[submission++].wait(),
+    });
+    const requests = [closeRequest(3), closeRequest(7)];
+    const first = api.closeGame(requests[0]);
+    await gates[0].started;
+    const second = api.closeGame(requests[1]);
+    gates[0].release();
+    await first;
+    await gates[1].started;
+    gates[1].release();
+    await second;
+
+    expectCloseSubmission(recorded, 0, requests[0]);
+    expectCloseSubmission(recorded, 1, requests[1]);
+    expect(api._hasStagedWitnesses()).toBe(false);
+  });
+
+  it('continues queued calls after an exception without clearing a peer witness bundle', async () => {
+    const gates = [submissionGate(), submissionGate()];
+    let submission = 0;
+    const { api, recorded } = await attachedApi({
+      beforeWitnessRead: async () => {
+        const index = submission++;
+        await gates[index].wait();
+        if (index === 0) throw new Error('failed assert: winner mismatch');
+      },
+    });
+    const first = api.closeGame(closeRequest(3));
+    const firstRejected = expect(first).rejects.toThrow(/winner mismatch/);
+    await gates[0].started;
+    const request = closeRequest(7);
+    const second = api.closeGame(request);
+    gates[0].release();
+    await firstRejected;
+    await gates[1].started;
+    gates[1].release();
+    await second;
+
+    expectCloseSubmission(recorded, 0, request);
+    expect(api._hasStagedWitnesses()).toBe(false);
+    await expect(api.joinAt('invalid')).rejects.toThrow(/hex contract address/);
+    await expect(api.joinAt(CONTRACT_ADDRESS)).resolves.toEqual({ contractAddress: CONTRACT_ADDRESS });
+  });
+
+  it.each(['openGame', 'pruneExpired'])('does not stage a queued close while %s holds the lock', async (method) => {
+    const gate = submissionGate();
+    const { api, recorded } = await attachedApi({
+      beforeWitnessRead: (name) => name === method ? gate.wait() : undefined,
+    });
+    const first = api[method](method === 'openGame' ? openRequest() : { gameId: GAME_ID_HEX });
+    await gate.started;
+    const request = closeRequest(7);
+    const second = api.closeGame(request);
+    await Promise.resolve();
+    const stagedWhileWaiting = api._hasStagedWitnesses();
+    gate.release();
+    await Promise.all([first, second]);
+
+    expect(stagedWhileWaiting).toBe(false);
+    expect(recorded.witnessSnapshotsDuringCall[0]).toEqual({ name: method, seen: zeroWitnessBundle() });
+    expectCloseSubmission(recorded, 1, request);
+  });
+
+  it('queues open and prune behind close and supplies zero witnesses after releasing the lock', async () => {
+    const gate = submissionGate();
+    const { api, recorded } = await attachedApi({
+      beforeWitnessRead: (name) => name === 'closeGame' ? gate.wait() : undefined,
+    });
+    const request = closeRequest(3);
+    const first = api.closeGame(request);
+    await gate.started;
+    const opened = api.openGame(openRequest());
+    const pruned = api.pruneExpired({ gameId: GAME_ID_HEX });
+    gate.release();
+    await Promise.all([first, opened, pruned]);
+
+    expectCloseSubmission(recorded, 0, request);
+    expect(recorded.calls.map(({ name }) => name)).toEqual(['closeGame', 'openGame', 'pruneExpired']);
+    expect(recorded.witnessSnapshotsDuringCall.slice(1).map(({ seen }) => seen))
+      .toEqual([zeroWitnessBundle(), zeroWitnessBundle()]);
+  });
+
+  it('holds the lock and the same private inputs across a DUST rebuild', async () => {
+    vi.useFakeTimers();
+    const retryScheduled = deferred();
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => retryScheduled.resolve());
+    try {
+      const gate = submissionGate();
+      const attempts = [];
+      const chain = fakeChain({
+        beforeWitnessRead: async (_name, args) => {
+          if (attempts.length === 0) await gate.wait();
+          attempts.push({
+            gameId: bytesToHex(args[0]),
+            transcript: chain.recorded.witnesses.transcript({ privateState: {} })[1],
+          });
+          if (attempts.length === 1) throw new Error('1010: Invalid Transaction: Custom error: 170');
+        },
+      });
+      const api = await getRollupContractApi({ networkId: 'undeployed', _internals: chain.internals });
+      await api.joinAt(CONTRACT_ADDRESS);
+      const requests = [closeRequest(3), closeRequest(7)];
+      const first = api.closeGame(requests[0]);
+      await gate.started;
+      const second = api.closeGame(requests[1]);
+      gate.release();
+      await retryScheduled.promise;
+      expect(attempts).toHaveLength(1);
+      expect(api._hasStagedWitnesses()).toBe(true);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await Promise.all([first, second]);
+
+      expect(attempts.map(({ gameId }) => gameId)).toEqual([
+        requests[0].gameId, requests[0].gameId, requests[1].gameId,
+      ]);
+      expect(attempts.map(({ transcript }) => transcript)).toEqual([
+        requests[0].witnesses.transcript, requests[0].witnesses.transcript, requests[1].witnesses.transcript,
+      ]);
+      expectCloseSubmission(chain.recorded, 0, requests[0]);
+      expectCloseSubmission(chain.recorded, 1, requests[1]);
+      expect(api._hasStagedWitnesses()).toBe(false);
+    } finally {
+      warning.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps independent API instances out of each other’s queue', async () => {
+    const gate = submissionGate();
+    const firstInstance = await attachedApi({ beforeWitnessRead: () => gate.wait() });
+    const secondInstance = await attachedApi();
+    const requests = [closeRequest(3), closeRequest(7)];
+    const first = firstInstance.api.closeGame(requests[0]);
+    await gate.started;
+    await secondInstance.api.closeGame(requests[1]);
+    expect(secondInstance.api._hasStagedWitnesses()).toBe(false);
+    expect(firstInstance.api._hasStagedWitnesses()).toBe(true);
+    expectCloseSubmission(secondInstance.recorded, 0, requests[1]);
+    gate.release();
+    await first;
+    expectCloseSubmission(firstInstance.recorded, 0, requests[0]);
+  });
+
+  it('refreshes default timestamps after queueing and preserves explicit timestamps', async () => {
+    const gate = submissionGate();
+    let now = FIXED_NOW;
+    const chain = fakeChain({ beforeWitnessRead: (name) => name === 'closeGame' ? gate.wait() : undefined });
+    chain.internals.now = () => now;
+    const api = await getRollupContractApi({ networkId: 'undeployed', _internals: chain.internals });
+    await api.joinAt(CONTRACT_ADDRESS);
+    const first = api.closeGame(closeRequest(3));
+    await gate.started;
+    const opened = api.openGame(openRequest());
+    const pruned = api.pruneExpired({ gameId: GAME_ID_HEX, currentTime: FIXED_NOW });
+    now += 300n;
+    gate.release();
+    await Promise.all([first, opened, pruned]);
+    expect(chain.recorded.calls.map(({ args }) => args.at(-1))).toEqual([FIXED_NOW, now, FIXED_NOW]);
+  });
+
+  it('does not replace the attached contract until an active close has cleared its witnesses', async () => {
+    const gate = submissionGate();
+    const { api, internals, recorded } = await attachedApi({ beforeWitnessRead: () => gate.wait() });
+    const originalFind = internals.findDeployedContract;
+    const stagedOnJoin = [];
+    internals.findDeployedContract.mockImplementation(async (_providers, { compiledContract }) => {
+      stagedOnJoin.push(api._hasStagedWitnesses());
+      expect(witnessesOf(compiledContract).transcript({ privateState: {} })[1]).toEqual(zeroWitnessBundle().transcript);
+      return { callTx: {} };
+    });
+    const closed = api.closeGame(closeRequest(3));
+    await gate.started;
+    const joined = api.joinAt('cd'.repeat(32));
+    await Promise.resolve();
+    const addressDuringClose = api.address;
+    const callsDuringClose = originalFind.mock.calls.length;
+    gate.release();
+    await Promise.all([closed, joined]);
+    expect(addressDuringClose).toBe(CONTRACT_ADDRESS);
+    expect(callsDuringClose).toBe(1);
+    expect(stagedOnJoin).toEqual([false]);
+    expect(recorded.calls).toHaveLength(1);
+    expect(api.address).toBe('cd'.repeat(32));
+  });
+
+  it('serializes deploy and join state changes with circuit submissions', async () => {
+    const chain = fakeChain();
+    const deployGate = submissionGate();
+    const joinGate = submissionGate();
+    const deployContract = chain.internals.deployContract;
+    const findDeployedContract = chain.internals.findDeployedContract;
+    chain.internals.deployContract = vi.fn(async (...args) => {
+      await deployGate.wait();
+      return deployContract(...args);
+    });
+    chain.internals.findDeployedContract = vi.fn(async (...args) => {
+      await joinGate.wait();
+      return findDeployedContract(...args);
+    });
+    const api = await getRollupContractApi({ networkId: 'undeployed', _internals: chain.internals });
+    const deployed = api.deploy();
+    await deployGate.started;
+    const duplicate = api.deploy().then((result) => result, (error) => error);
+    const nextAddress = 'cd'.repeat(32);
+    const joined = api.joinAt(nextAddress);
+    const opened = api.openGame(openRequest());
+    const openResult = opened.then((result) => result, (error) => error);
+    await Promise.resolve();
+    const earlyJoinCount = chain.internals.findDeployedContract.mock.calls.length;
+    deployGate.release();
+    await deployed;
+    const duplicateResult = await duplicate;
+    await joinGate.started;
+    const addressBeforeJoin = api.address;
+    joinGate.release();
+    await joined;
+
+    expect(await openResult).toEqual({ gameId: GAME_ID_HEX, txHash: 'deadbeef', blockHeight: 4242 });
+    expect(duplicateResult).toBeInstanceOf(Error);
+    expect(duplicateResult.message).toMatch(/Already attached/);
+    expect(earlyJoinCount).toBe(0);
+    expect(addressBeforeJoin).toBe(CONTRACT_ADDRESS);
+    expect(api.address).toBe(nextAddress);
+    expect(chain.internals.deployContract).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('rollup-contract: zero-shaped witnesses', () => {
   it('zeroMove / zeroGameState match the compiled Move / GameState vector widths', () => {

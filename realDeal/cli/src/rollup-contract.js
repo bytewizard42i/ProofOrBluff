@@ -409,6 +409,12 @@ export async function getRollupContractApi({
 
   let deployed = null;
   let contractAddress = null;
+  let mutationQueue = Promise.resolve();
+  const serializeMutation = (operation) => (...args) => {
+    const pending = mutationQueue.then(() => operation(...args));
+    mutationQueue = pending.catch(() => {});
+    return pending;
+  };
 
   const requireAttached = (operation) => {
     if (!deployed) {
@@ -443,7 +449,7 @@ export async function getRollupContractApi({
      * POB_ALLOW_MAINNET_DEPLOY=I_APPROVE_MAINNET_DEPLOYMENT in the environment.
      * The caller is responsible for persisting the returned address.
      */
-    async deploy() {
+    deploy: serializeMutation(async () => {
       assertMainnetDeployApproved(networkId);
       if (deployed) {
         throw new Error(`Already attached to ${contractAddress}. Create a new api instance to deploy another contract.`);
@@ -462,10 +468,10 @@ export async function getRollupContractApi({
         txHash: extractTxHash(deployed.deployTxData),
         blockHeight: extractBlockHeight(deployed.deployTxData),
       };
-    },
+    }),
 
     /** Attaches to an existing rollup contract (no transaction is sent). */
-    async joinAt(existingContractAddress) {
+    joinAt: serializeMutation(async (existingContractAddress) => {
       if (typeof existingContractAddress !== 'string' || !/^(0x)?[0-9a-fA-F]{64,}$/.test(existingContractAddress)) {
         throw new Error('joinAt needs the hex contract address printed by deploy().');
       }
@@ -477,17 +483,17 @@ export async function getRollupContractApi({
       });
       contractAddress = existingContractAddress;
       return { contractAddress };
-    },
+    }),
 
     /**
      * Registers both players' commitments. No private witness is needed; the
      * slot stays null so the zero-shaped bundle is what the runtime sees.
      */
-    async openGame({
+    openGame: serializeMutation(async ({
       playerOne, playerTwo, mode,
       p1EntropyCommit, p1SaltCommit, p2EntropyCommit, p2SaltCommit,
       currentTime = internals.now(),
-    }) {
+    }) => {
       const finalized = await callCircuit(
         'openGame',
         toBytes32(playerOne, 'playerOne'),
@@ -505,14 +511,14 @@ export async function getRollupContractApi({
         txHash: extractTxHash(finalized),
         blockHeight: extractBlockHeight(finalized),
       };
-    },
+    }),
 
     /**
      * Submits the single proof for a finished game. `publicInputs` come from
      * rollup-referee result(); `witnesses` are the referee's transcript +
      * snapshots plus the two players' raw entropy and hand salts.
      */
-    async closeGame({ gameId, publicInputs, witnesses: closeWitnesses, currentTime = internals.now() }) {
+    closeGame: serializeMutation(async ({ gameId, publicInputs, witnesses: closeWitnesses, currentTime = internals.now() }) => {
       if (!publicInputs) {
         throw new Error('closeGame needs publicInputs: { transcriptRoot, p1Score, p2Score, winner } from rollup-referee result().');
       }
@@ -537,13 +543,13 @@ export async function getRollupContractApi({
       } finally {
         stagedWitnesses = null;
       }
-    },
+    }),
 
     /** Removes a game nobody closed within the 7-day window. Anyone may call. */
-    async pruneExpired({ gameId, currentTime = internals.now() }) {
+    pruneExpired: serializeMutation(async ({ gameId, currentTime = internals.now() }) => {
       const finalized = await callCircuit('pruneExpired', toBytes32(gameId, 'gameId'), BigInt(currentTime));
       return { txHash: extractTxHash(finalized), blockHeight: extractBlockHeight(finalized) };
-    },
+    }),
 
     /** Ledger GameRecord for gameId, or null if the map has no such key. */
     async readGame(gameId) {

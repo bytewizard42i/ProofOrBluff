@@ -99,17 +99,23 @@ midnight.js, after re-checking the support matrix.
 ```bash
 scripts/compile-contract.sh            # proof-or-bluff.compact (local wagered)
 scripts/compile-contract.sh --mainnet  # proof-or-bluff-mainnet.compact (Preview per-move)
+scripts/compile-contract.sh --rollup   # proof-or-bluff-rollup.compact (no deployment)
 ```
 
 The script refuses any compiler that is not 0.31.x and does a **full**
 compile (no skip flags) because deployment needs `keys/` and `zkir/`, not
-just JS. It has no flag for the rollup yet; compile that by hand with the
-same pattern until the script grows one:
+just JS. For a fast, isolated rollup check without proving keys:
 
 ```bash
-compact compile [--skip-zk] realDeal/contracts/proof-or-bluff-rollup.compact \
-                             realDeal/contracts/managed/proof-or-bluff-rollup
+compact compile +0.31.1 --skip-zk realDeal/contracts/proof-or-bluff-rollup.compact \
+                                node_modules/pob-rollup-check
+"$HOME/.compact/versions/0.31.1/x86_64-unknown-linux-musl/zkir" mock-compile \
+  node_modules/pob-rollup-check/zkir/closeGame.zkir
 ```
+
+`mock-compile` models the circuit and reports `k` and rows. It is not a
+proof. See `docs/ZK_GAME_ROLLUP.md` §6a for the measured byte-conversion
+bottleneck and the independent authorization/correctness launch gates.
 
 - `--skip-zk` → `contract/` (JS + `.d.ts` bindings) and `compiler/` only.
   Fast; enough for unit / simulator tests and for the browser build to
@@ -306,5 +312,5 @@ recorded in `realDeal/deployments.json` and `../../midnight-launches-log/`
 | Full-key compile of the rollup + `closeGame` proving-time measurement on the VPS at `MAX_MOVES` ∈ {32, 48, 64} | sizes `MAX_MOVES`, `JOB_TIMEOUT`, capacity copy | Not measured; current numbers in the spec are estimates |
 | Chain-wired `.app` build on Vercel (replacing `build:demo`) | `realDeal/app/vercel.json` + env | Not switched |
 | Proof receipts: in-app "My Games", browser push, opt-in email | bot + `.app`; email key on VPS | Not started |
-| `compile-contract.sh --rollup` | `scripts/` | Not added |
+| Authenticated transcript approval and independent correctness regressions | rollup contract, session, chain API | Launch blockers; see `AGENTS.md` |
 | Observability (contractAction poll, DUST alert, uptime on proof + bot) | runbook M5 | Not started |

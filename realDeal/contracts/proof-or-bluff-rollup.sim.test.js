@@ -1,7 +1,10 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import * as runtime from '@midnight-ntwrk/compact-runtime';
-import { Contract, pureCircuits, ledger } from './managed/proof-or-bluff-rollup/contract/index.js';
 import { createReferee, KIND, MAX_MOVES, startingRank, winThreshold } from './rollup-referee.js';
+
+const { Contract, pureCircuits, ledger } = await import(
+  process.env.POB_ROLLUP_BINDINGS_URL ?? './managed/proof-or-bluff-rollup/contract/index.js'
+);
 
 // These tests execute the REAL compiled closeGame circuit in memory. A circuit
 // assertion that fails here is exactly the assertion that would make the
@@ -241,6 +244,20 @@ describe('rollup contract: pruneExpired', () => {
     t.call('pruneExpired', id, BigInt(later));
     expect(t.state().games.member(id)).toBe(false);
     expect(t.state().totalGamesPruned).toBe(1n);
+  });
+});
+
+describe('rollup deal: byte-width optimization preserves hands', () => {
+  it.each([
+    [5n, 1n, [5, 4, 10, 8, 2, 0, 0]],
+    [5n, 3n, [7, 6, 3, 9, 5, 0, 0]],
+    [5n, 6n, [4, 11, 1, 4, 4, 0, 0]],
+    [7n, 1n, [5, 4, 10, 7, 2, 6, 8]],
+    [7n, 3n, [7, 6, 3, 9, 5, 8, 1]],
+    [7n, 6n, [4, 10, 0, 4, 4, 8, 12]],
+  ])('preserves the pre-optimization size %s round %s fixture', (size, round, expected) => {
+    const salt = Uint8Array.from({ length: 32 }, (_, index) => index);
+    expect(pureCircuits.dealHandRanks(salt, seed, round, size)).toEqual(expected.map(BigInt));
   });
 });
 

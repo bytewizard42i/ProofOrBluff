@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import * as runtime from '@midnight-ntwrk/compact-runtime';
 import { Contract, ledger, pureCircuits } from '../../contracts/managed/proof-or-bluff-rollup/contract/index.js';
-import { KIND, MAX_MOVES, handSize, startingRank } from '../../contracts/rollup-referee.js';
+import { KIND, MAX_MOVES, MAX_ROUNDS, handSize, startingRank } from '../../contracts/rollup-referee.js';
 import { createRollupSession, probeTurnRule, SEAT, SESSION_STATUS } from './rollup-session.js';
 
 // Who claims after a response is decided by the circuit (see probeTurnRule in
@@ -149,6 +149,9 @@ function createScriptedHuman(session, { style = 'honest', challengeEvery = 2, ra
   }
 
   function pickCards(currentRank) {
+    if (style === 'empty-hand') {
+      return hand.flatMap((held, rankIndex) => Array(Number(held)).fill(BigInt(rankIndex))).slice(0, 4);
+    }
     const rankIndex = Number(currentRank);
     const otherRanks = [...Array(13).keys()].filter((r) => r !== rankIndex && hand[r] > 0n);
     const bluffPossible = otherRanks.length > 0;
@@ -438,6 +441,71 @@ describe('rollup session: complete games are accepted by the real closeGame circ
     expect(record.transcriptRoot).toBe(pub.chainHead);
   });
 
+  it.each([CASUAL, STANDARD, 4n])('MAX_ROUNDS exhaustion in mode %s ends as a provable draw before MAX_MOVES', (mode) => {
+    const session = newSession({
+      mode,
+      ai: {
+        ...alwaysAcceptAi,
+        decidePlay: ({ aiHand }) => ({ cardsToPlay: aiHand.slice(0, 4), dialogue: 'ok' }),
+      },
+    });
+    const human = createScriptedHuman(session, {
+      mode, style: 'empty-hand', challengeEvery: Infinity,
+      randomBytes: createDeterministicRandomBytes('human-round-limit'),
+    });
+    human.begin();
+    const publicStates = [session.getPublicState()];
+    while (session.status === SESSION_STATUS.PLAYING) {
+      const state = session.getPublicState();
+      if (state.pendingClaim) human.respond();
+      else if (state.turn === SEAT.HUMAN) human.play();
+      else session.botPlay();
+      publicStates.push(session.getPublicState());
+    }
+    const pub = session.getPublicState();
+    expect(session.status).toBe(SESSION_STATUS.ENDED);
+    expect(pub.ended).toBe(true);
+    expect(pub.round).toBe(BigInt(MAX_ROUNDS));
+    expect(pub.moveCount).toBeLessThan(MAX_MOVES);
+    expect(pub.scores).toEqual({ human: 0n, bot: 0n });
+    expect(pub.winner).toBe(0n);
+    expect(pub.pendingClaim).toBeNull();
+    expect(Object.values(pub.handSizes)).toContain(0n);
+    expect(pub.transcript.at(-1).kind).toBe(KIND.ACCEPT);
+    expect(() => session.humanAccept()).toThrow(/requires 'playing'/);
+    expect(() => session.botPlay()).toThrow(/requires 'playing'/);
+
+    const finished = session.finish({ humanSalt: HUMAN_SALT, humanPlays: human.plays });
+    expect(finished.winner).toBe(pub.winner);
+    expect(finished.transcriptRoot).toBe(pub.chainHead);
+    expect(finished.witnesses.transcript).toHaveLength(MAX_MOVES);
+    expect(finished.witnesses.snapshots).toHaveLength(MAX_MOVES + 1);
+    for (const state of publicStates) {
+      const snapshot = finished.witnesses.snapshots[state.moveCount];
+      expect(snapshot).toMatchObject({
+        turn: state.turn, currentRank: state.currentRank,
+        pending: state.pendingClaim !== null,
+        round: state.round, ended: state.ended, chain: state.chainHead,
+        score0: state.scores.human, score1: state.scores.bot,
+      });
+      expect(snapshot.hand0.reduce((total, held) => total + held, 0n)).toBe(state.handSizes.human);
+      expect(snapshot.hand1.reduce((total, held) => total + held, 0n)).toBe(state.handSizes.bot);
+    }
+    expect(finished.witnesses.transcript.slice(pub.moveCount).every((move) => move.kind === KIND.NOOP)).toBe(true);
+    const terminalSnapshot = finished.witnesses.snapshots[pub.moveCount];
+    for (const snapshot of finished.witnesses.snapshots.slice(pub.moveCount)) {
+      expect(snapshot).toEqual(terminalSnapshot);
+    }
+    const record = openAndCloseOnChain(session, finished);
+    expect(record.closed).toBe(true);
+    expect(record.winner).toBe(0n);
+    expect(record.p1Score).toBe(0n);
+    expect(record.p2Score).toBe(0n);
+    expect(record.transcriptRoot).toBe(pub.chainHead);
+    expect(session.status).toBe(SESSION_STATUS.FINISHED);
+    expect(session.getPublicState().winner).toBe(0n);
+  });
+
   it('a game that fills MAX_MOVES without a winner is a draw the circuit accepts', () => {
     // Nobody ever challenges, so no score ever moves: 64 moves, no winner.
     const session = newSession({ ai: alwaysAcceptAi });
@@ -446,6 +514,7 @@ describe('rollup session: complete games are accepted by the real closeGame circ
     const pub = session.getPublicState();
     expect(pub.moveCount).toBe(MAX_MOVES);
     expect(pub.ended).toBe(false);
+    expect(pub.scores).toEqual({ human: 0n, bot: 0n });
     expect(pub.winner).toBe(0n);
     expect(pub.round).toBeGreaterThan(1n);           // hands emptied and were re-dealt
     expect(session.status).toBe(SESSION_STATUS.ENDED);
