@@ -133,24 +133,22 @@ class _tuple_0 {
 
 const _descriptor_17 = new _tuple_0();
 
-class _DealInput_0 {
+class _HandSaltCommitInput_0 {
   alignment() {
-    return _descriptor_0.alignment().concat(_descriptor_0.alignment().concat(_descriptor_0.alignment().concat(_descriptor_12.alignment())));
+    return _descriptor_0.alignment().concat(_descriptor_0.alignment());
   }
   fromValue(value_0) {
     return {
       separator: _descriptor_0.fromValue(value_0),
-      salt: _descriptor_0.fromValue(value_0),
-      seed: _descriptor_0.fromValue(value_0),
-      round: _descriptor_12.fromValue(value_0)
+      salt: _descriptor_0.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_0.toValue(value_0.separator).concat(_descriptor_0.toValue(value_0.salt).concat(_descriptor_0.toValue(value_0.seed).concat(_descriptor_12.toValue(value_0.round))));
+    return _descriptor_0.toValue(value_0.separator).concat(_descriptor_0.toValue(value_0.salt));
   }
 }
 
-const _descriptor_18 = new _DealInput_0();
+const _descriptor_18 = new _HandSaltCommitInput_0();
 
 class _GameIdInput_0 {
   alignment() {
@@ -172,41 +170,6 @@ class _GameIdInput_0 {
 
 const _descriptor_19 = new _GameIdInput_0();
 
-class _SeedInput_0 {
-  alignment() {
-    return _descriptor_0.alignment().concat(_descriptor_0.alignment().concat(_descriptor_0.alignment()));
-  }
-  fromValue(value_0) {
-    return {
-      separator: _descriptor_0.fromValue(value_0),
-      p1Entropy: _descriptor_0.fromValue(value_0),
-      p2Entropy: _descriptor_0.fromValue(value_0)
-    }
-  }
-  toValue(value_0) {
-    return _descriptor_0.toValue(value_0.separator).concat(_descriptor_0.toValue(value_0.p1Entropy).concat(_descriptor_0.toValue(value_0.p2Entropy)));
-  }
-}
-
-const _descriptor_20 = new _SeedInput_0();
-
-class _HandSaltCommitInput_0 {
-  alignment() {
-    return _descriptor_0.alignment().concat(_descriptor_0.alignment());
-  }
-  fromValue(value_0) {
-    return {
-      separator: _descriptor_0.fromValue(value_0),
-      salt: _descriptor_0.fromValue(value_0)
-    }
-  }
-  toValue(value_0) {
-    return _descriptor_0.toValue(value_0.separator).concat(_descriptor_0.toValue(value_0.salt));
-  }
-}
-
-const _descriptor_21 = new _HandSaltCommitInput_0();
-
 class _EntropyCommitInput_0 {
   alignment() {
     return _descriptor_0.alignment().concat(_descriptor_0.alignment());
@@ -222,7 +185,7 @@ class _EntropyCommitInput_0 {
   }
 }
 
-const _descriptor_22 = new _EntropyCommitInput_0();
+const _descriptor_20 = new _EntropyCommitInput_0();
 
 class _tuple_1 {
   alignment() {
@@ -242,7 +205,44 @@ class _tuple_1 {
   }
 }
 
-const _descriptor_23 = new _tuple_1();
+const _descriptor_21 = new _tuple_1();
+
+class _DealInput_0 {
+  alignment() {
+    return _descriptor_0.alignment().concat(_descriptor_0.alignment().concat(_descriptor_4.alignment().concat(_descriptor_12.alignment())));
+  }
+  fromValue(value_0) {
+    return {
+      separator: _descriptor_0.fromValue(value_0),
+      salt: _descriptor_0.fromValue(value_0),
+      seed: _descriptor_4.fromValue(value_0),
+      round: _descriptor_12.fromValue(value_0)
+    }
+  }
+  toValue(value_0) {
+    return _descriptor_0.toValue(value_0.separator).concat(_descriptor_0.toValue(value_0.salt).concat(_descriptor_4.toValue(value_0.seed).concat(_descriptor_12.toValue(value_0.round))));
+  }
+}
+
+const _descriptor_22 = new _DealInput_0();
+
+class _SeedInput_0 {
+  alignment() {
+    return _descriptor_0.alignment().concat(_descriptor_0.alignment().concat(_descriptor_0.alignment()));
+  }
+  fromValue(value_0) {
+    return {
+      separator: _descriptor_0.fromValue(value_0),
+      p1Entropy: _descriptor_0.fromValue(value_0),
+      p2Entropy: _descriptor_0.fromValue(value_0)
+    }
+  }
+  toValue(value_0) {
+    return _descriptor_0.toValue(value_0.separator).concat(_descriptor_0.toValue(value_0.p1Entropy).concat(_descriptor_0.toValue(value_0.p2Entropy)));
+  }
+}
+
+const _descriptor_23 = new _SeedInput_0();
 
 class _Either_0 {
   alignment() {
@@ -341,63 +341,63 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.currentQueryContext != undefined)) {
           __compactRuntime.typeError('openGame',
                                      'argument 1 (as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 310 char 1',
+                                     'v3.compact line 323 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(playerOne_0.buffer instanceof ArrayBuffer && playerOne_0.BYTES_PER_ELEMENT === 1 && playerOne_0.length === 32)) {
           __compactRuntime.typeError('openGame',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 310 char 1',
+                                     'v3.compact line 323 char 1',
                                      'Bytes<32>',
                                      playerOne_0)
         }
         if (!(playerTwo_0.buffer instanceof ArrayBuffer && playerTwo_0.BYTES_PER_ELEMENT === 1 && playerTwo_0.length === 32)) {
           __compactRuntime.typeError('openGame',
                                      'argument 2 (argument 3 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 310 char 1',
+                                     'v3.compact line 323 char 1',
                                      'Bytes<32>',
                                      playerTwo_0)
         }
         if (!(typeof(mode_0) === 'bigint' && mode_0 >= 0n && mode_0 <= 255n)) {
           __compactRuntime.typeError('openGame',
                                      'argument 3 (argument 4 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 310 char 1',
+                                     'v3.compact line 323 char 1',
                                      'Uint<0..256>',
                                      mode_0)
         }
         if (!(p1EntropyCommit_0.buffer instanceof ArrayBuffer && p1EntropyCommit_0.BYTES_PER_ELEMENT === 1 && p1EntropyCommit_0.length === 32)) {
           __compactRuntime.typeError('openGame',
                                      'argument 4 (argument 5 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 310 char 1',
+                                     'v3.compact line 323 char 1',
                                      'Bytes<32>',
                                      p1EntropyCommit_0)
         }
         if (!(p1SaltCommit_0.buffer instanceof ArrayBuffer && p1SaltCommit_0.BYTES_PER_ELEMENT === 1 && p1SaltCommit_0.length === 32)) {
           __compactRuntime.typeError('openGame',
                                      'argument 5 (argument 6 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 310 char 1',
+                                     'v3.compact line 323 char 1',
                                      'Bytes<32>',
                                      p1SaltCommit_0)
         }
         if (!(p2EntropyCommit_0.buffer instanceof ArrayBuffer && p2EntropyCommit_0.BYTES_PER_ELEMENT === 1 && p2EntropyCommit_0.length === 32)) {
           __compactRuntime.typeError('openGame',
                                      'argument 6 (argument 7 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 310 char 1',
+                                     'v3.compact line 323 char 1',
                                      'Bytes<32>',
                                      p2EntropyCommit_0)
         }
         if (!(p2SaltCommit_0.buffer instanceof ArrayBuffer && p2SaltCommit_0.BYTES_PER_ELEMENT === 1 && p2SaltCommit_0.length === 32)) {
           __compactRuntime.typeError('openGame',
                                      'argument 7 (argument 8 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 310 char 1',
+                                     'v3.compact line 323 char 1',
                                      'Bytes<32>',
                                      p2SaltCommit_0)
         }
         if (!(typeof(currentTime_0) === 'bigint' && currentTime_0 >= 0n && currentTime_0 <= 18446744073709551615n)) {
           __compactRuntime.typeError('openGame',
                                      'argument 8 (argument 9 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 310 char 1',
+                                     'v3.compact line 323 char 1',
                                      'Uint<0..18446744073709551616>',
                                      currentTime_0)
         }
@@ -438,49 +438,49 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.currentQueryContext != undefined)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 1 (as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 340 char 1',
+                                     'v3.compact line 353 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(gameId_0.buffer instanceof ArrayBuffer && gameId_0.BYTES_PER_ELEMENT === 1 && gameId_0.length === 32)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 340 char 1',
+                                     'v3.compact line 353 char 1',
                                      'Bytes<32>',
                                      gameId_0)
         }
         if (!(typeof(transcriptRoot_0) === 'bigint' && transcriptRoot_0 >= 0 && transcriptRoot_0 <= __compactRuntime.MAX_FIELD)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 2 (argument 3 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 340 char 1',
+                                     'v3.compact line 353 char 1',
                                      'Field',
                                      transcriptRoot_0)
         }
         if (!(typeof(p1Score_0) === 'bigint' && p1Score_0 >= 0n && p1Score_0 <= 255n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 3 (argument 4 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 340 char 1',
+                                     'v3.compact line 353 char 1',
                                      'Uint<0..256>',
                                      p1Score_0)
         }
         if (!(typeof(p2Score_0) === 'bigint' && p2Score_0 >= 0n && p2Score_0 <= 255n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 4 (argument 5 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 340 char 1',
+                                     'v3.compact line 353 char 1',
                                      'Uint<0..256>',
                                      p2Score_0)
         }
         if (!(typeof(winner_0) === 'bigint' && winner_0 >= 0n && winner_0 <= 255n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 5 (argument 6 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 340 char 1',
+                                     'v3.compact line 353 char 1',
                                      'Uint<0..256>',
                                      winner_0)
         }
         if (!(typeof(currentTime_0) === 'bigint' && currentTime_0 >= 0n && currentTime_0 <= 18446744073709551615n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 6 (argument 7 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 340 char 1',
+                                     'v3.compact line 353 char 1',
                                      'Uint<0..18446744073709551616>',
                                      currentTime_0)
         }
@@ -515,21 +515,21 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.currentQueryContext != undefined)) {
           __compactRuntime.typeError('pruneExpired',
                                      'argument 1 (as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 404 char 1',
+                                     'v3.compact line 418 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(gameId_0.buffer instanceof ArrayBuffer && gameId_0.BYTES_PER_ELEMENT === 1 && gameId_0.length === 32)) {
           __compactRuntime.typeError('pruneExpired',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 404 char 1',
+                                     'v3.compact line 418 char 1',
                                      'Bytes<32>',
                                      gameId_0)
         }
         if (!(typeof(currentTime_0) === 'bigint' && currentTime_0 >= 0n && currentTime_0 <= 18446744073709551615n)) {
           __compactRuntime.typeError('pruneExpired',
                                      'argument 2 (argument 3 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 404 char 1',
+                                     'v3.compact line 418 char 1',
                                      'Uint<0..18446744073709551616>',
                                      currentTime_0)
         }
@@ -690,6 +690,14 @@ export class Contract {
     const result_0 = __compactRuntime.transientHash(_descriptor_23, value_0);
     return result_0;
   }
+  _transientHash_1(value_0) {
+    const result_0 = __compactRuntime.transientHash(_descriptor_21, value_0);
+    return result_0;
+  }
+  _transientHash_2(value_0) {
+    const result_0 = __compactRuntime.transientHash(_descriptor_22, value_0);
+    return result_0;
+  }
   _transientCommit_0(value_0, rand_0) {
     const result_0 = __compactRuntime.transientCommit(_descriptor_8,
                                                       value_0,
@@ -697,22 +705,14 @@ export class Contract {
     return result_0;
   }
   _persistentHash_0(value_0) {
-    const result_0 = __compactRuntime.persistentHash(_descriptor_22, value_0);
-    return result_0;
-  }
-  _persistentHash_1(value_0) {
     const result_0 = __compactRuntime.persistentHash(_descriptor_20, value_0);
     return result_0;
   }
-  _persistentHash_2(value_0) {
-    const result_0 = __compactRuntime.persistentHash(_descriptor_21, value_0);
-    return result_0;
-  }
-  _persistentHash_3(value_0) {
+  _persistentHash_1(value_0) {
     const result_0 = __compactRuntime.persistentHash(_descriptor_18, value_0);
     return result_0;
   }
-  _persistentHash_4(value_0) {
+  _persistentHash_2(value_0) {
     const result_0 = __compactRuntime.persistentHash(_descriptor_19, value_0);
     return result_0;
   }
@@ -723,7 +723,7 @@ export class Contract {
     if (!(Array.isArray(result_0) && result_0.length === 2  && result_0[0].buffer instanceof ArrayBuffer && result_0[0].BYTES_PER_ELEMENT === 1 && result_0[0].length === 32 && result_0[1].buffer instanceof ArrayBuffer && result_0[1].BYTES_PER_ELEMENT === 1 && result_0[1].length === 32)) {
       __compactRuntime.typeError('entropyPair',
                                  'return value',
-                                 'proof-or-bluff-rollup.compact line 90 char 1',
+                                 'v3.compact line 91 char 1',
                                  '[Bytes<32>, Bytes<32>]',
                                  result_0)
     }
@@ -740,7 +740,7 @@ export class Contract {
     if (!(Array.isArray(result_0) && result_0.length === 2  && result_0[0].buffer instanceof ArrayBuffer && result_0[0].BYTES_PER_ELEMENT === 1 && result_0[0].length === 32 && result_0[1].buffer instanceof ArrayBuffer && result_0[1].BYTES_PER_ELEMENT === 1 && result_0[1].length === 32)) {
       __compactRuntime.typeError('saltPair',
                                  'return value',
-                                 'proof-or-bluff-rollup.compact line 91 char 1',
+                                 'v3.compact line 92 char 1',
                                  '[Bytes<32>, Bytes<32>]',
                                  result_0)
     }
@@ -757,7 +757,7 @@ export class Contract {
     if (!(Array.isArray(result_0) && result_0.length === 64 && result_0.every((t) => typeof(t) === 'object' && typeof(t.kind) === 'bigint' && t.kind >= 0n && t.kind <= 255n && typeof(t.rank) === 'bigint' && t.rank >= 0n && t.rank <= 255n && typeof(t.count) === 'bigint' && t.count >= 0n && t.count <= 255n && Array.isArray(t.cards) && t.cards.length === 4 && t.cards.every((t) => typeof(t) === 'bigint' && t >= 0n && t <= 255n) && typeof(t.playSalt) === 'bigint' && t.playSalt >= 0 && t.playSalt <= __compactRuntime.MAX_FIELD))) {
       __compactRuntime.typeError('transcript',
                                  'return value',
-                                 'proof-or-bluff-rollup.compact line 92 char 1',
+                                 'v3.compact line 93 char 1',
                                  'Vector<64, struct Move<kind: Uint<0..256>, rank: Uint<0..256>, count: Uint<0..256>, cards: Vector<4, Uint<0..256>>, playSalt: Field>>',
                                  result_0)
     }
@@ -774,7 +774,7 @@ export class Contract {
     if (!(Array.isArray(result_0) && result_0.length === 65 && result_0.every((t) => typeof(t) === 'object' && Array.isArray(t.hand0) && t.hand0.length === 13 && t.hand0.every((t) => typeof(t) === 'bigint' && t >= 0n && t <= 255n) && Array.isArray(t.hand1) && t.hand1.length === 13 && t.hand1.every((t) => typeof(t) === 'bigint' && t >= 0n && t <= 255n) && typeof(t.turn) === 'bigint' && t.turn >= 0n && t.turn <= 255n && typeof(t.currentRank) === 'bigint' && t.currentRank >= 0n && t.currentRank <= 255n && typeof(t.pending) === 'boolean' && typeof(t.claimRank) === 'bigint' && t.claimRank >= 0n && t.claimRank <= 255n && typeof(t.claimCount) === 'bigint' && t.claimCount >= 0n && t.claimCount <= 255n && Array.isArray(t.claimCards) && t.claimCards.length === 4 && t.claimCards.every((t) => typeof(t) === 'bigint' && t >= 0n && t <= 255n) && typeof(t.claimer) === 'bigint' && t.claimer >= 0n && t.claimer <= 255n && typeof(t.score0) === 'bigint' && t.score0 >= 0n && t.score0 <= 255n && typeof(t.score1) === 'bigint' && t.score1 >= 0n && t.score1 <= 255n && typeof(t.round) === 'bigint' && t.round >= 0n && t.round <= 255n && typeof(t.ended) === 'boolean' && typeof(t.chain) === 'bigint' && t.chain >= 0 && t.chain <= __compactRuntime.MAX_FIELD))) {
       __compactRuntime.typeError('snapshots',
                                  'return value',
-                                 'proof-or-bluff-rollup.compact line 93 char 1',
+                                 'v3.compact line 94 char 1',
                                  'Vector<65, struct GameState<hand0: Vector<13, Uint<0..256>>, hand1: Vector<13, Uint<0..256>>, turn: Uint<0..256>, currentRank: Uint<0..256>, pending: Boolean, claimRank: Uint<0..256>, claimCount: Uint<0..256>, claimCards: Vector<4, Uint<0..256>>, claimer: Uint<0..256>, score0: Uint<0..256>, score1: Uint<0..256>, round: Uint<0..256>, ended: Boolean, chain: Field>>',
                                  result_0)
     }
@@ -790,13 +790,13 @@ export class Contract {
                                     entropy: entropy_0 });
   }
   _combineEntropy_0(p1Entropy_0, p2Entropy_0) {
-    return this._persistentHash_1({ separator:
-                                      new Uint8Array([112, 111, 98, 58, 115, 101, 101, 100, 58, 118, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                                    p1Entropy: p1Entropy_0,
-                                    p2Entropy: p2Entropy_0 });
+    return this._transientHash_0({ separator:
+                                     new Uint8Array([112, 111, 98, 58, 115, 101, 101, 100, 58, 118, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                                   p1Entropy: p1Entropy_0,
+                                   p2Entropy: p2Entropy_0 });
   }
   _commitHandSalt_0(salt_0) {
-    return this._persistentHash_2({ separator:
+    return this._persistentHash_1({ separator:
                                       new Uint8Array([112, 111, 98, 58, 104, 97, 110, 100, 45, 115, 97, 108, 116, 58, 118, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                                     salt: salt_0 });
   }
@@ -804,24 +804,24 @@ export class Contract {
     return this._transientCommit_0(cards_0, playSalt_0);
   }
   _chainMove_0(prev_0, kind_0, rank_0, count_0, playCommit_0) {
-    return this._transientHash_0([prev_0, kind_0, rank_0, count_0, playCommit_0]);
+    return this._transientHash_1([prev_0, kind_0, rank_0, count_0, playCommit_0]);
   }
   _boundedDraw_0(hi_0, lo_0, m_0) {
     const u_0 = ((t1) => {
                   if (t1 > 65535n) {
-                    throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 128 char 13: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 65535');
+                    throw new __compactRuntime.CompactError('v3.compact line 131 char 13: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 65535');
                   }
                   return t1;
                 })(hi_0 * 256n + lo_0);
     const p_0 = ((t1) => {
                   if (t1 > 4294967295n) {
-                    throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 129 char 13: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 4294967295');
+                    throw new __compactRuntime.CompactError('v3.compact line 132 char 13: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 4294967295');
                   }
                   return t1;
                 })(u_0 * m_0);
     const pb_0 = Array.from(__compactRuntime.convertFieldToBytes(32,
                                                                  p_0,
-                                                                 'proof-or-bluff-rollup.compact line 130 char 15'),
+                                                                 'v3.compact line 133 char 15'),
                             BigInt);
     return pb_0[2];
   }
@@ -940,12 +940,15 @@ export class Contract {
                     0n]))))))));
   }
   _dealHandRanks_0(salt_0, seed_0, round_0, size_0) {
-    const digest_0 = this._persistentHash_3({ separator:
-                                                new Uint8Array([112, 111, 98, 58, 100, 101, 97, 108, 58, 118, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                                              salt: salt_0,
-                                              seed: seed_0,
-                                              round: round_0 });
-    const b_0 = Array.from(digest_0, BigInt);
+    const digest_0 = this._transientHash_2({ separator:
+                                               new Uint8Array([112, 111, 98, 58, 100, 101, 97, 108, 58, 118, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                                             salt: salt_0,
+                                             seed: seed_0,
+                                             round: round_0 });
+    const b_0 = Array.from(__compactRuntime.convertFieldToBytes(32,
+                                                                digest_0,
+                                                                'v3.compact line 175 char 14'),
+                           BigInt);
     if (this._equal_31(size_0, 5n)) {
       return this._dealFive_0(b_0);
     } else {
@@ -962,7 +965,7 @@ export class Contract {
     const c6_0 = size_0 >= 7n && this._equal_38(ranks_0[6], target_0) ? 1n : 0n;
     return ((t1) => {
              if (t1 > 255n) {
-               throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 180 char 10: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+               throw new __compactRuntime.CompactError('v3.compact line 186 char 10: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
              }
              return t1;
            })(c0_0 + c1_0 + c2_0 + c3_0 + c4_0 + c5_0 + c6_0);
@@ -989,8 +992,11 @@ export class Contract {
            this._equal_41(mode_0, 1n) ? 15n : 20n;
   }
   _startingRank_0(seed_0) {
-    const b_0 = Array.from(seed_0, BigInt);
-    return this._boundedDraw_0(b_0[30], b_0[31], 13n);
+    const b_0 = Array.from(__compactRuntime.convertFieldToBytes(32,
+                                                                seed_0,
+                                                                'v3.compact line 204 char 14'),
+                           BigInt);
+    return this._boundedDraw_0(b_0[16], b_0[17], 13n);
   }
   _played_0(cards_0, count_0, target_0) {
     const a_0 = count_0 >= 1n && this._equal_42(cards_0[0], target_0) ? 1n : 0n;
@@ -999,7 +1005,7 @@ export class Contract {
     const d_0 = count_0 >= 4n && this._equal_45(cards_0[3], target_0) ? 1n : 0n;
     return ((t1) => {
              if (t1 > 255n) {
-               throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 210 char 10: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+               throw new __compactRuntime.CompactError('v3.compact line 216 char 10: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
              }
              return t1;
            })(a_0 + b_0 + c_0 + d_0);
@@ -1048,7 +1054,7 @@ export class Contract {
                                     {
                                       return ((t1) => {
                                                if (t1 > 255n) {
-                                                 throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 220 char 70: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+                                                 throw new __compactRuntime.CompactError('v3.compact line 226 char 70: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
                                                }
                                                return t1;
                                              })(acc_0 + v_0);
@@ -1062,7 +1068,7 @@ export class Contract {
                                {
                                  return ((t1) => {
                                           if (t1 > 255n) {
-                                            throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 228 char 12: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+                                            throw new __compactRuntime.CompactError('v3.compact line 234 char 12: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
                                           }
                                           return t1;
                                         })((this._equal_47(round_0, 1n) ?
@@ -1109,7 +1115,7 @@ export class Contract {
     } else {
       return ((t1) => {
                if (t1 > 255n) {
-                 throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 236 char 83: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+                 throw new __compactRuntime.CompactError('v3.compact line 242 char 83: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
                }
                return t1;
              })(rank_0 + 1n);
@@ -1166,7 +1172,7 @@ export class Contract {
                   this._minusOneFloor_0(s_0.score0) :
                   ((t1) => {
                     if (t1 > 255n) {
-                      throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 268 char 62: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+                      throw new __compactRuntime.CompactError('v3.compact line 274 char 62: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
                     }
                     return t1;
                   })(s_0.score0 + 3n)
@@ -1180,28 +1186,30 @@ export class Contract {
                   this._minusOneFloor_0(s_0.score1) :
                   ((t1) => {
                     if (t1 > 255n) {
-                      throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 270 char 73: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+                      throw new __compactRuntime.CompactError('v3.compact line 276 char 73: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
                     }
                     return t1;
                   })(s_0.score1 + 3n);
-    const ended_0 = s_0.ended || sc0_0 >= threshold_0 || sc1_0 >= threshold_0;
     const resolved_0 = isAccept_0 || isChallenge_0;
-    const rollover_0 = resolved_0
-                       &&
-                       (this._handEmpty_0(h0_0) || this._handEmpty_0(h1_0))
-                       &&
-                       !ended_0;
+    const scored_0 = s_0.ended || sc0_0 >= threshold_0 || sc1_0 >= threshold_0;
+    const wantsRollover_0 = resolved_0
+                            &&
+                            (this._handEmpty_0(h0_0) || this._handEmpty_0(h1_0))
+                            &&
+                            !scored_0;
+    let t_2;
+    const outOfRounds_0 = wantsRollover_0 && (t_2 = s_0.round, t_2 >= 6n);
+    const ended_0 = scored_0 || outOfRounds_0;
+    const rollover_0 = wantsRollover_0 && !outOfRounds_0;
     const nextRound_0 = rollover_0 ?
                         ((t1) => {
                           if (t1 > 255n) {
-                            throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 277 char 33: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+                            throw new __compactRuntime.CompactError('v3.compact line 288 char 33: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
                           }
                           return t1;
                         })(s_0.round + 1n)
                         :
                         s_0.round;
-    __compactRuntime.assert(!rollover_0 || nextRound_0 <= 6n,
-                            'round limit exceeded');
     const nh0_0 = rollover_0 ? this._selectHand_0(hands0_0, nextRound_0) : h0_0;
     const nh1_0 = rollover_0 ? this._selectHand_0(hands1_0, nextRound_0) : h1_0;
     const playCommit_0 = isPlay_0 ?
@@ -1219,7 +1227,9 @@ export class Contract {
                        s_0.currentRank;
     const nextTurn_0 = noop_0 ?
                        s_0.turn :
-                       this._equal_62(s_0.turn, 0n) ? 1n : 0n;
+                       isPlay_0 ?
+                       this._equal_62(s_0.turn, 0n) ? 1n : 0n :
+                       s_0.turn;
     return { hand0: noop_0 ? s_0.hand0 : nh0_0,
              hand1: noop_0 ? s_0.hand1 : nh1_0,
              turn: nextTurn_0,
@@ -1244,7 +1254,7 @@ export class Contract {
                                                  partialProofData,
                                                  ((t1) => {
                                                    if (t1 > 18446744073709551615n) {
-                                                     throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 301 char 32: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 18446744073709551615');
+                                                     throw new __compactRuntime.CompactError('v3.compact line 314 char 32: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 18446744073709551615');
                                                    }
                                                    return t1;
                                                  })(currentTime_0 + 120n)),
@@ -1271,7 +1281,7 @@ export class Contract {
                             'Only score-based modes (CASUAL, STANDARD, CASINO) are enabled');
     __compactRuntime.assert(!this._equal_66(playerOne_0, playerTwo_0),
                             'Players must differ');
-    const gameId_0 = this._persistentHash_4({ separator:
+    const gameId_0 = this._persistentHash_2({ separator:
                                                 new Uint8Array([112, 111, 98, 58, 103, 97, 109, 101, 58, 118, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                                               playerOne: playerOne_0,
                                               playerTwo: playerTwo_0,
@@ -1531,10 +1541,10 @@ export class Contract {
                             &&
                             this._equal_74(fin_0.score1, p2Score_0),
                             'final score mismatch');
-    let t_1;
-    const w_0 = !fin_0.ended ?
-                0n :
-                (t_1 = fin_0.score0, t_1 >= threshold_0) ? 1n : 2n;
+    let t_1, t_2;
+    const w_0 = (t_1 = fin_0.score0, t_1 >= threshold_0) ?
+                1n :
+                (t_2 = fin_0.score1, t_2 >= threshold_0) ? 2n : 0n;
     __compactRuntime.assert(this._equal_75(w_0, winner_0), 'winner mismatch');
     const tmp_0 = { playerOne: g_0.playerOne,
                     playerTwo: g_0.playerTwo,
@@ -1627,7 +1637,7 @@ export class Contract {
                                                  partialProofData,
                                                  ((t1) => {
                                                    if (t1 > 18446744073709551615n) {
-                                                     throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 409 char 32: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 18446744073709551615');
+                                                     throw new __compactRuntime.CompactError('v3.compact line 423 char 32: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 18446744073709551615');
                                                    }
                                                    return t1;
                                                  })(g_0.openedAt + 604800n)),
@@ -2231,7 +2241,7 @@ export function ledger(stateOrChargedState) {
         if (!(key_0.buffer instanceof ArrayBuffer && key_0.BYTES_PER_ELEMENT === 1 && key_0.length === 32)) {
           __compactRuntime.typeError('member',
                                      'argument 1',
-                                     'proof-or-bluff-rollup.compact line 95 char 1',
+                                     'v3.compact line 96 char 1',
                                      'Bytes<32>',
                                      key_0)
         }
@@ -2260,7 +2270,7 @@ export function ledger(stateOrChargedState) {
         if (!(key_0.buffer instanceof ArrayBuffer && key_0.BYTES_PER_ELEMENT === 1 && key_0.length === 32)) {
           __compactRuntime.typeError('lookup',
                                      'argument 1',
-                                     'proof-or-bluff-rollup.compact line 95 char 1',
+                                     'v3.compact line 96 char 1',
                                      'Bytes<32>',
                                      key_0)
         }
@@ -2353,7 +2363,7 @@ export const pureCircuits = {
     if (!(entropy_0.buffer instanceof ArrayBuffer && entropy_0.BYTES_PER_ELEMENT === 1 && entropy_0.length === 32)) {
       __compactRuntime.typeError('commitEntropy',
                                  'argument 1',
-                                 'proof-or-bluff-rollup.compact line 103 char 1',
+                                 'v3.compact line 104 char 1',
                                  'Bytes<32>',
                                  entropy_0)
     }
@@ -2368,14 +2378,14 @@ export const pureCircuits = {
     if (!(p1Entropy_0.buffer instanceof ArrayBuffer && p1Entropy_0.BYTES_PER_ELEMENT === 1 && p1Entropy_0.length === 32)) {
       __compactRuntime.typeError('combineEntropy',
                                  'argument 1',
-                                 'proof-or-bluff-rollup.compact line 106 char 1',
+                                 'v3.compact line 109 char 1',
                                  'Bytes<32>',
                                  p1Entropy_0)
     }
     if (!(p2Entropy_0.buffer instanceof ArrayBuffer && p2Entropy_0.BYTES_PER_ELEMENT === 1 && p2Entropy_0.length === 32)) {
       __compactRuntime.typeError('combineEntropy',
                                  'argument 2',
-                                 'proof-or-bluff-rollup.compact line 106 char 1',
+                                 'v3.compact line 109 char 1',
                                  'Bytes<32>',
                                  p2Entropy_0)
     }
@@ -2389,7 +2399,7 @@ export const pureCircuits = {
     if (!(salt_0.buffer instanceof ArrayBuffer && salt_0.BYTES_PER_ELEMENT === 1 && salt_0.length === 32)) {
       __compactRuntime.typeError('commitHandSalt',
                                  'argument 1',
-                                 'proof-or-bluff-rollup.compact line 109 char 1',
+                                 'v3.compact line 112 char 1',
                                  'Bytes<32>',
                                  salt_0)
     }
@@ -2404,14 +2414,14 @@ export const pureCircuits = {
     if (!(Array.isArray(cards_0) && cards_0.length === 4 && cards_0.every((t) => typeof(t) === 'bigint' && t >= 0n && t <= 255n))) {
       __compactRuntime.typeError('commitPlayCards',
                                  'argument 1',
-                                 'proof-or-bluff-rollup.compact line 114 char 1',
+                                 'v3.compact line 117 char 1',
                                  'Vector<4, Uint<0..256>>',
                                  cards_0)
     }
     if (!(typeof(playSalt_0) === 'bigint' && playSalt_0 >= 0 && playSalt_0 <= __compactRuntime.MAX_FIELD)) {
       __compactRuntime.typeError('commitPlayCards',
                                  'argument 2',
-                                 'proof-or-bluff-rollup.compact line 114 char 1',
+                                 'v3.compact line 117 char 1',
                                  'Field',
                                  playSalt_0)
     }
@@ -2429,35 +2439,35 @@ export const pureCircuits = {
     if (!(typeof(prev_0) === 'bigint' && prev_0 >= 0 && prev_0 <= __compactRuntime.MAX_FIELD)) {
       __compactRuntime.typeError('chainMove',
                                  'argument 1',
-                                 'proof-or-bluff-rollup.compact line 119 char 1',
+                                 'v3.compact line 122 char 1',
                                  'Field',
                                  prev_0)
     }
     if (!(typeof(kind_0) === 'bigint' && kind_0 >= 0n && kind_0 <= 255n)) {
       __compactRuntime.typeError('chainMove',
                                  'argument 2',
-                                 'proof-or-bluff-rollup.compact line 119 char 1',
+                                 'v3.compact line 122 char 1',
                                  'Uint<0..256>',
                                  kind_0)
     }
     if (!(typeof(rank_0) === 'bigint' && rank_0 >= 0n && rank_0 <= 255n)) {
       __compactRuntime.typeError('chainMove',
                                  'argument 3',
-                                 'proof-or-bluff-rollup.compact line 119 char 1',
+                                 'v3.compact line 122 char 1',
                                  'Uint<0..256>',
                                  rank_0)
     }
     if (!(typeof(count_0) === 'bigint' && count_0 >= 0n && count_0 <= 255n)) {
       __compactRuntime.typeError('chainMove',
                                  'argument 4',
-                                 'proof-or-bluff-rollup.compact line 119 char 1',
+                                 'v3.compact line 122 char 1',
                                  'Uint<0..256>',
                                  count_0)
     }
     if (!(typeof(playCommit_0) === 'bigint' && playCommit_0 >= 0 && playCommit_0 <= __compactRuntime.MAX_FIELD)) {
       __compactRuntime.typeError('chainMove',
                                  'argument 5',
-                                 'proof-or-bluff-rollup.compact line 119 char 1',
+                                 'v3.compact line 122 char 1',
                                  'Field',
                                  playCommit_0)
     }
@@ -2478,28 +2488,28 @@ export const pureCircuits = {
     if (!(salt_0.buffer instanceof ArrayBuffer && salt_0.BYTES_PER_ELEMENT === 1 && salt_0.length === 32)) {
       __compactRuntime.typeError('dealHandRanks',
                                  'argument 1',
-                                 'proof-or-bluff-rollup.compact line 167 char 1',
+                                 'v3.compact line 173 char 1',
                                  'Bytes<32>',
                                  salt_0)
     }
-    if (!(seed_0.buffer instanceof ArrayBuffer && seed_0.BYTES_PER_ELEMENT === 1 && seed_0.length === 32)) {
+    if (!(typeof(seed_0) === 'bigint' && seed_0 >= 0 && seed_0 <= __compactRuntime.MAX_FIELD)) {
       __compactRuntime.typeError('dealHandRanks',
                                  'argument 2',
-                                 'proof-or-bluff-rollup.compact line 167 char 1',
-                                 'Bytes<32>',
+                                 'v3.compact line 173 char 1',
+                                 'Field',
                                  seed_0)
     }
     if (!(typeof(round_0) === 'bigint' && round_0 >= 0n && round_0 <= 4294967295n)) {
       __compactRuntime.typeError('dealHandRanks',
                                  'argument 3',
-                                 'proof-or-bluff-rollup.compact line 167 char 1',
+                                 'v3.compact line 173 char 1',
                                  'Uint<0..4294967296>',
                                  round_0)
     }
     if (!(typeof(size_0) === 'bigint' && size_0 >= 0n && size_0 <= 4294967295n)) {
       __compactRuntime.typeError('dealHandRanks',
                                  'argument 4',
-                                 'proof-or-bluff-rollup.compact line 167 char 1',
+                                 'v3.compact line 173 char 1',
                                  'Uint<0..4294967296>',
                                  size_0)
     }
@@ -2514,14 +2524,14 @@ export const pureCircuits = {
     if (!(Array.isArray(ranks_0) && ranks_0.length === 7 && ranks_0.every((t) => typeof(t) === 'bigint' && t >= 0n && t <= 255n))) {
       __compactRuntime.typeError('handCountsFromRanks',
                                  'argument 1',
-                                 'proof-or-bluff-rollup.compact line 182 char 1',
+                                 'v3.compact line 188 char 1',
                                  'Vector<7, Uint<0..256>>',
                                  ranks_0)
     }
     if (!(typeof(size_0) === 'bigint' && size_0 >= 0n && size_0 <= 4294967295n)) {
       __compactRuntime.typeError('handCountsFromRanks',
                                  'argument 2',
-                                 'proof-or-bluff-rollup.compact line 182 char 1',
+                                 'v3.compact line 188 char 1',
                                  'Uint<0..4294967296>',
                                  size_0)
     }

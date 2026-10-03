@@ -81,7 +81,7 @@ export type ProvableCircuits<PS> = {
 
 export type PureCircuits = {
   commitEntropy(entropy_0: Uint8Array): Uint8Array;
-  combineEntropy(p1Entropy_0: Uint8Array, p2Entropy_0: Uint8Array): Uint8Array;
+  combineEntropy(p1Entropy_0: Uint8Array, p2Entropy_0: Uint8Array): bigint;
   commitHandSalt(salt_0: Uint8Array): Uint8Array;
   commitPlayCards(cards_0: bigint[], playSalt_0: bigint): bigint;
   chainMove(prev_0: bigint,
@@ -90,7 +90,7 @@ export type PureCircuits = {
             count_0: bigint,
             playCommit_0: bigint): bigint;
   dealHandRanks(salt_0: Uint8Array,
-                seed_0: Uint8Array,
+                seed_0: bigint,
                 round_0: bigint,
                 size_0: bigint): bigint[];
   handCountsFromRanks(ranks_0: bigint[], size_0: bigint): bigint[];
@@ -101,7 +101,7 @@ export type Circuits<PS> = {
                 entropy_0: Uint8Array): __compactRuntime.CircuitResults<PS, Uint8Array>;
   combineEntropy(context: __compactRuntime.CircuitContext<PS>,
                  p1Entropy_0: Uint8Array,
-                 p2Entropy_0: Uint8Array): __compactRuntime.CircuitResults<PS, Uint8Array>;
+                 p2Entropy_0: Uint8Array): __compactRuntime.CircuitResults<PS, bigint>;
   commitHandSalt(context: __compactRuntime.CircuitContext<PS>,
                  salt_0: Uint8Array): __compactRuntime.CircuitResults<PS, Uint8Array>;
   commitPlayCards(context: __compactRuntime.CircuitContext<PS>,
@@ -115,7 +115,7 @@ export type Circuits<PS> = {
             playCommit_0: bigint): __compactRuntime.CircuitResults<PS, bigint>;
   dealHandRanks(context: __compactRuntime.CircuitContext<PS>,
                 salt_0: Uint8Array,
-                seed_0: Uint8Array,
+                seed_0: bigint,
                 round_0: bigint,
                 size_0: bigint): __compactRuntime.CircuitResults<PS, bigint[]>;
   handCountsFromRanks(context: __compactRuntime.CircuitContext<PS>,

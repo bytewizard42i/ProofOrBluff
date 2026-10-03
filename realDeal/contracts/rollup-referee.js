@@ -26,7 +26,15 @@ function boundedDraw(hi, lo, m) {
   const u = Number(hi) * 256 + Number(lo);
   return BigInt(Math.floor((u * Number(m)) / 65536));
 }
-export function startingRank(seed) { return boundedDraw(seed[30], seed[31], 13n); }
+// The seed is a transient-domain Field (bigint). Little-endian bytes, as the
+// circuit's `seed as Bytes<32>` cast; mid bytes 16/17 avoid the biased top byte.
+export function seedBytes(seed) {
+  const out = new Uint8Array(32);
+  let v = BigInt(seed);
+  for (let i = 0; i < 32; i += 1) { out[i] = Number(v & 0xffn); v >>= 8n; }
+  return out;
+}
+export function startingRank(seed) { const b = seedBytes(seed); return boundedDraw(b[16], b[17], 13n); }
 
 const zeros13 = () => Array.from({ length: 13 }, () => 0n);
 const sum = (hand) => hand.reduce((a, v) => a + v, 0n);
@@ -52,7 +60,7 @@ const minusOneFloor = (score) => (score === 0n ? 0n : score - 1n);
 /**
  * Create a referee for one game.
  * @param pureCircuits  the compiled contract's `pureCircuits`
- * @param seed          Uint8Array(32) = combineEntropy(e1, e2)
+ * @param seed          bigint (Field) = combineEntropy(e1, e2)
  * @param salts         [salt1, salt2] Uint8Array(32) each — the referee needs
  *                      BOTH to track both hands. During play each side runs a
  *                      referee with only its own real hand (the other hand is
@@ -97,12 +105,14 @@ export function createReferee(pureCircuits, { seed, salts, mode }) {
     const challengerIs0 = s.turn === 0n;
     const sc0 = !isChallenge ? s.score0 : challengerIs0 ? (truthful ? minusOneFloor(s.score0) : s.score0 + 3n) : s.score0;
     const sc1 = !isChallenge ? s.score1 : challengerIs0 ? s.score1 : (truthful ? minusOneFloor(s.score1) : s.score1 + 3n);
-    const ended = s.ended || sc0 >= threshold || sc1 >= threshold;
-
     const resolved = isAccept || isChallenge;
-    const rollover = resolved && (sum(h0) === 0n || sum(h1) === 0n) && !ended;
+    const scored = s.ended || sc0 >= threshold || sc1 >= threshold;
+    const wantsRollover = resolved && (sum(h0) === 0n || sum(h1) === 0n) && !scored;
+    // Out of deals: the game ends as a draw (mirrors the circuit exactly).
+    const outOfRounds = wantsRollover && s.round >= BigInt(MAX_ROUNDS);
+    const ended = scored || outOfRounds;
+    const rollover = wantsRollover && !outOfRounds;
     const nextRound = rollover ? s.round + 1n : s.round;
-    if (rollover && nextRound > BigInt(MAX_ROUNDS)) throw new Error('round limit exceeded');
     const nh0 = rollover ? hands[0][Number(nextRound) - 1] : h0;
     const nh1 = rollover ? hands[1][Number(nextRound) - 1] : h1;
 
@@ -111,7 +121,8 @@ export function createReferee(pureCircuits, { seed, salts, mode }) {
 
     return {
       hand0: noop ? s.hand0 : nh0, hand1: noop ? s.hand1 : nh1,
-      turn: noop ? s.turn : (s.turn === 0n ? 1n : 0n),
+      // PLAY passes the turn to the responder; the responder then keeps it.
+      turn: noop ? s.turn : (isPlay ? (s.turn === 0n ? 1n : 0n) : s.turn),
       currentRank: noop ? s.currentRank : (resolved ? nextRankOf(s.currentRank) : s.currentRank),
       pending: noop ? s.pending : isPlay,
       claimRank: isPlay ? m.rank : s.claimRank, claimCount: isPlay ? m.count : s.claimCount,
@@ -149,7 +160,7 @@ export function createReferee(pureCircuits, { seed, salts, mode }) {
     result() {
       if (moves.length !== MAX_MOVES) throw new Error('call pad() first');
       const fin = api.state;
-      const winner = !fin.ended ? 0n : fin.score0 >= threshold ? 1n : 2n;
+      const winner = fin.score0 >= threshold ? 1n : fin.score1 >= threshold ? 2n : 0n;
       return {
         transcriptRoot: fin.chain, p1Score: fin.score0, p2Score: fin.score1, winner,
         witnesses: { transcript: moves, snapshots: states },

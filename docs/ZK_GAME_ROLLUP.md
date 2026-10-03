@@ -233,6 +233,21 @@ ZK moments instead of a spinner:
   finishes early), no sound by default, cached so it never adds load time.
   Three or four variants so repeat players don't see the same one twice.
 
+**Proof receipts (John, Oct 3 2026).** The player should never have to wait
+for the proof at all. When `closeGame` confirms, the server sends a
+**receipt** — scores, winner, mode, tx hash, explorer link — not the proof
+blob (which only the chain reads). Delivery, in order of privacy cost:
+
+1. *In-app "My Games"* — always on, no PII; entries flip to "verified ✓" when
+   the proof lands, including after the tab was closed.
+2. *Browser push* — opt-in, no PII, the instant "it's sealed" nudge.
+3. *Email* — opt-in only, never required to play; the natural hook is Pro
+   registration on `.com`, where the player has already chosen to share an
+   email. Content is the public record only: never cards, never the transcript.
+
+This is what makes "close the tab the moment the game ends" safe: the bot
+holds the witnesses, proves, submits, and the result finds the player.
+
 Capacity math (to be replaced by measured numbers): if a 64-move `closeGame`
 proof takes ~2–4 minutes on 2 vCPU / 6 GB, one 8 GB box seals ~20–30 games an
 hour. Boxes are stateless and horizontally scaled; game codes (`tickets.js`)

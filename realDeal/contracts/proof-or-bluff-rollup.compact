@@ -13,10 +13,10 @@
 // The chain never sees a card. It sees who played, the mode, the final score,
 // the winner and a hash of the move list.
 //
-// Circuit-cost rules (spec §6a): the transcript chain and every per-move hash
-// are TRANSIENT (circuit-native). SHA-256 (persistentHash) is used only for the
-// values that already live on the ledger: the four commitment openings, the
-// seed, and one deal digest per player per round.
+// Circuit-cost rules (spec §6a): everything that never touches the ledger —
+// the seed, the deal digests, the transcript chain, every per-move hash — is
+// TRANSIENT (circuit-native). SHA-256 (persistentHash) is used ONLY to open
+// the four commitments stored at openGame. closeGame = 4 SHA-256, not 17.
 //
 // NO MONEY. This contract holds no funds and never receives a coin. Any future
 // wagered edition settles ONLY after a verified closing proof (spec §3).
@@ -28,7 +28,8 @@ import CompactStandardLibrary;
 // Sizes. Fixed at compile time; measured before freezing (spec §6a.3).
 //   MAX_MOVES  = 64  transcript slots (PLAY / ACCEPT / CHALLENGE / NOOP padding)
 //   MAX_ROUNDS = 6   deals per player; a game needing more ends as a draw
-// A game that fills every slot without reaching the threshold is a draw.
+// A game that fills every slot, or runs out of rounds, without reaching the
+// threshold is a draw.
 // ---------------------------------------------------------------------------
 
 export enum GameMode { CASUAL, STANDARD, STRATEGIC, CLASSIC, CASINO }
@@ -83,7 +84,7 @@ struct GameIdInput { separator: Bytes<32>; playerOne: Bytes<32>; playerTwo: Byte
 struct SeedInput { separator: Bytes<32>; p1Entropy: Bytes<32>; p2Entropy: Bytes<32>; }
 struct EntropyCommitInput { separator: Bytes<32>; entropy: Bytes<32>; }
 struct HandSaltCommitInput { separator: Bytes<32>; salt: Bytes<32>; }
-struct DealInput { separator: Bytes<32>; salt: Bytes<32>; seed: Bytes<32>; round: Uint<32>; }
+struct DealInput { separator: Bytes<32>; salt: Bytes<32>; seed: Field; round: Uint<32>; }
 
 // Private witnesses for closeGame. The prover (the player's browser, or our
 // proof server acting for it) holds everything; none of it is disclosed.
@@ -103,8 +104,10 @@ export ledger totalGamesPruned: Counter;
 export pure circuit commitEntropy(entropy: Bytes<32>): Bytes<32> {
   return persistentHash<EntropyCommitInput>(EntropyCommitInput { separator: pad(32, "pob:entropy:v1"), entropy: entropy });
 }
-export pure circuit combineEntropy(p1Entropy: Bytes<32>, p2Entropy: Bytes<32>): Bytes<32> {
-  return persistentHash<SeedInput>(SeedInput { separator: pad(32, "pob:seed:v1"), p1Entropy: p1Entropy, p2Entropy: p2Entropy });
+// The seed never touches the ledger, so it lives in the transient domain
+// (circuit-native hash, ~30x cheaper than SHA-256 — spec §6a.1).
+export pure circuit combineEntropy(p1Entropy: Bytes<32>, p2Entropy: Bytes<32>): Field {
+  return transientHash<SeedInput>(SeedInput { separator: pad(32, "pob:seed:v2"), p1Entropy: p1Entropy, p2Entropy: p2Entropy });
 }
 export pure circuit commitHandSalt(salt: Bytes<32>): Bytes<32> {
   return persistentHash<HandSaltCommitInput>(HandSaltCommitInput { separator: pad(32, "pob:hand-salt:v1"), salt: salt });
@@ -164,9 +167,12 @@ circuit dealFive(b: Vector<32, Uint<8>>): Vector<7, Uint<8>> {
   const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (51 as Uint<8>) : t4;
   return [cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3), cardToRank(c4), 0, 0];
 }
-export pure circuit dealHandRanks(salt: Bytes<32>, seed: Bytes<32>, round: Uint<32>, size: Uint<32>): Vector<7, Uint<8>> {
-  const digest = persistentHash<DealInput>(DealInput { separator: pad(32, "pob:deal:v2"), salt: salt, seed: seed, round: round });
-  const b = digest as Vector<32, Uint<8>>;
+// Deal digest in the transient domain too (12 of these per closeGame; as
+// SHA-256 they blew key generation past 12 GB — measured Oct 3 2026). The
+// Field→Bytes cast is little-endian; bytes 0..13 are full-entropy bytes.
+export pure circuit dealHandRanks(salt: Bytes<32>, seed: Field, round: Uint<32>, size: Uint<32>): Vector<7, Uint<8>> {
+  const digest = transientHash<DealInput>(DealInput { separator: pad(32, "pob:deal:v3"), salt: salt, seed: seed, round: round });
+  const b = (digest as Bytes<32>) as Vector<32, Uint<8>>;
   return size == (5 as Uint<32>) ? dealFive(b) : dealSeven(b);
 }
 circuit countRank(ranks: Vector<7, Uint<8>>, size: Uint<32>, target: Uint<8>): Uint<8> {
@@ -194,9 +200,9 @@ circuit winThreshold(mode: Uint<8>): Uint<8> {
   return 20;
 }
 // Starting rank derived from the seed (no extra hash, no extra message).
-circuit startingRank(seed: Bytes<32>): Uint<8> {
-  const b = seed as Vector<32, Uint<8>>;
-  return boundedDraw(b[30], b[31], 13);
+circuit startingRank(seed: Field): Uint<8> {
+  const b = (seed as Bytes<32>) as Vector<32, Uint<8>>;
+  return boundedDraw(b[16], b[17], 13);   // mid bytes: full entropy (byte 31 is biased)
 }
 
 // ---------------------------------------------------------------------------
@@ -221,8 +227,8 @@ circuit handEmpty(hand: Vector<13, Uint<8>>): Boolean {
   return total == (0 as Uint<8>);
 }
 // The hand dealt for `round` (1..6). Rounds beyond MAX_ROUNDS deal nothing,
-// which empties both hands and forces repeated rollovers — caught by the
-// "round in range" assert in applyMove.
+// which cannot happen: applyMove ends the game as a draw instead of rolling
+// past MAX_ROUNDS.
 circuit selectHand(hands: Vector<6, Vector<13, Uint<8>>>, round: Uint<8>): Vector<13, Uint<8>> {
   return [...map((i: Uint<8>): Uint<8> => {
     return ((round == (1 as Uint<8>) ? hands[0][i] : (0 as Uint<8>))
@@ -268,14 +274,18 @@ circuit applyMove(
     : challengerIs0 ? (truthful ? minusOneFloor(s.score0) : ((s.score0 + 3) as Uint<8>)) : s.score0;
   const sc1: Uint<8> = !isChallenge ? s.score1
     : challengerIs0 ? s.score1 : (truthful ? minusOneFloor(s.score1) : ((s.score1 + 3) as Uint<8>));
-  const ended = s.ended || sc0 >= threshold || sc1 >= threshold;
 
   // Round rollover when a hand empties after a resolved claim (accept or
   // challenge). The pile is discarded, both hands re-dealt for round + 1.
   const resolved = isAccept || isChallenge;
-  const rollover = resolved && (handEmpty(h0) || handEmpty(h1)) && !ended;
+  const scored = s.ended || sc0 >= threshold || sc1 >= threshold;
+  const wantsRollover = resolved && (handEmpty(h0) || handEmpty(h1)) && !scored;
+  // Out of deals (MAX_ROUNDS reached): the game ends right here as a draw —
+  // neither score met the threshold, so closeGame reports winner 0.
+  const outOfRounds = wantsRollover && s.round >= (6 as Uint<8>);
+  const ended = scored || outOfRounds;
+  const rollover = wantsRollover && !outOfRounds;
   const nextRound = rollover ? ((s.round + 1) as Uint<8>) : s.round;
-  assert(!rollover || nextRound <= (6 as Uint<8>), "round limit exceeded");
   const nh0 = rollover ? selectHand(hands0, nextRound) : h0;
   const nh1 = rollover ? selectHand(hands1, nextRound) : h1;
 
@@ -284,7 +294,10 @@ circuit applyMove(
   const chain = noop ? s.chain : chainMove(s.chain, m.kind, m.rank, m.count, playCommit);
 
   const nextRank = resolved ? nextRankOf(s.currentRank) : s.currentRank;
-  const nextTurn: Uint<8> = noop ? s.turn : (s.turn == (0 as Uint<8>) ? 1 : 0);
+  // Turn order (the real Bluff rule, same as the per-move contract): a PLAY
+  // passes the turn to the opponent to respond; after ACCEPT or CHALLENGE the
+  // RESPONDER keeps the turn and makes the next claim. Claimants alternate.
+  const nextTurn: Uint<8> = noop ? s.turn : (isPlay ? (s.turn == (0 as Uint<8>) ? 1 : 0) : s.turn);
 
   return GameState {
     hand0: noop ? s.hand0 : nh0, hand1: noop ? s.hand1 : nh1,
@@ -354,7 +367,7 @@ export circuit closeGame(
   assert(commitHandSalt(salts[0]) == g.p1SaltCommit, "P1 salt mismatch");
   assert(commitHandSalt(salts[1]) == g.p2SaltCommit, "P2 salt mismatch");
 
-  // 2. Seed, then every round's hand for both players (one SHA-256 each).
+  // 2. Seed, then every round's hand for both players (transient hashes).
   const seed = combineEntropy(e[0], e[1]);
   const size = handSize(g.mode);
   const hands0 = [...map((r: Uint<32>): Vector<13, Uint<8>> => {
@@ -386,7 +399,8 @@ export circuit closeGame(
   const fin = states[64];
   assert(fin.chain == transcriptRoot, "transcript root mismatch");
   assert(fin.score0 == p1Score && fin.score1 == p2Score, "final score mismatch");
-  const w: Uint<8> = !fin.ended ? 0 : (fin.score0 >= threshold ? 1 : 2);
+  // Draw (0) if nobody reached the threshold — 64 moves used, or out of rounds.
+  const w: Uint<8> = fin.score0 >= threshold ? 1 : (fin.score1 >= threshold ? 2 : 0);
   assert(w == winner, "winner mismatch");
 
   games.insert(disclose(gameId), disclose(GameRecord {
