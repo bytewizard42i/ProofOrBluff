@@ -160,6 +160,12 @@ export function privateStateDir(networkId, variant = 'wagered') {
     variant === 'state-only' ? 'private-state-no-stakes' : 'private-state');
 }
 
+// Sponsored-play game tickets. Lives beside the per-network state so each
+// namespace (local / preview-2 / preprod / mainnet) has its own ticket book.
+export function ticketsFile() {
+  return path.join(STATE_DIR, 'tickets.json');
+}
+
 export function homeStateDir() {
   // Fallback used by long-lived caches that should outlive cwd resets.
   return path.join(os.homedir(), '.pob-realdeal');

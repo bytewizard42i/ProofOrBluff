@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./cli.js', () => ({ openSession: vi.fn() }));
-vi.mock('./state.js', () => ({ getEntropy: vi.fn(), setContractAddress: vi.fn(), setActiveMatch: vi.fn() }));
+vi.mock('./state.js', () => ({
+  getEntropy: vi.fn(),
+  setContractAddress: vi.fn(),
+  setActiveMatch: vi.fn(),
+  getContractAddress: vi.fn(),
+  ticketsFile: () => '/tmp/pob-bot-recovery-test-tickets.json',
+}));
 
 import { openSession } from './cli.js';
 import * as state from './state.js';

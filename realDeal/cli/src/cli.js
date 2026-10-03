@@ -38,6 +38,7 @@ import { log } from './log.js';
 import { buildWalletFromSeed, deriveUnshieldedAddress } from './wallet-node.js';
 import { getContractApi } from './contract.js';
 import * as state from './state.js';
+import { createTicketStore } from './tickets.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -374,6 +375,37 @@ const commands = {
     } finally { await s.walletHandle.shutdown(); }
   },
 
+  // ── Game tickets (sponsored play) ──
+  // Pure file operations: no wallet, no chain. The bot reads the same file.
+  async 'ticket-mint'(flags) {
+    const store = createTicketStore({ file: state.ticketsFile() });
+    const count = num(flags.count, 1);
+    if (count < 1 || count > 50) throw new Error('--count must be 1..50');
+    const minted = [];
+    for (let i = 0; i < count; i += 1) {
+      minted.push(store.mint({
+        maxTransactions: flags.max !== undefined ? num(flags.max, 40) : undefined,
+        ttlMs: flags.days !== undefined ? num(flags.days, 7) * 24 * 60 * 60 * 1000 : undefined,
+        note: flags.note || '',
+      }));
+    }
+    log.ok(`Minted ${minted.length} game ticket(s). Codes are shown ONCE; only hashes are stored.`);
+    for (const t of minted) console.log(`  ${t.code}   (${t.maxTransactions} tx, expires ${new Date(t.expiresAt).toISOString()})`);
+    log.info(`Ticket file: ${store.file}`);
+  },
+
+  async 'ticket-list'() {
+    const store = createTicketStore({ file: state.ticketsFile() });
+    log.json('tickets', store.list());
+  },
+
+  async 'ticket-revoke'(flags) {
+    if (!flags.code) throw new Error('--code POB-XXXX-XXXX is required');
+    const store = createTicketStore({ file: state.ticketsFile() });
+    store.revoke(flags.code);
+    log.ok('Ticket revoked.');
+  },
+
   async active(flags) {
     const variant = flags.contract || process.env.POB_CONTRACT_VARIANT || 'wagered';
     const matchId = state.getActiveMatch(variant);
@@ -527,6 +559,9 @@ const HELP_TEXT = `pob-cli — realDeal headless driver
 
 Commands:
   address          --player p1|p2 --network preview   (print funding address; no tx)
+  ticket-mint      [--count N --max TX --days D --note "..."]  (sponsored-play codes; no tx)
+  ticket-list
+  ticket-revoke    --code POB-XXXX-XXXX
   create-match     [--mode N --wager N]
   join-match       --match 0x... [--wager N]
   import-entropy   --match 0x... --role p1|p2 --hex 0x...

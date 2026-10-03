@@ -15,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 
 import { openSession } from './cli.js';
 import * as state from './state.js';
+import { createSponsor, SPONSOR_LIMITS, SponsorError } from './sponsor.js';
+import { createTicketStore, TicketError } from './tickets.js';
 import { dealFromSeed, RANKS } from '../../shared/dealing.js';
 import {
   decideChallenge,
@@ -241,23 +243,23 @@ function sendJson(response, statusCode, payload) {
   response.end(encodedPayload);
 }
 
-async function readJsonBody(request) {
+async function readJsonBody(request, maxBytes = MAX_JSON_BODY_BYTES) {
   const contentType = request.headers['content-type'];
   if (typeof contentType !== 'string' || !contentType.toLowerCase().startsWith('application/json')) {
     throw new HttpError(415, 'POST requests require Content-Type: application/json.');
   }
 
   const declaredLength = Number(request.headers['content-length']);
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BODY_BYTES) {
-    throw new HttpError(413, `JSON body exceeds the ${MAX_JSON_BODY_BYTES}-byte limit.`);
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new HttpError(413, `JSON body exceeds the ${maxBytes}-byte limit.`);
   }
 
   const chunks = [];
   let receivedBytes = 0;
   for await (const chunk of request) {
     receivedBytes += chunk.length;
-    if (receivedBytes > MAX_JSON_BODY_BYTES) {
-      throw new HttpError(413, `JSON body exceeds the ${MAX_JSON_BODY_BYTES}-byte limit.`);
+    if (receivedBytes > maxBytes) {
+      throw new HttpError(413, `JSON body exceeds the ${maxBytes}-byte limit.`);
     }
     chunks.push(chunk);
   }
@@ -632,7 +634,67 @@ export function createTestWiredBot({ defaultDifficulty = 'medium' } = {}) {
     if (sessionToClose) await sessionToClose.walletHandle.shutdown();
   }
 
-  return { join, advance, status, shutdown };
+  // ── Sponsored play ──
+  // The sponsor shares the bot's synced wallet (same DUST tank). Game
+  // tickets gate who may draw on it; the sponsor's own policy gates what.
+  const tickets = createTicketStore({ file: state.ticketsFile() });
+  let sponsorInstance = null;
+  async function ensureSponsor() {
+    const activeSession = await ensureSession();
+    if (!sponsorInstance) {
+      const contractAddress = state.getContractAddress(activeSession.networkId, activeSession.variant);
+      if (!contractAddress) throw new HttpError(503, 'No published table is configured; sponsorship is unavailable.');
+      // Keep enough DUST for the bot's own moves. Configurable; default is a
+      // conservative slice of what one bot transaction has cost on Preview.
+      const reserveDust = BigInt(process.env.POB_SPONSOR_RESERVE_DUST || '50000000000000');
+      sponsorInstance = createSponsor({
+        walletCtx: activeSession.walletHandle.ctx,
+        networkId: activeSession.networkId,
+        contractAddress,
+        reserveDust,
+      });
+    }
+    return sponsorInstance;
+  }
+
+  function ticketInfo(code) {
+    return { status: 'ok', ticket: tickets.inspect(code) };
+  }
+
+  async function sponsorStatus() {
+    try {
+      const sponsor = await ensureSponsor();
+      return { status: 'ok', sponsor: await sponsor.status() };
+    } catch (error) {
+      return { status: 'ok', sponsor: { enabled: false, reason: safeErrorMessage(error) } };
+    }
+  }
+
+  /**
+   * Pay DUST for one player transaction. Order matters: validate the ticket
+   * first (cheap, no wallet), then the transaction policy, and only consume
+   * the allowance once the transaction has actually been submitted.
+   */
+  async function sponsorSubmit(body, clientKey) {
+    assertPlainObject(body, 'Sponsor request');
+    rejectUnknownFields(body, ['code', 'txHex', 'matchId', 'sessionKey'], 'Sponsor request');
+    const { code, txHex, matchId = null, sessionKey = null } = body;
+    const boundMatch = matchId == null ? null : validateHex32(matchId, 'matchId');
+    const boundSession = sessionKey == null ? null : validateHex32(sessionKey, 'sessionKey');
+    const info = tickets.inspect(code);
+    if (!info.valid) {
+      throw new HttpError(403, info.expired ? 'This game code has expired.' : info.revoked ? 'This game code has been revoked.' : 'This game code has used up its allowance.');
+    }
+    if (info.matchId && boundMatch && info.matchId !== boundMatch) {
+      throw new HttpError(403, 'This game code is tied to a different match.');
+    }
+    const sponsor = await ensureSponsor();
+    const result = await sponsor.sponsor({ txHex, clientKey });
+    const consumed = tickets.consume(code, { matchId: boundMatch, sessionKey: boundSession });
+    return { status: 'ok', ...result, ticket: { remaining: consumed.remaining } };
+  }
+
+  return { join, advance, status, shutdown, ticketInfo, sponsorStatus, sponsorSubmit };
 }
 
 export function createBotServer({ defaultDifficulty = 'medium' } = {}) {
@@ -669,9 +731,26 @@ export function createBotServer({ defaultDifficulty = 'medium' } = {}) {
         sendJson(response, 200, await bot.status(requestUrl.searchParams.get('matchId')));
         return;
       }
+      // Sponsored play: ticket inspection, sponsor health, and fee payment.
+      if (request.method === 'GET' && requestUrl.pathname === '/api/ticket') {
+        sendJson(response, 200, bot.ticketInfo(requestUrl.searchParams.get('code')));
+        return;
+      }
+      if (request.method === 'GET' && requestUrl.pathname === '/api/sponsor/status') {
+        sendJson(response, 200, await bot.sponsorStatus());
+        return;
+      }
+      if (request.method === 'POST' && requestUrl.pathname === '/api/sponsor/submit') {
+        const clientKey = request.socket.remoteAddress || 'unknown';
+        const body = await readJsonBody(request, SPONSOR_LIMITS.maxBodyBytes);
+        sendJson(response, 200, await bot.sponsorSubmit(body, clientKey));
+        return;
+      }
       throw new HttpError(404, 'Route not found. Use GET /health or an /api/testwired endpoint.');
     } catch (error) {
-      const statusCode = error instanceof HttpError ? error.statusCode : 500;
+      const statusCode = (error instanceof HttpError || error instanceof SponsorError || error instanceof TicketError)
+        ? error.statusCode
+        : 500;
       const nextStep = statusCode >= 500
         ? 'Check that the local Midnight stack, contract address, and POB_SEED_P2 are available, then retry.'
         : 'Correct the request using the endpoint contract, then retry.';
