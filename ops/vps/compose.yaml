@@ -1,0 +1,87 @@
+# Proof or Bluff — production VPS stack
+#
+# Host: Hostinger KVM 2 (2 vCPU / 8 GB), shared with TaskFence Ai.
+# Deployed at /opt/prooforbluff on the server. This file is the source of truth;
+# copy it there with ops/vps/deploy.sh, never hand-edit on the box.
+#
+# Resource policy (John, Oct 3 2026): "POB wins the fight, TaskFence stays alive."
+#   - TaskFence containers were lowered to cpu_shares 256 (docker update).
+#   - POB proof server runs at cpu_shares 2048 → ~8x CPU priority under contention.
+#   - cpu_shares only matter when both want CPU at once; idle POB = TaskFence
+#     has the whole machine.
+#   - Memory: TaskFence is capped at 2.75 GiB total (its own limits). POB proof
+#     server is capped at 4.5 GiB. 7.8 GiB RAM total → ~0.5 GiB headroom for OS.
+#
+# Services:
+#   proof-server  Midnight proof server 8.1.0 (public-network matrix, Oct 2026).
+#                 Sees private witnesses during proving. Never logs them.
+#   caddy         TLS termination + origin-locked CORS for proof.prooforbluff.app
+#                 (and later api.prooforbluff.app for the Blockfrost proxy/bot).
+#
+# Not yet here (next milestones): pob-bot (hosted opponent + DUST sponsor),
+# pob-proxy (server-side Blockfrost). They will join this file.
+
+name: prooforbluff
+
+services:
+  proof-server:
+    # Tag pinned to the proof server version in the current Midnight support
+    # matrix. Bump only together with ledger/compact/midnight.js versions.
+    image: midnightntwrk/proof-server:8.1.0
+    container_name: pob-proof-server
+    restart: unless-stopped
+    # The image's ENTRYPOINT is `bash -c <single string>`, so CLI flags passed as
+    # a compose array are silently dropped (verified Oct 3 2026: /ready showed
+    # jobCapacity 0). Configure via env vars instead — each flag has one.
+    #   2 vCPU host → 2 workers (one proving job pins one core).
+    #   job-capacity 10: beyond that, clients get HTTP 429 instead of OOMing us.
+    #   job-timeout 600: the rollup closeGame proof may be large; 10 min ceiling.
+    environment:
+      MIDNIGHT_PROOF_SERVER_PORT: "6300"
+      MIDNIGHT_PROOF_SERVER_NUM_WORKERS: "2"
+      MIDNIGHT_PROOF_SERVER_JOB_CAPACITY: "10"
+      MIDNIGHT_PROOF_SERVER_JOB_TIMEOUT: "600"
+    command: ["midnight-proof-server"]
+    # Only Caddy talks to it; not published on the host.
+    expose:
+      - "6300"
+    volumes:
+      # Cache fetched public params / proving keys across restarts.
+      - proof-params:/root/.cache/midnight
+    cpu_shares: 2048
+    mem_limit: 4608m
+    healthcheck:
+      # Image is minimal (no curl/wget); bash /dev/tcp probe instead.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6300 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q 200"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 300s   # pre-fetch of params can take minutes on first boot
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: pob-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data        # Let's Encrypt certs — persist them!
+      - caddy-config:/config
+    cpu_shares: 1024
+    mem_limit: 256m
+    depends_on:
+      - proof-server
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+volumes:
+  proof-params:
+  caddy-data:
+  caddy-config:

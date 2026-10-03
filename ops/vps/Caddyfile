@@ -1,0 +1,59 @@
+# Proof or Bluff — Caddy reverse proxy
+#
+# Caddy gets Let's Encrypt certificates automatically for every hostname below
+# (it needs ports 80 + 443 reachable and the DNS A record pointing here).
+#
+# Why Caddy sits in front of the proof server:
+#   The proof server ships with Cors::permissive() — ANY website could use our
+#   proving CPU. Caddy locks CORS to prooforbluff.app only, and answers
+#   preflight (OPTIONS) requests itself so the proof server never sees them.
+
+{
+	email ops@prooforbluff.com
+	# Uncomment while testing DNS to avoid burning Let's Encrypt rate limits:
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# Allowed browser origins. Add preview/staging origins here, never "*".
+(pob_cors) {
+	@preflight method OPTIONS
+	header {
+		Access-Control-Allow-Origin "https://prooforbluff.app"
+		Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		Access-Control-Allow-Headers "Content-Type"
+		Access-Control-Max-Age "86400"
+		Vary "Origin"
+		# Standard hardening
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+	respond @preflight 204
+}
+
+# ── Hosted proof server ─────────────────────────────────────────────────────
+# The browser posts proof preimages (private witnesses!) here. TLS is mandatory.
+proof.prooforbluff.app {
+	import pob_cors
+
+	# Proofs can take minutes; don't let Caddy give up first.
+	reverse_proxy proof-server:6300 {
+		transport http {
+			response_header_timeout 660s
+			read_timeout 660s
+		}
+		# Proof payloads can be large (proving key material may be inlined).
+	}
+	request_body {
+		max_size 64MB
+	}
+}
+
+# ── API (Blockfrost proxy + bot) ────────────────────────────────────────────
+# Placeholder until the pob-proxy / pob-bot containers exist. Returns 503 so
+# DNS + TLS can be set up and verified ahead of the services.
+api.prooforbluff.app {
+	import pob_cors
+	respond "Proof or Bluff API — not yet live" 503
+}
