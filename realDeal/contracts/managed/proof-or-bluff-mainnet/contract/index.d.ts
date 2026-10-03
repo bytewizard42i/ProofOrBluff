@@ -220,7 +220,10 @@ export type PureCircuits = {
   commitSeed(seed_0: Uint8Array): Uint8Array;
   commitHandSalt(salt_0: Uint8Array): Uint8Array;
   commitHandCounts(counts_0: bigint[], salt_0: Uint8Array, round_0: bigint): Uint8Array;
-  dealHandRanks(salt_0: Uint8Array, seed_0: Uint8Array, round_0: bigint): bigint[];
+  dealHandRanks(salt_0: Uint8Array,
+                seed_0: Uint8Array,
+                round_0: bigint,
+                size_0: bigint): bigint[];
   handCountsFromRanks(ranks_0: bigint[], size_0: bigint): bigint[];
   removePlayed(counts_0: bigint[],
                play_0: { count: bigint,
@@ -262,7 +265,8 @@ export type Circuits<PS> = {
   dealHandRanks(context: __compactRuntime.CircuitContext<PS>,
                 salt_0: Uint8Array,
                 seed_0: Uint8Array,
-                round_0: bigint): __compactRuntime.CircuitResults<PS, bigint[]>;
+                round_0: bigint,
+                size_0: bigint): __compactRuntime.CircuitResults<PS, bigint[]>;
   handCountsFromRanks(context: __compactRuntime.CircuitContext<PS>,
                       ranks_0: bigint[],
                       size_0: bigint): __compactRuntime.CircuitResults<PS, bigint[]>;

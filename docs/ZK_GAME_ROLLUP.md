@@ -143,6 +143,69 @@ the quitter's signed last state, and forfeiture rules for a side that refuses
 to reveal. That is a state-channel design and is explicitly **out of scope**
 until stakes exist.
 
+### 3.1 Parked design: the quit-and-resume rule (John, Oct 3 2026)
+
+Recorded now so it is not re-derived later; **not for Season 1.**
+
+A player who disappears mid-game in a wagered mode must **resume within a
+fixed window or the game defaults to the opponent.** Mechanically:
+
+1. The remaining player posts the **latest snapshot both sides signed**.
+   This is the only mid-game transaction and only happens in the quit case.
+   Posting it starts a block-time clock (`RESUME_WINDOW`, order of 10–30
+   minutes: long enough to survive a dropped connection, short enough that
+   no pot sits hostage; same `blockTimeGte` enforcement as the Preview
+   forfeit circuits).
+2. During the window the absent player may **resume** (play continues from
+   that snapshot, off-chain again) or **post a newer signed snapshot** if
+   the poster was hiding one.
+3. **Window expires → the opponent wins by default** and the pot settles to
+   them — still only via a verified closing proof, over the transcript up to
+   the posted snapshot plus the forfeit.
+
+Safety properties the snapshot chain gives for free:
+
+- **Newest signed snapshot wins.** Posting a stale state to erase a lost
+  challenge fails, because the other side holds (and posts) the newer one.
+- **You cannot forge a quit.** A default requires the opponent to be
+  provably silent for the whole window on-chain, not merely claimed absent.
+- **Reveal refusal is a forfeit.** If the side whose salt is needed for the
+  closing proof will not reveal, the window rule applies to that too.
+- **Both signatures on every snapshot** are what make all of the above
+  enforceable; in no-stakes play the signatures are optional, in wagered
+  play they are mandatory.
+
+Open questions for when this is built: window length per mode, who pays
+the dispute transaction's DUST (proposal: the party that loses the dispute,
+deducted from the pot), and whether a resumed game may be disputed again.
+
+**Merkle note.** A Merkle tree does not replace signatures (only a signature
+proves the opponent *agreed* to a state) but it shrinks the dispute
+transaction: make each snapshot the root of a tree over the moves so far,
+and a dispute posts root + latest leaf + ~6-hash path + signature instead
+of replaying the transcript — one move revealed, not the game. Compact's
+native `MerkleTree` ledger type gives the membership proof cheaply.
+
+### 3.2 Parked design: the cooperative exit ("I'd like to quit")
+
+The complement to 3.1: an **agreed early settlement**, as chess has the
+draw offer and poker the chopped pot. Simpler than the timeout path
+because both sides consent.
+
+- Either player proposes a split of the pot (e.g. "I quit, you take 70 %").
+- The other **accepts** → both sign the final snapshot + split, and the
+  game closes with the normal proof over the transcript so far. Money still
+  moves only after that proof verifies.
+- The other **declines** → play continues. If the proposer then abandons,
+  §3.1's timeout rule applies.
+- The contract checks only: both signatures on the split, split sums to the
+  pot, transcript valid up to that snapshot. **No odds computation
+  in-circuit** — hands are private so nobody can compute true odds, and
+  consent makes it unnecessary.
+- The UI pre-fills a suggested split from the *public* score (12–8 ≈ 60/40)
+  and warns when a proposal is far from it. That "range" is a nudge against
+  pressure, not a contract rule.
+
 ## 4. Who proves, and what it costs
 
 - **Hosted (default):** the player's browser sends the witnesses to

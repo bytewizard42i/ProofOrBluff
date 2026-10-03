@@ -23,10 +23,12 @@ export function copiesPerRank(mode) {
  *   3. Observed bluff rate — historical fraction of Ai plays revealed as
  *      bluffs via challenges, blended toward a mode-specific prior.
  *
- * On the Midnight table the pile and discard contents are private, so
- * those arrays are empty and only the player's own hand constrains the
- * estimate. That makes the on-chain odds a little more generous to the Ai,
- * which is the honest direction to err.
+ * On the Midnight table (`state.privateDecks`) each side is dealt from its
+ * OWN private 52-card deck, so the player's cards, the pile and the discard
+ * constrain nothing about the Ai's hand: the Ai can always hold up to 4 of
+ * any rank. Signal 1 therefore never fires on-chain and signal 2 measures
+ * pressure against a flat 4. Only the observed bluff rate carries real
+ * information there — which the reason text says out loud.
  *
  * Returns null if there is no Ai claim to evaluate, otherwise:
  *   { p: 0..1, reason: string, stats: {...} }
@@ -34,14 +36,18 @@ export function copiesPerRank(mode) {
 export function estimateAiBluffProbability(state, settings) {
   if (!state.lastPlay || state.lastPlay.player !== 'ai') return null;
   const { claimedRank, claimedCount } = state.lastPlay;
-  const copies = copiesPerRank(state.mode);
+  // The state-only contract deals every mode from a single private deck
+  // per player, so on-chain "casino" is still 4 of a rank.
+  const copies = state.privateDecks ? 4 : copiesPerRank(state.mode);
   const playerHasOfRank = state.playerHand.filter((c) => c.rank === claimedRank).length;
   const pileHasOfRank = (state.pile || []).filter((c) => c.rank === claimedRank).length;
   // Discarded cards are permanently out of play (post-May-2026 rule change:
   // pile is discarded on challenge resolution rather than scooped). They
   // still reduce the maximum the Ai could be holding.
   const discardHasOfRank = (state.discardPile || []).filter((c) => c.rank === claimedRank).length;
-  const aiCanHaveAtMost = Math.max(0, copies - playerHasOfRank - pileHasOfRank - discardHasOfRank);
+  const aiCanHaveAtMost = state.privateDecks
+    ? copies
+    : Math.max(0, copies - playerHasOfRank - pileHasOfRank - discardHasOfRank);
 
   if (claimedCount > aiCanHaveAtMost) {
     return {
@@ -71,10 +77,13 @@ export function estimateAiBluffProbability(state, settings) {
   let p = Math.min(0.97, baseRate + pressureBonus * 0.6);
   if (claimedCount === aiCanHaveAtMost) p = Math.min(0.95, p + 0.1);
 
+  const holding = state.privateDecks
+    ? ` Separate private decks: your ${playerHasOfRank} ${claimedRank}${playerHasOfRank === 1 ? '' : 's'} don't limit theirs;`
+    : ` You hold ${playerHasOfRank} ${claimedRank}${playerHasOfRank === 1 ? '' : 's'};`;
   const reason =
     `Ai bluff rate so far: ${state.stats.aiBluffsCaught}/${state.stats.aiPlays} caught` +
     ` (${settings.difficulty} prior ${(prior * 100).toFixed(0)}%).` +
-    ` You hold ${playerHasOfRank} ${claimedRank}${playerHasOfRank === 1 ? '' : 's'};` +
+    holding +
     ` they claim ${claimedCount} of a possible ${aiCanHaveAtMost}.`;
 
   return { p, reason, stats: { playerHasOfRank, aiCanHaveAtMost, copies } };

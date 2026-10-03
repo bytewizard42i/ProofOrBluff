@@ -39,9 +39,9 @@
 // private 52-card deck, so a hand can never hold five of a rank — but the two
 // decks are independent, so a rank may appear more than four times across
 // both hands combined (unavoidable: a shared deck keyed by the public seed
-// would let each player compute the other's cards). The 16-bit draw modulo
-// 46..52 skews a card's odds by at most ~0.03%. Nothing here proves anything
-// about money — there is none.
+// would let each player compute the other's cards). The 16-bit draw scaled
+// into 46..52 skews a card's odds by at most ~0.08%. Nothing here proves
+// anything about money — there is none.
 
 pragma language_version >= 0.16 && <= 0.23;
 import CompactStandardLibrary;
@@ -193,42 +193,19 @@ export pure circuit commitHandCounts(counts: Vector<13, Uint<8>>, salt: Bytes<32
 // deck keyed by the public seed would let each player compute the other's
 // cards.
 
-// Compact has no / or %, so u mod m is recovered by binary long division:
-// eleven compare-and-subtract steps peel off one quotient bit at a time,
-// keeping only the running remainder. Correct while the true quotient stays
-// below 2048; every divisor used here is at least 46 and the dividend is a
-// Uint<16>, so that always holds.
-circuit u16mod(u: Uint<16>, m: Uint<16>): Uint<16> {
-  const q10 = u >= (1024 as Uint<16>) * m ? (1024 as Uint<16>) : (0 as Uint<16>);
-  const r10 = (u - q10 * m) as Uint<16>;
-  const q9 = r10 >= (512 as Uint<16>) * m ? (512 as Uint<16>) : (0 as Uint<16>);
-  const r9 = (r10 - q9 * m) as Uint<16>;
-  const q8 = r9 >= (256 as Uint<16>) * m ? (256 as Uint<16>) : (0 as Uint<16>);
-  const r8 = (r9 - q8 * m) as Uint<16>;
-  const q7 = r8 >= (128 as Uint<16>) * m ? (128 as Uint<16>) : (0 as Uint<16>);
-  const r7 = (r8 - q7 * m) as Uint<16>;
-  const q6 = r7 >= (64 as Uint<16>) * m ? (64 as Uint<16>) : (0 as Uint<16>);
-  const r6 = (r7 - q6 * m) as Uint<16>;
-  const q5 = r6 >= (32 as Uint<16>) * m ? (32 as Uint<16>) : (0 as Uint<16>);
-  const r5 = (r6 - q5 * m) as Uint<16>;
-  const q4 = r5 >= (16 as Uint<16>) * m ? (16 as Uint<16>) : (0 as Uint<16>);
-  const r4 = (r5 - q4 * m) as Uint<16>;
-  const q3 = r4 >= (8 as Uint<16>) * m ? (8 as Uint<16>) : (0 as Uint<16>);
-  const r3 = (r4 - q3 * m) as Uint<16>;
-  const q2 = r3 >= (4 as Uint<16>) * m ? (4 as Uint<16>) : (0 as Uint<16>);
-  const r2 = (r3 - q2 * m) as Uint<16>;
-  const q1 = r2 >= (2 as Uint<16>) * m ? (2 as Uint<16>) : (0 as Uint<16>);
-  const r1 = (r2 - q1 * m) as Uint<16>;
-  const q0 = r1 >= m ? (1 as Uint<16>) : (0 as Uint<16>);
-  return (r1 - q0 * m) as Uint<16>;
-}
-
-// Two digest bytes as a 16-bit draw reduced modulo m. m is a compile-time
-// constant 46..52, so u16mod applies; the 16-in-65536 tail skews a card's
-// odds by at most ~0.03% — a documented, negligible bias.
+// Uniform draw in [0, m) from two digest bytes, with NO division: for a
+// 16-bit u, floor(u * m / 65536) lies in [0, m) and is simply byte 2 of the
+// little-endian product (p < 52 * 65536 < 2^22, so byte 3 is always 0).
+// One multiply, one cast, one index. An earlier 11-step compare-subtract
+// remainder chain made the optimizer's copy propagation double the
+// expression tree per step and the compiler ran out of memory; this form
+// compiles in under a second. Bias: each card's odds differ from exactly
+// 1/m by at most m/65536 (~0.08%) — documented, negligible.
 circuit boundedDraw(hi: Uint<8>, lo: Uint<8>, m: Uint<16>): Uint<8> {
   const u = ((hi as Uint<16>) * (256 as Uint<16>) + (lo as Uint<16>)) as Uint<16>;
-  return (u16mod(u, m)) as Uint<8>;
+  const p = ((u as Uint<32>) * (m as Uint<32>)) as Uint<32>;
+  const pb = (p as Bytes<32>) as Vector<32, Uint<8>>;
+  return pb[2];
 }
 
 // Card index 0..51 -> rank 0..12 (four consecutive indices per rank).
@@ -253,9 +230,42 @@ circuit cardToRank(c: Uint<8>): Uint<8> {
 // instead, which earlier picks can never hold (their draws and fallbacks
 // are all below j). The result is provably distinct and uniform over
 // subsets — no witnesses needed, so the circuit alone defines the deal.
-// Seven slots are always produced; `size` decides how many count. A
-// five-card deal sweeps j = 47..51 and a seven-card deal j = 45..51, so the
-// counted cards are always a uniform subset of the full deck.
+// Seven slots are always produced; `size` decides how many count. The two
+// hand sizes are separate circuits so every divisor is a literal the
+// compiler can fold: a seven-card deal sweeps j = 45..51, a five-card deal
+// j = 47..51, so the counted cards are always a uniform subset of the deck.
+circuit dealSeven(b: Vector<32, Uint<8>>): Vector<7, Uint<8>> {
+  const c0 = boundedDraw(b[0], b[1], 46);
+  const t1 = boundedDraw(b[2], b[3], 47);
+  const c1 = t1 == c0 ? (46 as Uint<8>) : t1;
+  const t2 = boundedDraw(b[4], b[5], 48);
+  const c2 = (t2 == c0 || t2 == c1) ? (47 as Uint<8>) : t2;
+  const t3 = boundedDraw(b[6], b[7], 49);
+  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (48 as Uint<8>) : t3;
+  const t4 = boundedDraw(b[8], b[9], 50);
+  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (49 as Uint<8>) : t4;
+  const t5 = boundedDraw(b[10], b[11], 51);
+  const c5 = (t5 == c0 || t5 == c1 || t5 == c2 || t5 == c3 || t5 == c4) ? (50 as Uint<8>) : t5;
+  const t6 = boundedDraw(b[12], b[13], 52);
+  const c6 = (t6 == c0 || t6 == c1 || t6 == c2 || t6 == c3 || t6 == c4 || t6 == c5) ? (51 as Uint<8>) : t6;
+  return [
+    cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3),
+    cardToRank(c4), cardToRank(c5), cardToRank(c6)
+  ];
+}
+// Five-card hands (CASUAL). Slots 5 and 6 are padding and are never counted.
+circuit dealFive(b: Vector<32, Uint<8>>): Vector<7, Uint<8>> {
+  const c0 = boundedDraw(b[0], b[1], 48);
+  const t1 = boundedDraw(b[2], b[3], 49);
+  const c1 = t1 == c0 ? (48 as Uint<8>) : t1;
+  const t2 = boundedDraw(b[4], b[5], 50);
+  const c2 = (t2 == c0 || t2 == c1) ? (49 as Uint<8>) : t2;
+  const t3 = boundedDraw(b[6], b[7], 51);
+  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (50 as Uint<8>) : t3;
+  const t4 = boundedDraw(b[8], b[9], 52);
+  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (51 as Uint<8>) : t4;
+  return [cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3), cardToRank(c4), 0, 0];
+}
 export pure circuit dealHandRanks(
   salt: Bytes<32>, seed: Bytes<32>, round: Uint<32>, size: Uint<32>
 ): Vector<7, Uint<8>> {
@@ -263,29 +273,7 @@ export pure circuit dealHandRanks(
     separator: pad(32, "pob:deal:v2"), salt: salt, seed: seed, round: round
   });
   const b = digest as Vector<32, Uint<8>>;
-  const five = size == (5 as Uint<32>);
-  const t0 = boundedDraw(b[0], b[1], five ? (48 as Uint<16>) : (46 as Uint<16>));
-  const c0 = t0;
-  const t1 = boundedDraw(b[2], b[3], five ? (49 as Uint<16>) : (47 as Uint<16>));
-  const c1 = t1 == c0 ? (five ? (48 as Uint<8>) : (46 as Uint<8>)) : t1;
-  const t2 = boundedDraw(b[4], b[5], five ? (50 as Uint<16>) : (48 as Uint<16>));
-  const c2 = (t2 == c0 || t2 == c1) ? (five ? (49 as Uint<8>) : (47 as Uint<8>)) : t2;
-  const t3 = boundedDraw(b[6], b[7], five ? (51 as Uint<16>) : (49 as Uint<16>));
-  const c3 = (t3 == c0 || t3 == c1 || t3 == c2)
-    ? (five ? (50 as Uint<8>) : (48 as Uint<8>)) : t3;
-  const t4 = boundedDraw(b[8], b[9], five ? (52 as Uint<16>) : (50 as Uint<16>));
-  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3)
-    ? (five ? (51 as Uint<8>) : (49 as Uint<8>)) : t4;
-  const t5 = boundedDraw(b[10], b[11], (51 as Uint<16>));
-  const c5 = (t5 == c0 || t5 == c1 || t5 == c2 || t5 == c3 || t5 == c4)
-    ? (50 as Uint<8>) : t5;
-  const t6 = boundedDraw(b[12], b[13], (52 as Uint<16>));
-  const c6 = (t6 == c0 || t6 == c1 || t6 == c2 || t6 == c3 || t6 == c4 || t6 == c5)
-    ? (51 as Uint<8>) : t6;
-  return [
-    cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3),
-    cardToRank(c4), cardToRank(c5), cardToRank(c6)
-  ];
+  return size == (5 as Uint<32>) ? dealFive(b) : dealSeven(b);
 }
 circuit countRank(ranks: Vector<7, Uint<8>>, size: Uint<32>, target: Uint<8>): Uint<8> {
   const c0: Uint<8> = (size >= (1 as Uint<32>) && ranks[0] == target) ? 1 : 0;
