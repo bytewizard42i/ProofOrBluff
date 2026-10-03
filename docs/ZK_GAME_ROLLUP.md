@@ -236,17 +236,47 @@ are the admission throttle so we never promise more than we can seal.
   and retains nothing. Players who want zero disclosure use their own proof
   server; the game is identical.
 
-## 6. Deal algorithm (carried over from the Preview fix)
+## 6. Deal algorithm (shipped to `main`, Oct 3 2026)
 
 `DEAL_ALGORITHM`: Floyd's selection — `size` **distinct** card indexes from a
 private 52-card deck keyed by `(salt, seed, round)`, mapped to ranks. Uniform
-over hands, never five of a rank, real-deck pair/triple odds, ~30 lines and one
-hash in-circuit. Independent decks per player are deliberate: one shared deck
+over hands, never five of a rank, real-deck pair/triple odds, one hash
+in-circuit. Independent decks per player are deliberate: one shared deck
 keyed by the public seed would let each player compute the other's cards. The
 conformance spec in `realDeal/cli/src/deal-conformance.test.js` is the
-acceptance test for any deal implementation. (Experiment record: branches
-`deal/resample-cap4` — safe but statistically clumpy — and
-`deal/hashsort-private-deck` — correct but compiles past 12 GB RAM; rejected.)
+acceptance test for any deal implementation (10/10 on the compiled contract).
+
+The uniform draw is division-free: `floor(u·m / 65536)` is byte 2 of the
+little-endian product. An earlier remainder chain OOM-killed the compiler;
+see PixyPi `MIDNIGHT_COMPACT_V030_QUIRKS.md` Quirk 5. (Experiment record:
+branches `deal/resample-cap4` — safe but statistically clumpy — and
+`deal/hashsort-private-deck` — correct but ~2,700 comparisons; both rejected.)
+
+## 6a. Circuit-cost rules for `closeGame` (from Midnight Expert's cost model)
+
+These are **design constraints**, decided before the circuit is written:
+
+1. **The transcript chain is transient.** `persistentHash` is SHA-256 and
+   costs 10–50× the circuit-native `transientHash`. The per-move Preview
+   `playCards` makes 6 SHA-256 calls and its prover key is 76 MB; 64 moves
+   of that would be unprovable. Inside `closeGame`, every snapshot link and
+   every hand commitment uses `transientHash` / `transientCommit`. Only the
+   two values that touch the ledger — the opening snapshot and the final
+   state — are persistent, bridged with `upgradeFromTransient` /
+   `degradeToTransient` at the boundary. Same binding, ~30× smaller.
+2. **One SHA-256 per round, not per move.** The deal digest stays
+   `persistentHash` (it is committed at open), so SHA cost is
+   `MAX_ROUNDS`, not `MAX_MOVES`.
+3. **Measure before fixing `MAX_MOVES`.** Benchmarks: 2^16 rows ≈ 2 s,
+   2^18 ≈ 7 s, linear after. Post-game proving may take 30–60 s, so the
+   budget is ~2^21 rows — *only* with rule 1. Build a probe circuit for one
+   move transition, read its ZKIR instruction count, and size `MAX_MOVES`
+   from the measurement (the deal was validated the same way).
+4. **Use `fold`/`map` over the move vector**, not hand-unrolled chains, and
+   keep per-step `const` dependency depth shallow (Quirk 5).
+5. **If one circuit still cannot fit:** split into `closeMoves` and
+   `closeShuffles` (John's two-proof fallback). Same snapshots, two
+   transactions. Decide from measurements, not in advance.
 
 ## 7. Build plan
 
