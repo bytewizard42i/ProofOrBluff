@@ -704,7 +704,28 @@ export function createTestWiredBot({ defaultDifficulty = 'medium' } = {}) {
     return { status: 'ok', ...result, ticket: { remaining: consumed.remaining } };
   }
 
-  return { join, advance, status, shutdown, ticketInfo, sponsorStatus, sponsorSubmit };
+  /**
+   * Warm the wallet at boot instead of on the first player request, so the
+   * multi-minute public-network sync is paid by the operator, not a player.
+   * Readiness is reported on /health so the UI can say "table is opening"
+   * honestly instead of freezing on a button.
+   */
+  const bootedAt = Date.now();
+  function warmUp() {
+    ensureSession().then(() => ensureSponsor()).catch((error) => {
+      console.error(`Warm-up failed (will retry on first request): ${safeErrorMessage(error)}`);
+    });
+  }
+  function readiness() {
+    return {
+      walletReady: Boolean(session),
+      sponsorReady: Boolean(sponsorInstance),
+      syncing: !session && Boolean(sessionPromise),
+      uptimeSeconds: Math.round((Date.now() - bootedAt) / 1000),
+    };
+  }
+
+  return { join, advance, status, shutdown, ticketInfo, sponsorStatus, sponsorSubmit, warmUp, readiness };
 }
 
 export function createBotServer({ defaultDifficulty = 'medium' } = {}) {
@@ -722,7 +743,7 @@ export function createBotServer({ defaultDifficulty = 'medium' } = {}) {
 
       const requestUrl = new URL(request.url, `http://${LOOPBACK_HOST}`);
       if (request.method === 'GET' && requestUrl.pathname === '/health') {
-        sendJson(response, 200, { status: 'ok', service: 'proof-or-bluff-testwired-bot' });
+        sendJson(response, 200, { status: 'ok', service: 'proof-or-bluff-testwired-bot', ...bot.readiness() });
         return;
       }
       if (request.method === 'POST' && requestUrl.pathname === '/api/testwired/join') {
@@ -793,6 +814,10 @@ async function main() {
   server.once('error', handleFatalError);
   server.listen(flags.port, LOOPBACK_HOST, () => {
     console.log(`TestWired Player Two bot listening on http://${LOOPBACK_HOST}:${flags.port}`);
+    if (process.env.POB_BOT_WARMUP !== '0') {
+      console.log('Warming up the P2 wallet and sponsor now (players will not wait for this sync).');
+      bot.warmUp();
+    }
   });
 }
 

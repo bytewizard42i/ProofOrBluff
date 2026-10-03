@@ -48,16 +48,16 @@ describe('GuidedGameSetup preparation', () => {
     expect(markup).toContain('hosted proof server receives the private inputs');
     expect(markup).toContain('own proof server keeps those inputs under your control');
     expect(markup).toContain('no wagers');
-    expect(markup).toContain('Bot service reachable.');
-    expect(markup).toContain('HTTP reachability only, not wallet synchronization');
+    expect(markup).toContain('The computer opponent is ready.');
+    expect(renderSetup({ botHealth: 'opening' })).toContain('The table is opening');
     expect(buttonLabels(markup)).toEqual(['Continue to wallet']);
     expect(markup).not.toContain('<select');
     expect(buttonMarkup(markup, 'Continue to wallet')).not.toContain('disabled');
   });
 
   it.each([
-    ['checking', 'Checking whether the bot service is reachable.'],
-    ['offline', 'Bot service not reachable.'],
+    ['checking', 'Checking whether the computer opponent is available.'],
+    ['offline', 'The computer opponent is not reachable.'],
   ])('describes %s service reachability without blocking preparation', (botHealth, message) => {
     const markup = renderSetup({ botHealth });
     expect(markup).toContain(message);
@@ -147,7 +147,7 @@ describe('GuidedGameSetup match', () => {
       expect(buttonMarkup(markup, hasSavedMatch ? 'Resume my match' : 'Start game')).toContain('disabled=""');
       if (overrides.tableConfigured === false) expect(markup).toContain('The configured table is unavailable.');
       if (overrides.walletConnected === false) expect(markup).toContain('Connect your wallet before continuing.');
-      if (overrides.botHealth === 'offline') expect(markup).toContain('Bot service not reachable.');
+      if (overrides.botHealth === 'offline') expect(markup).toContain('The computer opponent is not reachable.');
     });
   });
 

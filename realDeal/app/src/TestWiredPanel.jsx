@@ -622,15 +622,28 @@ export default function TestWiredPanel({ audio }) {
       const available = await checkWalletAvailability();
       if (available || attempts >= 20) clearInterval(walletPoll);
     }, 1500);
-    fetchBot('/health')
-      .then(() => { if (mountedRef.current) setBotHealth('ready'); })
+    // The bot warms its wallet at boot; until it is synced, say "opening"
+    // rather than "ready" and keep checking so the button unlocks itself.
+    let healthPoll = null;
+    const checkHealth = () => fetchBot('/health')
+      .then((health) => {
+        if (!mountedRef.current) return;
+        const ready = health?.walletReady !== false;
+        setBotHealth(ready ? 'ready' : 'opening');
+        if (!ready) healthPoll = setTimeout(checkHealth, 5000);
+      })
       .catch((caught) => {
-        if (caught?.name !== 'AbortError' && mountedRef.current) setBotHealth('offline');
+        if (caught?.name !== 'AbortError' && mountedRef.current) {
+          setBotHealth('offline');
+          healthPoll = setTimeout(checkHealth, 8000);
+        }
       });
+    checkHealth();
 
     return () => {
       mountedRef.current = false;
       clearInterval(walletPoll);
+      if (healthPoll) clearTimeout(healthPoll);
       for (const controller of requestControllersRef.current) controller.abort();
       requestControllersRef.current.clear();
     };

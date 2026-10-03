@@ -8,9 +8,10 @@ const SETUP_STEPS = [
 ];
 
 const SERVICE_MESSAGES = {
-  checking: 'Checking whether the bot service is reachable.',
-  ready: 'Bot service reachable.',
-  offline: 'Bot service not reachable. Try again when the service is available.',
+  checking: 'Checking whether the computer opponent is available.',
+  opening: 'The table is opening — the computer opponent is syncing with Midnight. This takes a few minutes after a restart and the Start button unlocks automatically.',
+  ready: 'The computer opponent is ready.',
+  offline: 'The computer opponent is not reachable. Try again when the service is available.',
 };
 
 /**
@@ -73,7 +74,7 @@ export default function GuidedGameSetup({
               <li>This is a test game with no wagers.</li>
             </ul>
             <p className="guided-game-setup__notice" role="status">
-              {SERVICE_MESSAGES[botHealth]} This checks HTTP reachability only, not wallet synchronization.
+              {SERVICE_MESSAGES[botHealth]}
             </p>
             {!tableConfigured && (
               <p className="guided-game-setup__warning">
