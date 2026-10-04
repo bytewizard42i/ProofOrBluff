@@ -492,63 +492,63 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.currentQueryContext != undefined)) {
           __compactRuntime.typeError('openGame',
                                      'argument 1 (as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 380 char 1',
+                                     'proof-or-bluff-rollup.compact line 387 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(playerOne_0.buffer instanceof ArrayBuffer && playerOne_0.BYTES_PER_ELEMENT === 1 && playerOne_0.length === 32)) {
           __compactRuntime.typeError('openGame',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 380 char 1',
+                                     'proof-or-bluff-rollup.compact line 387 char 1',
                                      'Bytes<32>',
                                      playerOne_0)
         }
         if (!(playerTwo_0.buffer instanceof ArrayBuffer && playerTwo_0.BYTES_PER_ELEMENT === 1 && playerTwo_0.length === 32)) {
           __compactRuntime.typeError('openGame',
                                      'argument 2 (argument 3 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 380 char 1',
+                                     'proof-or-bluff-rollup.compact line 387 char 1',
                                      'Bytes<32>',
                                      playerTwo_0)
         }
         if (!(typeof(mode_0) === 'bigint' && mode_0 >= 0n && mode_0 <= 255n)) {
           __compactRuntime.typeError('openGame',
                                      'argument 3 (argument 4 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 380 char 1',
+                                     'proof-or-bluff-rollup.compact line 387 char 1',
                                      'Uint<0..256>',
                                      mode_0)
         }
         if (!(p1EntropyCommit_0.buffer instanceof ArrayBuffer && p1EntropyCommit_0.BYTES_PER_ELEMENT === 1 && p1EntropyCommit_0.length === 32)) {
           __compactRuntime.typeError('openGame',
                                      'argument 4 (argument 5 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 380 char 1',
+                                     'proof-or-bluff-rollup.compact line 387 char 1',
                                      'Bytes<32>',
                                      p1EntropyCommit_0)
         }
         if (!(p1SaltCommit_0.buffer instanceof ArrayBuffer && p1SaltCommit_0.BYTES_PER_ELEMENT === 1 && p1SaltCommit_0.length === 32)) {
           __compactRuntime.typeError('openGame',
                                      'argument 5 (argument 6 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 380 char 1',
+                                     'proof-or-bluff-rollup.compact line 387 char 1',
                                      'Bytes<32>',
                                      p1SaltCommit_0)
         }
         if (!(p2EntropyCommit_0.buffer instanceof ArrayBuffer && p2EntropyCommit_0.BYTES_PER_ELEMENT === 1 && p2EntropyCommit_0.length === 32)) {
           __compactRuntime.typeError('openGame',
                                      'argument 6 (argument 7 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 380 char 1',
+                                     'proof-or-bluff-rollup.compact line 387 char 1',
                                      'Bytes<32>',
                                      p2EntropyCommit_0)
         }
         if (!(p2SaltCommit_0.buffer instanceof ArrayBuffer && p2SaltCommit_0.BYTES_PER_ELEMENT === 1 && p2SaltCommit_0.length === 32)) {
           __compactRuntime.typeError('openGame',
                                      'argument 7 (argument 8 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 380 char 1',
+                                     'proof-or-bluff-rollup.compact line 387 char 1',
                                      'Bytes<32>',
                                      p2SaltCommit_0)
         }
         if (!(typeof(currentTime_0) === 'bigint' && currentTime_0 >= 0n && currentTime_0 <= 18446744073709551615n)) {
           __compactRuntime.typeError('openGame',
                                      'argument 8 (argument 9 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 380 char 1',
+                                     'proof-or-bluff-rollup.compact line 387 char 1',
                                      'Uint<0..18446744073709551616>',
                                      currentTime_0)
         }
@@ -589,49 +589,49 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.currentQueryContext != undefined)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 1 (as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 410 char 1',
+                                     'proof-or-bluff-rollup.compact line 417 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(gameId_0.buffer instanceof ArrayBuffer && gameId_0.BYTES_PER_ELEMENT === 1 && gameId_0.length === 32)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 410 char 1',
+                                     'proof-or-bluff-rollup.compact line 417 char 1',
                                      'Bytes<32>',
                                      gameId_0)
         }
         if (!(typeof(transcriptRoot_0) === 'bigint' && transcriptRoot_0 >= 0 && transcriptRoot_0 <= __compactRuntime.MAX_FIELD)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 2 (argument 3 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 410 char 1',
+                                     'proof-or-bluff-rollup.compact line 417 char 1',
                                      'Field',
                                      transcriptRoot_0)
         }
         if (!(typeof(p1Score_0) === 'bigint' && p1Score_0 >= 0n && p1Score_0 <= 255n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 3 (argument 4 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 410 char 1',
+                                     'proof-or-bluff-rollup.compact line 417 char 1',
                                      'Uint<0..256>',
                                      p1Score_0)
         }
         if (!(typeof(p2Score_0) === 'bigint' && p2Score_0 >= 0n && p2Score_0 <= 255n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 4 (argument 5 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 410 char 1',
+                                     'proof-or-bluff-rollup.compact line 417 char 1',
                                      'Uint<0..256>',
                                      p2Score_0)
         }
         if (!(typeof(winner_0) === 'bigint' && winner_0 >= 0n && winner_0 <= 255n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 5 (argument 6 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 410 char 1',
+                                     'proof-or-bluff-rollup.compact line 417 char 1',
                                      'Uint<0..256>',
                                      winner_0)
         }
         if (!(typeof(currentTime_0) === 'bigint' && currentTime_0 >= 0n && currentTime_0 <= 18446744073709551615n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 6 (argument 7 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 410 char 1',
+                                     'proof-or-bluff-rollup.compact line 417 char 1',
                                      'Uint<0..18446744073709551616>',
                                      currentTime_0)
         }
@@ -666,21 +666,21 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.currentQueryContext != undefined)) {
           __compactRuntime.typeError('pruneExpired',
                                      'argument 1 (as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 491 char 1',
+                                     'proof-or-bluff-rollup.compact line 498 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(gameId_0.buffer instanceof ArrayBuffer && gameId_0.BYTES_PER_ELEMENT === 1 && gameId_0.length === 32)) {
           __compactRuntime.typeError('pruneExpired',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 491 char 1',
+                                     'proof-or-bluff-rollup.compact line 498 char 1',
                                      'Bytes<32>',
                                      gameId_0)
         }
         if (!(typeof(currentTime_0) === 'bigint' && currentTime_0 >= 0n && currentTime_0 <= 18446744073709551615n)) {
           __compactRuntime.typeError('pruneExpired',
                                      'argument 2 (argument 3 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup.compact line 491 char 1',
+                                     'proof-or-bluff-rollup.compact line 498 char 1',
                                      'Uint<0..18446744073709551616>',
                                      currentTime_0)
         }
@@ -1596,6 +1596,13 @@ export class Contract {
                             'Timestamp is too old');
     return [];
   }
+  _assertNotFutureBlockTime_0(context, partialProofData, currentTime_0) {
+    __compactRuntime.assert(this._blockTimeGte_0(context,
+                                                 partialProofData,
+                                                 currentTime_0),
+                            'Timestamp is in the future');
+    return [];
+  }
   _openGame_0(context,
               partialProofData,
               playerOne_0,
@@ -1733,7 +1740,7 @@ export class Contract {
                                                                            { popeq: { cached: false,
                                                                                       result: undefined } }]).value);
     __compactRuntime.assert(!g_0.closed, 'Game already closed');
-    this._assertRecentBlockTime_0(context, partialProofData, currentTime_0);
+    this._assertNotFutureBlockTime_0(context, partialProofData, currentTime_0);
     const e_0 = this._entropyPair_0(context, partialProofData);
     const salts_0 = this._saltPair_0(context, partialProofData);
     __compactRuntime.assert(this._equal_72(this._commitEntropy_0(e_0[0]),
@@ -1999,7 +2006,7 @@ export class Contract {
                                                  partialProofData,
                                                  ((t1) => {
                                                    if (t1 > 18446744073709551615n) {
-                                                     throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 496 char 32: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 18446744073709551615');
+                                                     throw new __compactRuntime.CompactError('proof-or-bluff-rollup.compact line 503 char 32: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 18446744073709551615');
                                                    }
                                                    return t1;
                                                  })(g_0.openedAt + 604800n)),

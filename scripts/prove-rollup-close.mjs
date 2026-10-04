@@ -157,7 +157,13 @@ const openResult = contract2.circuits.openGame(context2, P1, P2, MODE,
 const postOpenContractState = initial2.currentContractState;
 postOpenContractState.data = openResult.context.currentQueryContext.state;
 
-const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
+// POB_CLOSE_AGE_SECONDS backdates the close timestamp. Since 2026-10-04 the
+// contract has no freshness window (proving takes minutes), so a stale
+// timestamp must still prove; the default 600 s is what the old 120 s window
+// would have rejected.
+const closeAge = BigInt(process.env.POB_CLOSE_AGE_SECONDS ?? '600');
+const nowSeconds = BigInt(Math.floor(Date.now() / 1000)) - closeAge;
+console.log(`      close timestamp backdated by ${closeAge}s (no freshness window in the contract)`);
 const unsubmitted = await createUnprovenCallTxFromInitialStates(zkConfigProvider, {
   compiledContract,
   circuitId: 'closeGame',

@@ -370,6 +370,13 @@ circuit assertRecentBlockTime(currentTime: Uint<64>): [] {
   assert(blockTimeGte(disclose(currentTime)), "Timestamp is in the future");
   assert(blockTimeLte(disclose((currentTime + 120) as Uint<64>)), "Timestamp is too old");
 }
+// closeGame proving takes minutes (measured 130–195 s at k=20, 2026-10-04), so a
+// freshness window would reject every valid proof. The close only needs
+// `closedAt` to be a sound LOWER bound on block time; replay and duplicate
+// protection come from the per-game record, not from the clock.
+circuit assertNotFutureBlockTime(currentTime: Uint<64>): [] {
+  assert(blockTimeGte(disclose(currentTime)), "Timestamp is in the future");
+}
 
 // ---------------------------------------------------------------------------
 // openGame — one sponsored transaction. Both players' commitments were
@@ -414,7 +421,7 @@ export circuit closeGame(
   assert(games.member(disclose(gameId)), "Game not found");
   const g = games.lookup(disclose(gameId));
   assert(!g.closed, "Game already closed");
-  assertRecentBlockTime(currentTime);
+  assertNotFutureBlockTime(currentTime);
 
   // 1. Open the four commitments stored at openGame.
   const e = entropyPair();
