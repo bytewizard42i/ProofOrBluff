@@ -64,7 +64,7 @@ circuit; a change means a new address (runbook M3).
 
 | File | What it is | May be deployed to | Status |
 |---|---|---|---|
-| `proof-or-bluff-rollup.compact` | **Season 1 launch contract.** `openGame` / `closeGame` / prune; one proof per game; no funds, never receives a coin | Preview → (Preprod) → mainnet | Compiles (`managed/proof-or-bluff-rollup/` has `contract/` + `compiler/`, no keys yet); sim tests in `proof-or-bluff-rollup.sim.test.js`; **not deployed anywhere** |
+| `proof-or-bluff-rollup.compact` | **Season 1 launch contract.** `openGame` / `closeGame` / prune; one proof per game; no funds, never receives a coin | Preview → (Preprod) → mainnet | Full proving keys built (`closeGame` 641k rows, k=20, prover 339 MB); **first real proof generated** via `scripts/prove-rollup-close.mjs` (190 s, 6 KB proven tx); sim tests in `proof-or-bluff-rollup.sim.test.js`; **not deployed anywhere** |
 | `proof-or-bluff-mainnet.compact` | Per-move predecessor ("state-only"). Same fairness model, 13 circuits, proves every move | Preview only | Deployed on Preview at `cc75d39e…06a159`; retired when Season 1 opens |
 | `proof-or-bluff.compact` | Original wagered contract (Zswap escrow, payouts) | **Local `undeployed` only** | Never on a public network; `config.js` throws if selected with any public `VITE_NETWORK_ID` |
 | `player-stats.compact` | Season / rank bookkeeping from the hackathon era | — | Not part of Season 1 |
@@ -213,12 +213,20 @@ ops/vps/deploy.sh logs     # follow
 
 | Container | `cpu_shares` | `mem_limit` |
 |---|---|---|
-| `pob-proof-server` | 2048 | 4608 MiB |
+| `pob-proof-server` | 2048 | 6656 MiB |
 | `pob-caddy` | 1024 | 256 MiB |
 | TaskFence (all) | 256 (`docker update`) | 2.75 GiB total |
 
 `cpu_shares` only bite under contention; idle POB = TaskFence has the box.
-~0.5 GiB left for the OS.
+
+**⚠ Proving memory (measured Oct 3 2026):** `closeGame` proving peaks
+**~9–10 GiB RSS** — the current 8 GiB VPS **cannot prove it** (cgroup
+OOM-kills observed at both the 4.5 and 6.5 GiB limits). The small circuits
+(`openGame`, `pruneExpired`) prove fine there. Before Preview this needs
+either a 16 GiB+ proving host (KVM 4+) or a smaller circuit. Local run:
+`docker run -p 6300:6300 midnightntwrk/proof-server:8.1.0` proves it in
+~190 s on a 12-core desktop. The server also caches ~7.7 GiB of key material
+in RAM after a job, so plan ~10 GiB headroom **per concurrent closeGame**.
 
 **Proof server configuration** is via env vars, not CLI flags: the image's
 ENTRYPOINT is `bash -c <string>`, so compose `command` arrays are silently
@@ -232,13 +240,18 @@ dropped (verified Oct 3: `/ready` reported `jobCapacity 0`).
 | `MIDNIGHT_PROOF_SERVER_JOB_TIMEOUT` | 600 | rollup `closeGame` may be large |
 
 Port 6300 is `expose`d only; Caddy is the sole way in. Params/keys cache in
-the `proof-params` volume; certs in `caddy-data`. First boot can take minutes
-(300 s healthcheck start period).
+the `proof-params` volume; certs in `caddy-data`. The proof-server image is
+distroless (no sh/bash/curl), so the compose healthcheck is disabled — real
+health is observed through Caddy proxying `/ready`.
 
 **Why Caddy:** the proof server ships `Cors::permissive()`. Caddy pins
 `Access-Control-Allow-Origin` to `https://prooforbluff.app`, answers
-preflights itself, caps bodies at 64 MB, and waits 660 s for a response.
-Add preview origins to the `pob_cors` snippet; never `*`.
+preflights itself, caps bodies at 512 MB, and waits 660 s for a response.
+The 512 MB cap exists because the proof protocol **inlines the prover key**
+in every `/prove` payload (closeGame's is ~340 MB) — external clients carry
+real weight; browsers never do this because hosted proving goes through our
+backend, where the key hop is loopback. Add preview origins to the
+`pob_cors` snippet; never `*`.
 
 **Verification:**
 

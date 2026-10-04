@@ -22,10 +22,13 @@ and history; `../../midnight-launches-log/` holds the dated evidence.
 | **`prooforbluff.com` and `prooforbluff.app` LIVE over HTTPS** (Oct 3 2026): Vercel projects `prooforbluff-site` (`site/`) and `prooforbluff-app` (demo build), team EnterpriseZK Labs; GoDaddy `A @ 76.76.21.21` + `CNAME www cname.vercel-dns.com`, TTL 600; apex + www both 200 | `curl -I` both hosts; `vercel domains inspect` |
 | Provably-fair Floyd deal merged to `main` (`39f526a`): 10/10 conformance, 262/262 total; compile 9 s / ~0.3 GB (was OOM at 13 GB) | `realDeal/cli/src/deal-conformance.test.js` |
 | **Decision (John, Oct 3):** mainnet launches on the one-proof-per-game rollup contract, not the per-move Preview contract. VPS: Hostinger KVM 2 (`69.62.70.163`, shared with TaskFence Ai, paid through Jul 2027) — Hetzner not needed. | `docs/ZK_GAME_ROLLUP.md` |
+| **Rollup contract is real-proof capable (Oct 3 2026):** `proof-or-bluff-rollup.compact` compiles to full proving keys (`closeGame` ≈ 641k rows, k=20, prover 339 MB); a complete scripted game — with both players' signed `CloseConsent`s — produced a **real ZK proof** via `scripts/prove-rollup-close.mjs` (190 s, 6 KB proven tx). All 351 repo tests pass. | commits `1ba117f`, `370ab51`, `472160f` |
+| **⚠ Proving-memory blocker (measured Oct 3):** `closeGame` proving peaks **~9–10 GiB RSS**; the 8 GiB VPS OOM-killed it twice (4.5 & 6.5 GiB caps). `openGame`/`pruneExpired` are tiny and prove fine. Before Preview: prove on a 16 GiB+ host (upgrade or separate box) **or** shrink the circuit. | dmesg OOM logs; `DEPLOYMENT.md` §6 |
 
 What is **not** true yet: no browser (Lace) match on a public network; no
-hosted bot or proof server; no Blockfrost account; no mainnet wallet; no
-DUST sponsorship; no Foundation deployment request.
+hosted bot on a public network; no closeGame-capable proving host; no
+Blockfrost account; no mainnet wallet; no DUST sponsorship; no Foundation
+deployment request.
 
 ---
 
