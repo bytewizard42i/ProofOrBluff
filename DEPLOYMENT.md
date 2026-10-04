@@ -213,20 +213,23 @@ ops/vps/deploy.sh logs     # follow
 
 | Container | `cpu_shares` | `mem_limit` |
 |---|---|---|
-| `pob-proof-server` | 2048 | 6656 MiB |
+| `pob-proof-server` | 2048 | 6656 MiB live (8 GiB box) → **11264 MiB after the 16 GiB upgrade** |
 | `pob-caddy` | 1024 | 256 MiB |
 | TaskFence (all) | 256 (`docker update`) | 2.75 GiB total |
 
 `cpu_shares` only bite under contention; idle POB = TaskFence has the box.
 
-**⚠ Proving memory (measured Oct 3 2026):** `closeGame` proving peaks
+**Proving memory (measured Oct 3 2026):** `closeGame` proving peaks
 **~9–10 GiB RSS** — the current 8 GiB VPS **cannot prove it** (cgroup
 OOM-kills observed at both the 4.5 and 6.5 GiB limits). The small circuits
-(`openGame`, `pruneExpired`) prove fine there. Before Preview this needs
-either a 16 GiB+ proving host (KVM 4+) or a smaller circuit. Local run:
-`docker run -p 6300:6300 midnightntwrk/proof-server:8.1.0` proves it in
-~190 s on a 12-core desktop. The server also caches ~7.7 GiB of key material
-in RAM after a job, so plan ~10 GiB headroom **per concurrent closeGame**.
+(`openGame`, `pruneExpired`) prove fine there. John approved a **16 GiB
+VPS upgrade** (~$75/yr); `compose.yaml` is already written for it —
+**do not redeploy the compose file until the bigger box is live**, because
+an 11 GiB mem_limit on an 8 GiB host disables the cgroup guardrail entirely.
+Post-upgrade: `NUM_WORKERS=1` serializes closeGame jobs (each wants ~10 GiB).
+Local run: `docker run -p 6300:6300 midnightntwrk/proof-server:8.1.0` proves
+it in ~190 s on a 12-core desktop. The server also caches ~7.7 GiB of key
+material in RAM after a job — plan ~10 GiB **per concurrent closeGame**.
 
 **Proof server configuration** is via env vars, not CLI flags: the image's
 ENTRYPOINT is `bash -c <string>`, so compose `command` arrays are silently

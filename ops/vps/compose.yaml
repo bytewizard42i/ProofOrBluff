@@ -33,12 +33,15 @@ services:
     # The image's ENTRYPOINT is `bash -c <single string>`, so CLI flags passed as
     # a compose array are silently dropped (verified Oct 3 2026: /ready showed
     # jobCapacity 0). Configure via env vars instead — each flag has one.
-    #   2 vCPU host → 2 workers (one proving job pins one core).
+    #   num_workers 1 (Oct 3 2026): ONE closeGame job needs ~9-10 GiB RSS —
+    #     two concurrent jobs would OOM even on the 16 GiB box. Serialize;
+    #     jobs queue under job-capacity instead of racing for RAM. Revisit to
+    #     2 only on a ≥24 GiB host.
     #   job-capacity 10: beyond that, clients get HTTP 429 instead of OOMing us.
     #   job-timeout 600: the rollup closeGame proof may be large; 10 min ceiling.
     environment:
       MIDNIGHT_PROOF_SERVER_PORT: "6300"
-      MIDNIGHT_PROOF_SERVER_NUM_WORKERS: "2"
+      MIDNIGHT_PROOF_SERVER_NUM_WORKERS: "1"
       MIDNIGHT_PROOF_SERVER_JOB_CAPACITY: "10"
       MIDNIGHT_PROOF_SERVER_JOB_TIMEOUT: "600"
     command: ["midnight-proof-server"]
@@ -49,10 +52,16 @@ services:
       # Cache fetched public params / proving keys across restarts.
       - proof-params:/root/.cache/midnight
     cpu_shares: 2048
-    # closeGame proving peaked above the old 4.5 GiB cap (cgroup OOM-kill at
-    # ~4.7 GiB RSS, Oct 3 2026). 6.5 GiB leaves ~1.3 GiB for OS + an idle
-    # TaskFence; under real contention POB's cpu_shares win per policy.
-    mem_limit: 6656m
+    # closeGame proving needs ~9-10 GiB RSS (measured Oct 3 2026: two cgroup
+    # OOM-kills on the 8 GiB box at 4.5 and 6.5 GiB caps). Sized for the
+    # 16 GiB host upgrade John approved: 11 GiB for POB leaves ~2.75 GiB for
+    # TaskFence + ~1.5 GiB for OS/Caddy. NUM_WORKERS=1 (above) keeps a second
+    # closeGame from stacking another ~10 GiB on top.
+    # DO NOT deploy this limit on the pre-upgrade 8 GiB box: a mem_limit above
+    # physical RAM disables the cgroup guardrail and a runaway job would OOM at
+    # the SYSTEM level (risking sshd/TaskFence). The live box keeps 6656m until
+    # the 16 GiB upgrade lands; only openGame/pruneExpired prove there anyway.
+    mem_limit: 11264m
     healthcheck:
       # The proof-server image is distroless — no sh/bash/curl/wget, so no
       # exec-based healthcheck can ever run inside it (failing streak 475+).
