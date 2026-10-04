@@ -45,8 +45,11 @@ proof.prooforbluff.app {
 		}
 		# Proof payloads can be large (proving key material may be inlined).
 	}
+	# closeGame's proving key is ~340 MB and midnight-js inlines it in every
+	# /prove payload — external operators/CLI runs need the headroom. The
+	# browser never does this (hosted proving goes through our own backend).
 	request_body {
-		max_size 64MB
+		max_size 512MB
 	}
 }
 

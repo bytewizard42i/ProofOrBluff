@@ -49,14 +49,15 @@ services:
       # Cache fetched public params / proving keys across restarts.
       - proof-params:/root/.cache/midnight
     cpu_shares: 2048
-    mem_limit: 4608m
+    # closeGame proving peaked above the old 4.5 GiB cap (cgroup OOM-kill at
+    # ~4.7 GiB RSS, Oct 3 2026). 6.5 GiB leaves ~1.3 GiB for OS + an idle
+    # TaskFence; under real contention POB's cpu_shares win per policy.
+    mem_limit: 6656m
     healthcheck:
-      # Image is minimal (no curl/wget); bash /dev/tcp probe instead.
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6300 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q 200"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 300s   # pre-fetch of params can take minutes on first boot
+      # The proof-server image is distroless — no sh/bash/curl/wget, so no
+      # exec-based healthcheck can ever run inside it (failing streak 475+).
+      # Real health is observed through Caddy proxying /ready.
+      disable: true
     logging:
       driver: json-file
       options: { max-size: "20m", max-file: "5" }
