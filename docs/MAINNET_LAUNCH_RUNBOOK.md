@@ -7,6 +7,29 @@ without his explicit approval of one specific command.
 This is the *execution* plan. `MAINNET_PLAN.md` holds the design decisions
 and history; `../../midnight-launches-log/` holds the dated evidence.
 
+**Rollup migration checkpoint (2026-10-04):** P1/P2 and the per-move bot
+commands below are historical predecessor instructions, not the Season 1
+launch procedure. `--contract state-only` selects `proof-or-bluff-mainnet`,
+not `proof-or-bluff-rollup`. The rollup chain/session modules exist, but the
+CLI and browser do not yet select them. Do not repoint the old app to a
+rollup address or execute a predecessor deployment as the launch.
+
+Current launch gates:
+
+- Terry's private prover uses `ops/compose.terry.yaml`; it is not a public API.
+- Resolve `assertRecentBlockTime`'s 120-second window against measured proof
+  latency before a public-network `closeGame`. The client captures the time
+  before proving; proof generation alone does not establish chain acceptance.
+- Wire guarded rollup deployment, hosted sessions, browser interaction,
+  durable receipts, and a server-side Blockfrost proxy.
+- Complete rollup Preview and Preprod deploy/open/play/close rehearsals with
+  indexed transaction evidence, then security review.
+- Obtain John's operator-wallet/DUST and Blockfrost prerequisites and confirm
+  deployment authorization. Kapa's official readiness checklist, checked
+  2026-10-04, still requires Foundation review and deployment credentials.
+- Present the exact rollup Mainnet command for John's approval only after
+  those gates pass. No Mainnet deployment has been performed.
+
 ---
 
 ## 0. Where we are (verified, not hoped)
@@ -23,12 +46,15 @@ and history; `../../midnight-launches-log/` holds the dated evidence.
 | Provably-fair Floyd deal merged to `main` (`39f526a`): 10/10 conformance, 262/262 total; compile 9 s / ~0.3 GB (was OOM at 13 GB) | `realDeal/cli/src/deal-conformance.test.js` |
 | **Decision (John, Oct 3):** mainnet launches on the one-proof-per-game rollup contract, not the per-move Preview contract. VPS: Hostinger KVM 2 (`69.62.70.163`, shared with TaskFence Ai, paid through Jul 2027) — Hetzner not needed. | `docs/ZK_GAME_ROLLUP.md` |
 | **Rollup contract is real-proof capable (Oct 3 2026):** `proof-or-bluff-rollup.compact` compiles to full proving keys (`closeGame` ≈ 641k rows, k=20, prover 339 MB); a complete scripted game — with both players' signed `CloseConsent`s — produced a **real ZK proof** via `scripts/prove-rollup-close.mjs` (190 s, 6 KB proven tx). All 351 repo tests pass. | commits `1ba117f`, `370ab51`, `472160f` |
-| **Proving-memory blocker → resolved by upgrade (approved Oct 3):** `closeGame` proving peaks **~9–10 GiB RSS**; the 8 GiB VPS OOM-killed it twice (4.5 & 6.5 GiB caps). **John approved a 16 GiB VPS upgrade (~$75/yr)** — `ops/vps/compose.yaml` already targets it (`mem_limit 11264m`, `NUM_WORKERS=1`); do **not** redeploy compose until the bigger box is live. | dmesg OOM logs; `DEPLOYMENT.md` §6 |
+| **VPS sizing requires re-evaluation (Oct 4):** the 8 GiB VPS failed at 4.5/6.5 GiB limits, and Terry also OOM-killed a real proof at 12 GiB. Earlier 9–10 GiB observations were not peak-memory measurements. The approved 16 GiB VPS upgrade is not confirmed complete, and the proposed 11 GiB container cap is not sufficient evidence of readiness. Do not redeploy the VPS stack on that assumption. | kernel OOM records; `DEPLOYMENT.md` §5.5 |
+| **Terry generated a real rollup proof (Oct 4):** 194.9 s cold / 129.8 s warm end-to-end, 6 KB proven transaction each; sampled memory reached 13.69 GiB under a 14 GiB RAM / 16 GiB combined RAM+swap cap, one worker, zero restarts during both successful runs. Intentional restart recovery and LAN isolation also verified. Private SSH access only, not a public game backend. | `scripts/prove-rollup-close.mjs http://127.0.0.1:16300`; `ops/compose.terry.yaml` |
+| **Current regression suite:** 35 files / 353 tests pass, including timestamp-boundary tests confirming a valid close is rejected at 121 seconds. | `npm test`, 2026-10-04 |
 
-What is **not** true yet: no browser (Lace) match on a public network; no
-hosted bot on a public network; no closeGame-capable proving host; no
-Blockfrost account; no mainnet wallet; no DUST sponsorship; no Foundation
-deployment request.
+Still incomplete: browser rollup match on a public network, hosted rollup
+bot, Blockfrost proxy, durable receipt integration, timestamp/proving-latency
+resolution, and Preview/Preprod rollup rehearsals. Mainnet Blockfrost access,
+fresh operator-wallet custody, DUST funding and deployment authorization
+remain unverified John-owned prerequisites. Nothing has deployed to Mainnet.
 
 ---
 
@@ -176,16 +202,15 @@ waived in writing, M3 complete, Discord answer recorded.
 
 1. John reviews `git diff` of the exact commit to be deployed and the
    `deployments.json` custody entry.
-2. On the server, with `BLOCKFROST_PROJECT_ID` and the mainnet operator seed
-   in env, John (or SOL with John watching) runs **exactly once**:
-   ```bash
-   POB_ALLOW_MAINNET_DEPLOY=I_APPROVE_MAINNET_DEPLOYMENT \
-   POB_NETWORK_ID=mainnet POB_STATE_NAMESPACE=mainnet-1 \
-   npm run cli -- create-match --player p2 --network mainnet --contract state-only --mode 1
-   ```
-   (`create-match` is the only deploy-capable command; the guard rejects
-   everything else. The bot/operator wallet is the deployer so the
-   contract's first match is the house table.)
+2. **Blocked until the rollup deployment CLI is implemented and rehearsed.**
+   Do not use `create-match --contract state-only`: it deploys the per-move
+   predecessor. The rollup API's `deploy()` already checks
+   `POB_ALLOW_MAINNET_DEPLOY=I_APPROVE_MAINNET_DEPLOYMENT`, but there is no
+   approved Season 1 CLI command yet. Once implemented, pin the release and
+   full artifact hashes, keep `BLOCKFROST_PROJECT_ID` and the fresh operator
+   seed server-side, and present the exact command to John for approval.
+   Deploy once; if submission status is uncertain, reconcile with the
+   indexer before retrying.
 3. Verify via Blockfrost indexer `contractAction(address)` → block height
    + tx hash. Record in `deployments.json` and the launch log **before**
    anything else.

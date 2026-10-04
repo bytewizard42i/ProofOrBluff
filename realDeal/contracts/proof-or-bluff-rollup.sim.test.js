@@ -184,6 +184,27 @@ describe('rollup contract: a complete honest game closes with one proof', () => 
   });
 });
 
+describe('rollup contract: closeGame timestamp window', () => {
+  it.each([120, 121])('checks a valid signed game at %i seconds after its timestamp', (delaySeconds) => {
+    const table = newTable();
+    const gameId = openStandardGame(table);
+    const result = playScriptedGame(referee());
+    table.witness.transcript = result.witnesses.transcript;
+    table.witness.snapshots = result.witnesses.snapshots;
+    stageConsents(table, gameId, result);
+    table.at(NOW + delaySeconds);
+    const closeGame = () => table.call('closeGame', gameId,
+      result.transcriptRoot, result.p1Score, result.p2Score, result.winner, BigInt(NOW));
+    if (delaySeconds <= 120) {
+      expect(closeGame).not.toThrow();
+      expect(table.state().games.lookup(gameId).closed).toBe(true);
+    } else {
+      expect(closeGame).toThrow(/Timestamp is too old/);
+      expect(table.state().games.lookup(gameId).closed).toBe(false);
+    }
+  });
+});
+
 describe('rollup contract: every cheat is a failed proof', () => {
   const freshClosedSetup = () => {
     const t = newTable();

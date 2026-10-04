@@ -238,7 +238,7 @@ dropped (verified Oct 3: `/ready` reported `jobCapacity 0`).
 | Env | Value | Why |
 |---|---|---|
 | `MIDNIGHT_PROOF_SERVER_PORT` | 6300 | |
-| `MIDNIGHT_PROOF_SERVER_NUM_WORKERS` | 2 | one proving job pins one core |
+| `MIDNIGHT_PROOF_SERVER_NUM_WORKERS` | 1 | serialize large closeGame proofs to stay within RAM |
 | `MIDNIGHT_PROOF_SERVER_JOB_CAPACITY` | 10 | beyond that clients get 429, not OOM |
 | `MIDNIGHT_PROOF_SERVER_JOB_TIMEOUT` | 600 | rollup `closeGame` may be large |
 
@@ -270,6 +270,69 @@ curl -s -I https://api.prooforbluff.app/            # 503 placeholder today
 
 ---
 
+### 5.5 Terry — private proving host
+
+Terry is `j5i@192.168.1.71`, native Ubuntu, i5-1135G7 (4 cores / 8 threads),
+19 GiB usable RAM. Source of truth: `ops/compose.terry.yaml`; deployed copy:
+`/home/j5i/pob/compose.yaml`. No operator seeds, Blockfrost tokens, public
+proxy, bot, or database have been deployed there for POB.
+
+The proof server is pinned to version 8.1.0 and its image digest. It binds
+only `127.0.0.1:6300`, runs one proving worker with job capacity 1, limits
+CPU to 6 logical CPUs, and has a 14 GiB RAM limit plus at most 2 GiB swap
+(`memswap_limit: 16g` is the combined ceiling). Swap is spike protection,
+not evidence of acceptable production latency. Request-body debug logging
+is disabled. Public parameters persist in the `pob-terry_proof-params`
+volume mounted at `/root/.cache`; logs rotate. Docker's restart policy is
+`unless-stopped`; health is checked from the host, not by a nonexistent
+curl binary inside the image.
+
+**Sizing correction (2026-10-04):** the first real Terry run OOM-killed the
+container at a 12 GiB cap; automatic SDK retries repeated the failure.
+The historical 9–10 GiB samples elsewhere in this document are not a safe
+peak-memory budget. With the adjusted limits, Terry generated a real
+`closeGame` proof in 194.9 seconds end-to-end (188.7 seconds on `/prove`),
+producing a 6 KB proven transaction. Sampled container memory reached
+13.49 GiB; zero restarts and no OOM kill occurred in that successful run.
+Host swap usage after the run was 40 MiB (not a per-container measurement).
+A second, warm-cache run passed in 129.8 seconds (123.5 seconds on `/prove`),
+with a 6 KB transaction, zero restarts and sampled memory up to 13.69 GiB.
+A subsequent intentional container restart returned to healthy `/ready`
+without re-downloading the cached parameters. Direct LAN access to port
+6300 was refused; SSH forwarding was the verified access path.
+Do not assume the proposed 11 GiB VPS cap or a shared 16 GiB VPS can prove
+this circuit. Measure the full workload before upgrading or changing the
+public endpoint.
+
+On Terry:
+
+```bash
+docker compose -f /home/j5i/pob/compose.yaml config --quiet
+docker compose -f /home/j5i/pob/compose.yaml up -d
+curl -fsS http://127.0.0.1:6300/ready
+docker stats --no-stream pob-terry-proof-server-1
+```
+
+From Penelope, open a private tunnel in one terminal, then run the harness
+from the POB repository in a second terminal:
+
+```bash
+ssh -N -i ~/.ssh/terry_ed25519 -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+  -L 127.0.0.1:16300:127.0.0.1:6300 j5i@192.168.1.71
+node scripts/prove-rollup-close.mjs http://127.0.0.1:16300
+```
+
+The harness submits no chain transaction. A successful proof is not an
+on-chain close: the contract currently rejects timestamps older than
+120 seconds, which must be resolved and rehearsed before launch. Production
+also needs authenticated backend admission, durable job/receipt storage,
+backup/recovery, host patching, and a protected route from the public API.
+Do not open port 6300 on the router or expose private witnesses to a public
+unauthenticated endpoint. Browsers must not upload the 340 MB proving key.
+
+---
+
 ## 6. Secrets policy
 
 | Secret | Lives | Never |
@@ -289,8 +352,9 @@ else is `.env.local` (ignored). Full rules: runbook §2 and M1.
 
 ## 7. Mainnet procedure
 
-Do not improvise. `docs/MAINNET_LAUNCH_RUNBOOK.md` M4 holds the **one
-guarded command**, approved by John, run **once**, from the server:
+Do not improvise. `docs/MAINNET_LAUNCH_RUNBOOK.md` M4 is blocked until the
+rollup CLI is implemented and rehearsed. The eventual command requires
+John's explicit approval and this guard; the prefix alone is not a deploy command:
 
 ```
 POB_ALLOW_MAINNET_DEPLOY=I_APPROVE_MAINNET_DEPLOYMENT  POB_NETWORK_ID=mainnet ...

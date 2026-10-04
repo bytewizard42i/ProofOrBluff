@@ -1,0 +1,35 @@
+name: pob-terry
+
+services:
+  proof-server:
+    image: midnightntwrk/proof-server:8.1.0@sha256:801bbc0340e9e96f16735f77b523f23c7459e3359842f7c79c2c53f4e994d531
+    restart: unless-stopped
+    environment:
+      HOME: /root
+      MIDNIGHT_PROOF_SERVER_PORT: "6300"
+      MIDNIGHT_PROOF_SERVER_NUM_WORKERS: "1"
+      MIDNIGHT_PROOF_SERVER_JOB_CAPACITY: "1"
+      MIDNIGHT_PROOF_SERVER_JOB_TIMEOUT: "1200"
+      MIDNIGHT_PROOF_SERVER_VERBOSE: "false"
+    ports:
+      - "127.0.0.1:6300:6300"
+    volumes:
+      - proof-params:/root/.cache
+    cpus: 6
+    mem_limit: 14g
+    memswap_limit: 16g
+    pids_limit: 256
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      disable: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  proof-params:
