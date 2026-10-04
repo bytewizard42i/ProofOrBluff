@@ -29,3 +29,6 @@ realDeal/app/.env
 /realDeal/contracts/managed/proof-or-bluff-rollup/keys/
 /realDeal/contracts/managed/proof-or-bluff-rollup/zkir/
 /realDeal/contracts/managed/proof-or-bluff-rollup/compiler/
+/realDeal/contracts/managed/proof-or-bluff-rollup-v3/keys/
+/realDeal/contracts/managed/proof-or-bluff-rollup-v3/zkir/
+/realDeal/contracts/managed/proof-or-bluff-rollup-v3/compiler/
