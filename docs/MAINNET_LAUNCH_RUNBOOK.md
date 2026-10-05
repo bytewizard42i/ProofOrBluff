@@ -138,16 +138,25 @@ These have real-world latency. None of them require code to be ready.
       expected traffic (free tier limits are per-day request counts).
 - [x] **Mainnet operator wallet** — fresh seed generated 2026-10-05 into
       `realDeal/cli/.env.local` as `POB_PUBLIC_SEED_MAINNET_P2` (untracked;
-      bot/deployer wallet only). Funding address for the DUST registration:
-      `mn_addr18wcrcr8xvnmp8dkrdlhjrxa43qxnzyxlyy3z39wvnxasaweemtmqh6ajxl`
+      bot/deployer wallet only).
+      - Unshielded (NIGHT) address — only if NIGHT is ever sent ON Midnight:
+        `mn_addr18wcrcr8xvnmp8dkrdlhjrxa43qxnzyxlyy3z39wvnxasaweemtmqh6ajxl`
+      - **DUST address — THIS is what the cNgD registration wants:**
+        `mn_dust1wwrkseeghlkz4rztjaphsknvfgmd6dl6l4u7kz40d59d9ll26p4jcwnx0jf`
       **John: copy the seed from `.env.local` into the password manager +
-      paper backup BEFORE funding** — lose it and the wallet is gone.
-- [ ] **cNIGHT → DUST**: acquire cNIGHT; register for DUST via the cNgD
-      dApp (`midnight-dust-mainnet.nethermind.io`) to the operator wallet;
-      **~12 h** until DUST appears. How much? Each contract call burns
-      DUST that regenerates (cap ≈ 5 DUST per NIGHT). For a bot playing
-      hundreds of moves/day plus any sponsorship, size generously and
-      measure on day 1.
+      paper backup BEFORE registering** — lose it and the wallet is gone.
+- [ ] **cNIGHT → DUST** (cross-chain; NO NIGHT is transferred to Midnight):
+      in the cNgD dApp (`midnight-dust-mainnet.nethermind.io`) register the
+      Cardano stake address holding the cNIGHT → the operator **DUST
+      address** above. **Then move the cNIGHT to yourself once**: per the
+      docs, only cNIGHT UTXOs *created after* registration generate DUST;
+      earlier UTXOs generate nothing until they move. **~12 h** until DUST
+      appears on Midnight (Cardano stability delay).
+      How much? Cap = 5 DUST per NIGHT, full refill ≈ 1 week (≈0.7 DUST
+      per NIGHT per day). 100–200 cNIGHT is plenty for launch week; 500
+      for headroom/sponsorship. Per-tx fee on Mainnet is unmeasured —
+      record it from game #1. Check status without a wallet sync:
+      indexer `dustGenerationStatus(cardanoRewardAddresses: [...])`.
 - [ ] **Dedicated mainnet Lace** for John as Player One (separate seed
       from any wallet holding real value). Register its NIGHT for DUST.
 - [ ] **Key custody doc**: who holds the operator seed, where the backup

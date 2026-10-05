@@ -73,13 +73,17 @@ export default function App() {
     );
   }
 
+  // Demo mode is the public instant-play build: no wallet, no chain, no
+  // diagnostics. The wallet header and the proof-server log are developer
+  // surfaces for the chain-wired modes only.
+  const DEMO_MODE = APP_MODE === 'demo';
   return (
     <div className="app">
-      <RealDealHeader />
+      {!DEMO_MODE && <RealDealHeader />}
       <SponsorRail />
       {/* Floating, fixed-position panel in the right margin. Out of
           flow, so it never reflows the gameboard. */}
-      <ProofServerLog />
+      {!DEMO_MODE && <ProofServerLog />}
       <header className="header">
         <div>
           <h1>
