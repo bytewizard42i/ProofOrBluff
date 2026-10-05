@@ -268,6 +268,43 @@ Compiler lessons (also in AGENTS.md): a non-constant vector index made `--skip-z
 min at 100 % CPU. v2's shape — independent per-slot asserts against witness snapshots in a
 `for` loop — compiles in seconds. Keep it.
 
+### 7.6 v3p — hex-packed hands inside the round proof (BUILT, MEASURED, TESTED 2026-10-04)
+
+`proof-or-bluff-rollup-v3p.compact`: identical chain shape and guarantees to v3; only the
+in-circuit hand representation changes. Exact Floyd dealing is **unchanged** (Clara's
+distribution point) — it is packed after the draw.
+
+**Soundness obligations (written before the code):**
+- Hand `H = Σ 16^rank`. Conservation per seat per round: `dealt == played + remaining`,
+  with `remaining` a witness of exactly `size − plays` ranks, each asserted `0..12`.
+- No carries: `dealt` ≤ 7 cards ⇒ digits ≤ 7; `played + remaining` has exactly `size`
+  terms ⇒ digits ≤ 7 < 16. Field ≈ 2²⁵⁴ ≫ 16¹³. Equal numbers ⇔ equal multisets.
+- The guard that keeps that true: **every PLAY asserts `plays + count ≤ size`.**
+- Challenge truth: `claimSum == count · 16^rank` (count ≤ 4 < 16, so equal iff all cards
+  are that rank).
+- Hand-empty for rollover: `plays == size`, sound *given* conservation.
+- The circuit never extracts a digit mid-round.
+
+| Circuit | v2 | v3 | **v3p** |
+|---|---|---|---|
+| per-round proof | — | 185,892 / k=18 | **125,588 / k=17** |
+| closeGame | 641k / k=20 | 22,062 / k=15 | 22,062 / k=15 |
+| per move (derived) | ≈5.8k | ≈4k | **≈1.9k** |
+
+Of v3p's 125k, ≈56k is the unchanged Floyd deal (2 hands) and ≈17k the four seal
+openings; moves + conservation are ≈50k. The deal is now the only remaining lever
+(shoe dealing for CASINO, or R9's witness-side sampling — both are gameplay/trust
+decisions, not optimizations, and are deferred).
+
+Tests: `proof-or-bluff-rollup-v3p.sim.test.js` — all 17 v3 tests re-run against the
+packed circuits **plus** packing-specific attacks: forged card with snapshots made
+consistent so only conservation can catch it; lying about `remaining`; out-of-range
+remaining rank; overplay past `size` (the carry guard); packing losslessness vs
+`dealHandRanks`. **21/21.** Repo **37 files / 396 tests.** Mirror: `rollup-v3p-referee.js`.
+
+**Recommendation: v3p is the Season 1 contract.** v3 stays in the tree as the
+un-packed reference the reviewers can diff against.
+
 Decisions taken (defaults, reversible): round-boundary proofs (replaces 16-move segments);
 anchoring folded into round proofs; `closedAt` dropped; exact 52-card dealing retained for
 now; one contract per game; per-round secrets.
