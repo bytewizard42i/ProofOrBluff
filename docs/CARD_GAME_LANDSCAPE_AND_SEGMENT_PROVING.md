@@ -308,3 +308,34 @@ un-packed reference the reviewers can diff against.
 Decisions taken (defaults, reversible): round-boundary proofs (replaces 16-move segments);
 anchoring folded into round proofs; `closedAt` dropped; exact 52-card dealing retained for
 now; one contract per game; per-round secrets.
+
+### 7.7 PARKED — v4 gameplay mechanic: the Showdown move (John, 2026-10-05, post-launch)
+
+**Problem being solved.** Late in a round a player may hold no card of the current rank
+and be *forced* to bluff to continue. As hands shrink that probability rises and rounds
+stall into compulsory lies.
+
+**Mechanic.** A new move kind: **SHOWDOWN** — instead of a rank claim, the player plays
+ONE card face-down. The opponent either accepts (play continues) or **challenges blind** —
+the challenge decision is locked before the drawn card exists in anyone's view (this
+commitment timing is what makes it a fair gamble rather than riggable). On challenge the
+played card is revealed **and** a fresh card is drawn at the same instant; card vs card,
+higher wins (suit ordering TBD — minor rules detail). A caught liar can still win the
+showdown, which keeps the tension. "Pick up the pot" maps to a score penalty — our game
+has no card pile; TBD exact points.
+
+**ZK feasibility — checked, not blocking:**
+- The drawn card must not be *chosen* by anyone (dealer included). Derive it:
+  `card = f(seed, P1's round secret, P2's round secret, drawIndex)`. Neither player can
+  compute it alone mid-round (each holds only their own secret); the proof re-derives and
+  verifies it at round end. Deterministic index ⇒ no grinding candidate draws.
+  Effectively a small VRF for free — the per-round-secret architecture already has the
+  right shape.
+- One new move kind, one derive, one compare: a few hundred rows. Conservation
+  (`dealt = played + remaining`) is untouched — the drawn card is compared and discarded,
+  never enters a hand.
+- Information leak is a *rules* choice, not a ZK limit: a face-up shown card reveals part
+  of the holder's hand. Accepted deliberately — it's the cost of choosing showdown.
+
+**Deferred deliberately**: contract surgery mid-rehearsal is how deadlines get missed.
+Natural fit for the v4 contract — it already has room for a new move kind.
