@@ -136,13 +136,12 @@ These have real-world latency. None of them require code to be ready.
       in `realDeal/cli/.env.local` on the server, and the proxy's env).
       Never in `VITE_*`, never in chat, never in git. Pick a plan sized for
       expected traffic (free tier limits are per-day request counts).
-- [ ] **Mainnet operator wallet** (bot + sponsorship + contract deployer):
-      generate a fresh 64-hex seed on an offline/clean machine; write it to
-      a password manager AND a paper backup; put it in server env as
-      `POB_PUBLIC_SEED_P2`. Print its address with
-      `npm run cli -- address --player p2 --network mainnet`
-      (needs `BLOCKFROST_PROJECT_ID` set even for derivation checks —
-      the CLI refuses mainnet config without it).
+- [x] **Mainnet operator wallet** — fresh seed generated 2026-10-05 into
+      `realDeal/cli/.env.local` as `POB_PUBLIC_SEED_MAINNET_P2` (untracked;
+      bot/deployer wallet only). Funding address for the DUST registration:
+      `mn_addr18wcrcr8xvnmp8dkrdlhjrxa43qxnzyxlyy3z39wvnxasaweemtmqh6ajxl`
+      **John: copy the seed from `.env.local` into the password manager +
+      paper backup BEFORE funding** — lose it and the wallet is gone.
 - [ ] **cNIGHT → DUST**: acquire cNIGHT; register for DUST via the cNgD
       dApp (`midnight-dust-mainnet.nethermind.io`) to the operator wallet;
       **~12 h** until DUST appears. How much? Each contract call burns
@@ -161,10 +160,26 @@ Preprod tracks mainnet versions most closely; Preview may run newer builds.
 Cost: one more faucet + one e2e run. Benefit: the official checklist's
 first line item, and real confidence that v8 mainnet accepts our proofs.
 
-- [ ] New `POB_PUBLIC_SEED_*` pair for Preprod (never reuse Preview seeds
-      on another network), faucet `midnight-tmnight-preprod.nethermind.dev`
-- [ ] `POB_NETWORK_ID=preprod POB_STATE_NAMESPACE=preprod-1 npm run cli -- e2e --network preprod --contract state-only`
-- [ ] Record address + tx ids in `realDeal/deployments.json` and the log
+**v3p PREVIEW REHEARSAL — DONE 2026-10-05.** Full game on Preview, 4 proven
+txs, contract `6b1911887…aacfb8`; the rehearsal caught a real boundary bug
+(run 1, block 1158119) that fixtures masked — fixed in `3ddf63f`. Record:
+`midnight-launches-log/2026-10-05_pob-rollup-v3p_preview.md`.
+
+**PREPROD — SKIPPED 2026-10-05 by John's call: go directly to Mainnet.**
+(Fresh Preprod seed already exists as `POB_PUBLIC_SEED_PREPROD_P2` in
+`.env.local` + its address `mn_addr_preprod1spc9…xva83` if a fall-back
+rehearsal is ever needed; the mainnet faucet is
+`midnight-tmnight-preprod.nethermind.dev`.)
+
+**MAINNET (v3p) — the remaining gate is three John items (below), then:**
+- [ ] `POB_ALLOW_MAINNET_DEPLOY=I_APPROVE_MAINNET_DEPLOYMENT \
+       POB_NETWORK_ID=mainnet POB_STATE_NAMESPACE=mainnet-1 \
+       POB_PROOF_SERVER=http://127.0.0.1:16300 \
+       BLOCKFROST_PROJECT_ID=<server env only> \
+       node scripts/preview-v3p-game.mjs`
+      → deploys ONE v3p game on Mainnet, plays + proves its rounds, closes it.
+      John approves THIS exact command — once, in writing — before it runs.
+- [ ] Record address + tx ids in `realDeal/deployments.json` and the launch log
 - **Skip only if** the Foundation/Discord confirms Preview and mainnet are
   on the same node/ledger versions *and* John accepts the risk in writing.
 

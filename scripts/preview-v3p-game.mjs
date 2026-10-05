@@ -36,7 +36,7 @@ const { pureCircuits } = await import(path.join(DEFAULT_V3P_MANAGED_DIR, 'contra
 const networkId = process.env.POB_NETWORK_ID || 'preview';
 if (networkId === 'undeployed') throw new Error('This script targets a public network. Set POB_NETWORK_ID=preview|preprod.');
 if (networkId === 'mainnet' && !process.env.BLOCKFROST_PROJECT_ID) throw new Error('Mainnet needs BLOCKFROST_PROJECT_ID (server-side only).');
-const seedHex = process.env.POB_PUBLIC_SEED_P2;
+const seedHex = process.env[`POB_PUBLIC_SEED_${networkId.toUpperCase()}_P2`] || process.env.POB_PUBLIC_SEED_P2;
 if (!seedHex) throw new Error('Set POB_PUBLIC_SEED_P2 (operator wallet) in realDeal/cli/.env.local.');
 const proofServer = process.env.POB_PROOF_SERVER || 'http://127.0.0.1:16300';
 
