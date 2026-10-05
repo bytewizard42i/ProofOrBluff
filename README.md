@@ -27,6 +27,14 @@
 > **It is not deployed yet** — Preview rehearsal is next; per-move predecessor
 > contract lives on Preview at `cc75d39e…06a159`. Launch plan:
 > [`docs/MAINNET_LAUNCH_RUNBOOK.md`](docs/MAINNET_LAUNCH_RUNBOOK.md).
+>
+> **Oct 4 2026 — the proof got 5× cheaper.** We found the one-proof design could
+> never land on-chain (a 3-minute proof inside a 2-minute window), measured where
+> every row went, read every other card game on Midnight, and rebuilt it as
+> **one proof per round, one contract per game, one secret per round**:
+> `proveRound` k=18 (186k rows), `closeGame` k=15 (22k rows), keys in 2 minutes
+> instead of 11, fits the 8 GiB server. 375 tests. The full story, with every
+> number: [`docs/HOW_WE_CRACKED_THE_PROOF.md`](docs/HOW_WE_CRACKED_THE_PROOF.md).
 
 ## 🎯 The one-proof game
 
@@ -106,6 +114,7 @@ commitments on-chain                     transcript sealed forever
 |---|---|---|
 | 🎮 [Play (when live)](https://prooforbluff.app) | 🌐 [Product site](https://prooforbluff.com) | 📜 [Game rules](docs/RULES.md) |
 | 🎯 [ZK Game Rollup spec](docs/ZK_GAME_ROLLUP.md) | 🚀 [Mainnet runbook](docs/MAINNET_LAUNCH_RUNBOOK.md) | 🏗️ [Deployment doc](DEPLOYMENT.md) |
+| 🏆 [How we cracked the proof](docs/HOW_WE_CRACKED_THE_PROOF.md) | 🔬 [v3 design + review](docs/CARD_GAME_LANDSCAPE_AND_SEGMENT_PROVING.md) | 🃏 [Midnight card-game survey](../monolith-docs/MIDNIGHT_CARD_GAMES_SURVEY_2026-10-04.md) |
 | 🔐 [realDeal README](docs/realDealREADME.md) | 🃏 [demoLand README](docs/demoLandREADME.md) | 🗺️ [Roadmap](docs/ROADMAP.md) |
 | 🧪 [Proof harness](scripts/prove-rollup-close.mjs) | 💼 [Business plan](docs/BUSINESS_PLAN.md) | 🎲 [Gameplay research](docs/GAMEPLAY_RESEARCH.md) |
 
