@@ -412,12 +412,18 @@ export circuit proveRound(round: Uint<8>): [] {
   // 2. Where this round starts: round 1 from the seed; later rounds from the
   //    committed boundary the previous proof wrote.
   const seed = combineEntropy(e[0], e[1]);
+  // Round 1 opens the constructor's initial boundary (all zero); later rounds
+  // open the boundary the previous proof wrote. The seed-derived starting
+  // rank is applied to the OPENING SNAPSHOT below, never to the boundary —
+  // caught on Preview 2026-10-05 (block 1158119): the simulator fixture's
+  // seed happened to give rank 0, which hid a mismatch here.
   const prev = startBoundary();
   const b0 = r == (1 as Uint<8>)
-    ? Boundary { turn: 0, currentRank: startingRank(seed), score0: 0, score1: 0, round: 0, ended: false, chain: 0 }
+    ? Boundary { turn: 0, currentRank: 0, score0: 0, score1: 0, round: 0, ended: false, chain: 0 }
     : prev;
   assert(commitBoundary(b0) == stateRoot, "boundary does not open stateRoot");
   assert(b0.round == ((r - 1) as Uint<8>), "boundary round mismatch");
+  const openingRank: Uint<8> = r == (1 as Uint<8>) ? startingRank(seed) : b0.currentRank;
 
   // 3. Deal round r — ONCE, here, for both players.
   const size32 = handSize(mode);
@@ -427,7 +433,7 @@ export circuit proveRound(round: Uint<8>): [] {
   const states = roundSnapshots();
   const moves = roundMoves();
   const opening = GameState {
-    played0: 0, played1: 0, plays0: 0, plays1: 0, turn: b0.turn, currentRank: b0.currentRank,
+    played0: 0, played1: 0, plays0: 0, plays1: 0, turn: b0.turn, currentRank: openingRank,
     pending: false, claimRank: 0, claimCount: 0, claimSum: 0, claimer: 0,
     score0: b0.score0, score1: b0.score1, round: r, ended: false, chain: b0.chain
   };

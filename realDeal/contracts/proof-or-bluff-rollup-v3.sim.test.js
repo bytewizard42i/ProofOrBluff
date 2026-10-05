@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as runtime from '@midnight-ntwrk/compact-runtime';
 import {
-  createV3Referee, KIND, MAX_ROUNDS, MAX_ROUND_MOVES, initialBoundary, roundFinished,
+  createV3Referee, KIND, MAX_ROUNDS, MAX_ROUND_MOVES, initialBoundary, roundFinished, startingRank,
 } from './rollup-v3-referee.js';
 import {
   consentKeyPairFromSecret, buildCloseConsent, signCloseConsent, challengeReductionWitness,
@@ -19,18 +19,20 @@ const KP2 = consentKeyPairFromSecret(new Uint8Array(32).fill(0x52));
 const P1 = pureCircuits.playerIdFromPk(KP1.pk);
 const P2 = pureCircuits.playerIdFromPk(KP2.pk);
 const E1 = new Uint8Array(32).fill(3);
-const E2 = new Uint8Array(32).fill(7);
+const E2 = new Uint8Array(32).fill(9);
 const STANDARD = 1n;
 // Six independent secrets per player: round r's is revealed only after round r.
 const secretsFor = (seat) => Array.from({ length: MAX_ROUNDS }, (_, i) => new Uint8Array(32).fill(0x10 * (seat + 1) + i + 1));
 const SECRETS = [secretsFor(0), secretsFor(1)];
 const seed = pureCircuits.combineEntropy(E1, E2);
 
-function newGame({ mode = STANDARD, secrets = SECRETS } = {}) {
+function newGame({ mode = STANDARD, secrets = SECRETS, entropy = [E1, E2] } = {}) {
+  const [e1, e2] = entropy;
+  const gameSeed = pureCircuits.combineEntropy(e1, e2);
   // What the prover stages for the CURRENT proof. Each proveRound/closeGame
   // call sets exactly the material that call may see.
   const witness = {
-    entropy: [E1, E2], roundSecrets: [new Uint8Array(32), new Uint8Array(32)],
+    entropy: [e1, e2], roundSecrets: [new Uint8Array(32), new Uint8Array(32)],
     moves: [], snapshots: [], boundary: initialBoundary(),
     p1CloseConsent: null, p2CloseConsent: null,
   };
@@ -47,7 +49,7 @@ function newGame({ mode = STANDARD, secrets = SECRETS } = {}) {
   const commits = (seat) => secrets[seat].map((s, i) => pureCircuits.commitRoundSecret(s, BigInt(i + 1)));
   const initial = contract.initialState(
     runtime.createConstructorContext({}, SPONSOR),
-    P1, P2, mode, pureCircuits.commitEntropy(E1), pureCircuits.commitEntropy(E2), commits(0), commits(1),
+    P1, P2, mode, pureCircuits.commitEntropy(e1), pureCircuits.commitEntropy(e2), commits(0), commits(1),
   );
   let context = runtime.createCircuitContext(
     runtime.dummyContractAddress(), SPONSOR,
@@ -59,7 +61,7 @@ function newGame({ mode = STANDARD, secrets = SECRETS } = {}) {
     return r.result;
   };
   const state = () => ledger(context.currentQueryContext.state);
-  const referee = createV3Referee(pureCircuits, { seed, roundSecrets: secrets, mode });
+  const referee = createV3Referee(pureCircuits, { seed: gameSeed, roundSecrets: secrets, mode });
 
   /** Stage round r's witnesses from a finished referee round and prove it. */
   const proveRound = (finished, { secretsOverride, tamper } = {}) => {
@@ -292,6 +294,18 @@ describe('v3 rollup: no wall clock anywhere', () => {
     // Block time is fixed at construction above (1.8e9); the circuits never
     // read it, so proving latency can never invalidate a transaction.
     const g = newGame();
+    for (const r of playGame(g.referee)) g.proveRound(r);
+    g.closeGame();
+    expect(g.state().closed).toBe(true);
+  });
+});
+
+describe('regression: starting rank must come from the seed, not the stored boundary (Preview block 1158119)', () => {
+  it('the test fixture has a NONZERO starting rank, so a rank-0 coincidence cannot hide the bug again', () => {
+    expect(startingRank(seed)).not.toBe(0n);
+  });
+  it.each([1, 2, 5, 11, 42])('a full game proves and closes with entropy variant %i', (v) => {
+    const g = newGame({ entropy: [new Uint8Array(32).fill(v), new Uint8Array(32).fill(255 - v)] });
     for (const r of playGame(g.referee)) g.proveRound(r);
     g.closeGame();
     expect(g.state().closed).toBe(true);

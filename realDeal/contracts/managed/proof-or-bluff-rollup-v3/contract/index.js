@@ -538,28 +538,28 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.currentQueryContext != undefined)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 1 (as invoked from Typescript)',
-                                     'proof-or-bluff-rollup-v3.compact line 446 char 1',
+                                     'proof-or-bluff-rollup-v3.compact line 452 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(typeof(finalP1Score_0) === 'bigint' && finalP1Score_0 >= 0n && finalP1Score_0 <= 255n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup-v3.compact line 446 char 1',
+                                     'proof-or-bluff-rollup-v3.compact line 452 char 1',
                                      'Uint<0..256>',
                                      finalP1Score_0)
         }
         if (!(typeof(finalP2Score_0) === 'bigint' && finalP2Score_0 >= 0n && finalP2Score_0 <= 255n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 2 (argument 3 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup-v3.compact line 446 char 1',
+                                     'proof-or-bluff-rollup-v3.compact line 452 char 1',
                                      'Uint<0..256>',
                                      finalP2Score_0)
         }
         if (!(typeof(finalWinner_0) === 'bigint' && finalWinner_0 >= 0n && finalWinner_0 <= 255n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 3 (argument 4 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup-v3.compact line 446 char 1',
+                                     'proof-or-bluff-rollup-v3.compact line 452 char 1',
                                      'Uint<0..256>',
                                      finalWinner_0)
         }
@@ -1882,7 +1882,7 @@ export class Contract {
     const prev_0 = this._startBoundary_0(context, partialProofData);
     const b0_0 = this._equal_76(r_0, 1n) ?
                  { turn: 0n,
-                   currentRank: this._startingRank_0(seed_0),
+                   currentRank: 0n,
                    score0: 0n,
                    score1: 0n,
                    round: 0n,
@@ -1909,6 +1909,9 @@ export class Contract {
                                                                     'result of subtraction would be negative'),
                                             r_0 - 1n)),
                             'boundary round mismatch');
+    const openingRank_0 = this._equal_79(r_0, 1n) ?
+                          this._startingRank_0(seed_0) :
+                          b0_0.currentRank;
     const size_0 = this._handSize_0(_descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                               partialProofData,
                                                                                               [
@@ -1936,7 +1939,7 @@ export class Contract {
     const opening_0 = { hand0: hand0_0,
                         hand1: hand1_0,
                         turn: b0_0.turn,
-                        currentRank: b0_0.currentRank,
+                        currentRank: openingRank_0,
                         pending: false,
                         claimRank: 0n,
                         claimCount: 0n,
@@ -1947,7 +1950,7 @@ export class Contract {
                         round: r_0,
                         ended: false,
                         chain: b0_0.chain };
-    __compactRuntime.assert(this._equal_79(states_0[0], opening_0),
+    __compactRuntime.assert(this._equal_80(states_0[0], opening_0),
                             'opening snapshot mismatch');
     const threshold_0 = this._winThreshold_0(_descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                        partialProofData,
@@ -1965,7 +1968,7 @@ export class Contract {
                    partialProofData,
                    ((context, partialProofData, t_0, i_0) =>
                     {
-                      __compactRuntime.assert(this._equal_80(this._applyRoundMove_0(states_0[i_0],
+                      __compactRuntime.assert(this._equal_81(this._applyRoundMove_0(states_0[i_0],
                                                                                     moves_0[i_0],
                                                                                     threshold_0,
                                                                                     6n),
@@ -2042,7 +2045,7 @@ export class Contract {
                                                  value: __compactRuntime.StateValue.newCell({ value: _descriptor_0.toValue(tmp_1),
                                                                                               alignment: _descriptor_0.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
-    if (this._equal_81(r_0, 6n)) {
+    if (this._equal_82(r_0, 6n)) {
       __compactRuntime.queryLedgerState(context,
                                         partialProofData,
                                         [
@@ -2089,7 +2092,7 @@ export class Contract {
                                                                                                   result: undefined } }]).value),
                             'Proven history has not reached game end');
     const b_0 = this._startBoundary_0(context, partialProofData);
-    __compactRuntime.assert(this._equal_82(this._commitBoundary_0(b_0),
+    __compactRuntime.assert(this._equal_83(this._commitBoundary_0(b_0),
                                            _descriptor_1.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                      partialProofData,
                                                                                                      [
@@ -2103,7 +2106,7 @@ export class Contract {
                                                                                                       { popeq: { cached: false,
                                                                                                                  result: undefined } }]).value)),
                             'boundary does not open stateRoot');
-    __compactRuntime.assert(this._equal_83(b_0.round,
+    __compactRuntime.assert(this._equal_84(b_0.round,
                                            _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                      partialProofData,
                                                                                                      [
@@ -2133,11 +2136,11 @@ export class Contract {
     const w_0 = (t_0 = b_0.score0, t_0 >= threshold_0) ?
                 1n :
                 (t_1 = b_0.score1, t_1 >= threshold_0) ? 2n : 0n;
-    __compactRuntime.assert(this._equal_84(finalP1Score_0, b_0.score0)
+    __compactRuntime.assert(this._equal_85(finalP1Score_0, b_0.score0)
                             &&
-                            this._equal_85(finalP2Score_0, b_0.score1),
+                            this._equal_86(finalP2Score_0, b_0.score1),
                             'final score mismatch');
-    __compactRuntime.assert(this._equal_86(finalWinner_0, w_0),
+    __compactRuntime.assert(this._equal_87(finalWinner_0, w_0),
                             'winner mismatch');
     const root_0 = this._commitTranscript_0(b_0.chain);
     const consent1_0 = this._p1CloseConsent_0(context, partialProofData);
@@ -2147,7 +2150,7 @@ export class Contract {
                                                b_0.score0,
                                                b_0.score1,
                                                w_0);
-    __compactRuntime.assert(this._equal_87(this._playerIdFromPk_0(consent1_0.pk),
+    __compactRuntime.assert(this._equal_88(this._playerIdFromPk_0(consent1_0.pk),
                                            _descriptor_1.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                      partialProofData,
                                                                                                      [
@@ -2161,7 +2164,7 @@ export class Contract {
                                                                                                       { popeq: { cached: false,
                                                                                                                  result: undefined } }]).value)),
                             'P1 signer is not player one');
-    __compactRuntime.assert(this._equal_88(this._playerIdFromPk_0(consent2_0.pk),
+    __compactRuntime.assert(this._equal_89(this._playerIdFromPk_0(consent2_0.pk),
                                            _descriptor_1.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                      partialProofData,
                                                                                                      [
@@ -2175,9 +2178,9 @@ export class Contract {
                                                                                                       { popeq: { cached: false,
                                                                                                                  result: undefined } }]).value)),
                             'P2 signer is not player two');
-    __compactRuntime.assert(this._equal_89(consent1_0.credential, expected_0),
+    __compactRuntime.assert(this._equal_90(consent1_0.credential, expected_0),
                             'P1 signed a different result');
-    __compactRuntime.assert(this._equal_90(consent2_0.credential, expected_0),
+    __compactRuntime.assert(this._equal_91(consent2_0.credential, expected_0),
                             'P2 signed a different result');
     this._assert_signed_by_0(context,
                              partialProofData,
@@ -2576,6 +2579,10 @@ export class Contract {
     return true;
   }
   _equal_79(x0, y0) {
+    if (x0 !== y0) { return false; }
+    return true;
+  }
+  _equal_80(x0, y0) {
     {
       let x1 = x0.hand0;
       let y1 = y0.hand0;
@@ -2660,7 +2667,7 @@ export class Contract {
     }
     return true;
   }
-  _equal_80(x0, y0) {
+  _equal_81(x0, y0) {
     {
       let x1 = x0.hand0;
       let y1 = y0.hand0;
@@ -2749,16 +2756,12 @@ export class Contract {
     for (let i = 0; i < 26; i++) { x = f(context, partialProofData, x, a0[i]); }
     return x;
   }
-  _equal_81(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
   _equal_82(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
+    if (x0 !== y0) { return false; }
     return true;
   }
   _equal_83(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_84(x0, y0) {
@@ -2774,7 +2777,7 @@ export class Contract {
     return true;
   }
   _equal_87(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
+    if (x0 !== y0) { return false; }
     return true;
   }
   _equal_88(x0, y0) {
@@ -2782,6 +2785,10 @@ export class Contract {
     return true;
   }
   _equal_89(x0, y0) {
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
+    return true;
+  }
+  _equal_90(x0, y0) {
     {
       let x1 = x0.sep;
       let y1 = y0.sep;
@@ -2814,7 +2821,7 @@ export class Contract {
     }
     return true;
   }
-  _equal_90(x0, y0) {
+  _equal_91(x0, y0) {
     {
       let x1 = x0.sep;
       let y1 = y0.sep;
