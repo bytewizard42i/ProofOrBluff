@@ -24,7 +24,12 @@ import { fileURLToPath } from 'node:url';
 
 import { createSponsoredGame, GAME_STATUS, GameError, MODES, DIFFICULTIES } from './sponsored-game.js';
 
-const LOOPBACK_HOST = '127.0.0.1';
+// Bind address. Loopback by default (local dev, or a bare-metal box where Caddy
+// runs on the same host). Inside the Docker stack (ops/vps/compose.yaml) Caddy
+// lives in ANOTHER container and reaches us over the compose network, so the
+// container sets POB_API_HOST=0.0.0.0 — still unreachable from the internet
+// because the port is `expose`d to the compose network only, never published.
+const LOOPBACK_HOST = process.env.POB_API_HOST || '127.0.0.1';
 const DEFAULT_PORT = 3020;
 const MAX_JSON_BODY_BYTES = 4 * 1024;
 const MAX_OPEN_GAMES = 200;
@@ -99,6 +104,18 @@ function safeErrorMessage(error, env = process.env) {
   const message = error?.message || String(error);
   const projectId = env.BLOCKFROST_PROJECT_ID?.trim();
   return projectId ? message.replaceAll(projectId, '[redacted]') : message;
+}
+
+/** Wrap console.* so a secret token can never reach the log stream. */
+export function installConsoleRedaction(secret, target = console) {
+  if (!secret) return () => {};
+  const scrub = (v) => (typeof v === 'string' ? v.replaceAll(secret, '[redacted]') : v instanceof Error ? Object.assign(v, { message: scrub(v.message) }) : v);
+  const originals = {};
+  for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
+    originals[level] = target[level];
+    target[level] = (...args) => originals[level].apply(target, args.map(scrub));
+  }
+  return () => Object.assign(target, originals);
 }
 
 // ---------------------------------------------------------------------------
@@ -325,6 +342,11 @@ async function main() {
   const proofServer = process.env.POB_PROOF_SERVER || 'http://127.0.0.1:6300';
   const stateDir = process.env.POB_SPONSORED_STATE_DIR || path.join(here, '..', '.sponsored-state');
   const port = Number(process.env.POB_API_PORT || DEFAULT_PORT);
+
+  // The Blockfrost token rides in the endpoint URLs, and third-party libraries
+  // (polkadot RPC reconnect notices, etc.) print those URLs verbatim. Scrub it
+  // from everything that reaches stdout/stderr so container logs stay clean.
+  installConsoleRedaction(process.env.BLOCKFROST_PROJECT_ID?.trim());
 
   const { buildWalletFromSeed } = await import('./wallet-node.js');
   const { getV3pContractApi, DEFAULT_V3P_MANAGED_DIR } = await import('./rollup-v3p-contract.js');

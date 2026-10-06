@@ -53,10 +53,25 @@ proof.prooforbluff.app {
 	}
 }
 
-# ── API (Blockfrost proxy + bot) ────────────────────────────────────────────
-# Placeholder until the pob-proxy / pob-bot containers exist. Returns 503 so
-# DNS + TLS can be set up and verified ahead of the services.
+# ── API: the wallet-free sponsored game service ─────────────────────────────
+# Browser → here → pob-api (Node, docs/SPONSORED_GAME_API.md). Players send
+# tiny JSON moves; the service plays the bot, holds the operator wallet and
+# proves in the background. The Blockfrost token never leaves pob-api, so the
+# browser never talks to Blockfrost at all — this hostname IS the "proxy".
 api.prooforbluff.app {
 	import pob_cors
-	respond "Proof or Bluff API — not yet live" 503
+
+	# Moves are a few hundred bytes. Anything bigger is not a legitimate client.
+	request_body {
+		max_size 64KB
+	}
+
+	reverse_proxy pob-api:3020 {
+		transport http {
+			# Game calls answer in milliseconds; proving is async, so no long
+			# timeouts are needed here (unlike proof.).
+			response_header_timeout 30s
+			read_timeout 30s
+		}
+	}
 }

@@ -5,7 +5,7 @@
 
 import http from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createChainQueue, createSponsoredHttpApp, toJsonSafe, allowedOriginsFromEnvironment } from './sponsored-service.js';
+import { createChainQueue, createSponsoredHttpApp, toJsonSafe, allowedOriginsFromEnvironment, installConsoleRedaction } from './sponsored-service.js';
 
 const { pureCircuits } = await import('../../contracts/managed/proof-or-bluff-rollup-v3p/contract/index.js');
 const ORIGIN = 'https://prooforbluff.app';
@@ -149,6 +149,18 @@ describe('sponsored service HTTP', () => {
     expect(q2.stats.failed).toBe(1);
     expect(q2.stats.lastError.message).toContain('boom');
     srv.close();
+  });
+
+  it('console redaction scrubs the Blockfrost token from every log level, including URLs and Errors', () => {
+    const lines = [];
+    const fake = { log: (...a) => lines.push(['log', ...a]), error: (...a) => lines.push(['error', ...a]), info() {}, warn() {}, debug() {} };
+    const restore = installConsoleRedaction('nightmainnetSECRETTOKEN', fake);
+    fake.log('disconnected from wss://rpc.x/?project_id=nightmainnetSECRETTOKEN: closure');
+    fake.error(new Error('fetch https://y/?project_id=nightmainnetSECRETTOKEN failed'));
+    restore();
+    expect(lines[0][1]).toBe('disconnected from wss://rpc.x/?project_id=[redacted]: closure');
+    expect(lines[1][1].message).toBe('fetch https://y/?project_id=[redacted] failed');
+    expect(JSON.stringify(lines)).not.toContain('SECRETTOKEN');
   });
 
   it('toJsonSafe and origin parsing', () => {

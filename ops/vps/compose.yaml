@@ -15,11 +15,16 @@
 # Services:
 #   proof-server  Midnight proof server 8.1.0 (public-network matrix, Oct 2026).
 #                 Sees private witnesses during proving. Never logs them.
+#   pob-api       Node 22 — the wallet-free sponsored game backend
+#                 (realDeal/cli/src/sponsored-service.js, docs/SPONSORED_GAME_API.md).
+#                 Plays the bot seat, holds the operator wallet, pays all DUST,
+#                 proves through proof-server. Built from ./src (see below).
 #   caddy         TLS termination + origin-locked CORS for proof.prooforbluff.app
-#                 (and later api.prooforbluff.app for the Blockfrost proxy/bot).
+#                 and api.prooforbluff.app (→ pob-api).
 #
-# Not yet here (next milestones): pob-bot (hosted opponent + DUST sponsor),
-# pob-proxy (server-side Blockfrost). They will join this file.
+# Secrets: pob-api reads ./pob-api.env (operator seed, Blockfrost token, state
+# password). That file is created BY HAND on the box and is gitignored
+# (ops/vps/.gitignore). deploy.sh copies a local one only if it exists.
 
 name: prooforbluff
 
@@ -71,6 +76,59 @@ services:
       driver: json-file
       options: { max-size: "20m", max-file: "5" }
 
+  pob-api:
+    # Built on the box, not pulled: there is no registry for this image and the
+    # build needs the gitignored proving keys from the dev machine's working
+    # tree. deploy.sh rsyncs the exact source subtrees the Dockerfile COPYs
+    # into ./src (= /opt/prooforbluff/src) and then runs `compose build`.
+    # The context is ./src rather than the repo root so the box never needs a
+    # git checkout AND so Docker is not handed the multi-GB node_modules /
+    # media / docs trees as build context. The Dockerfile sits one level up
+    # (synced next to this file), which Docker allows.
+    build:
+      context: ./src
+      dockerfile: ../pob-api.Dockerfile
+    image: prooforbluff/pob-api:local
+    container_name: pob-api
+    restart: unless-stopped
+    # Secrets + network config live in ./pob-api.env on the box (NEVER committed;
+    # listed in ops/vps/.gitignore). Expected contents:
+    #   POB_NETWORK_ID=mainnet
+    #   POB_PUBLIC_SEED_MAINNET_P2=<64 hex — operator wallet, funded with NIGHT+DUST>
+    #   BLOCKFROST_PROJECT_ID=<midnight-mainnet project id>
+    #   POB_PRIVATE_STATE_PASSWORD=<≥16 chars — encrypts the level private-state db>
+    #   POB_PROOF_SERVER=http://proof-server:6300     # compose DNS name, in-network
+    #   POB_SPONSORED_STATE_DIR=/state                # the volume below
+    #   POB_ALLOWED_ORIGINS=https://prooforbluff.app  # bare origins, comma-separated
+    #   POB_API_HOST=0.0.0.0                          # see note below
+    #   POB_STATE_NAMESPACE=mainnet-sponsored         # slug → /state/.pob-state/<slug>
+    # POB_API_HOST: the service binds 127.0.0.1 by default (safe for bare
+    # metal). Here Caddy is a different container, so it must bind all
+    # container interfaces. That is still private — `expose` below puts the
+    # port on the compose network only, nothing is published on the host.
+    env_file:
+      - ./pob-api.env
+    # Only Caddy talks to it (api.prooforbluff.app → pob-api:3020).
+    expose:
+      - "3020"
+    volumes:
+      # Everything mutable: the resumable chain-step queue (pending/ + done/),
+      # the level private-state db and state.js' .pob-state/<namespace>. Losing
+      # this volume = losing which in-flight proofs were submitted. Keep it.
+      - pob-api-state:/state
+    # Below the proof server (2048) and level with Caddy: the API itself is
+    # cheap (a few ms per move); the heavy lifting happens in proof-server.
+    cpu_shares: 1024
+    # The wallet-sdk + ledger WASM + an in-memory game table for ≤200 games
+    # sits around 400–700 MiB RSS; 1.5 GiB leaves room for the proving-key
+    # buffers midnight-js builds while inlining them into /prove payloads.
+    mem_limit: 1536m
+    depends_on:
+      - proof-server
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
   caddy:
     image: caddy:2-alpine
     container_name: pob-caddy
@@ -87,6 +145,7 @@ services:
     mem_limit: 256m
     depends_on:
       - proof-server
+      - pob-api
     logging:
       driver: json-file
       options: { max-size: "20m", max-file: "5" }
@@ -95,3 +154,4 @@ volumes:
   proof-params:
   caddy-data:
   caddy-config:
+  pob-api-state:
