@@ -87,9 +87,9 @@ export default function App() {
       <header className="header">
         <div>
           <h1>
-            Proof or Bluff <span className="badge">MLH × Midnight</span>
+            Proof or Bluff <span className="badge">on Midnight</span>
           </h1>
-          <div className="tagline">Bluff publicly. Prove privately.</div>
+          <div className="tagline">Bluff in public. Prove in private.</div>
         </div>
         <MusicControls
           audio={audio}
@@ -103,9 +103,9 @@ export default function App() {
 
       <SponsorInvite />
       <footer className="footer">
-        realDeal build · MLH × Midnight Hackathon · May 15-17 2026 ·{' '}
-        <a href="https://github.com/bytewizard42i/ProofOrBluff_MLH_Midnight" target="_blank" rel="noreferrer">
-          GitHub
+        Free to play · no real-money play ·{' '}
+        <a href="https://prooforbluff.com" target="_blank" rel="noreferrer">
+          prooforbluff.com
         </a>
         {' · '}
         <a href="https://midnight.network" target="_blank" rel="noreferrer">
