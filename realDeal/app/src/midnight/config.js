@@ -17,10 +17,16 @@ export const CONTRACT_VARIANT = env.VITE_CONTRACT_VARIANT === 'state-only'
 export const CONTRACT_ASSET_NAME = CONTRACT_VARIANT === 'state-only'
   ? 'proof-or-bluff-mainnet' : 'proof-or-bluff';
 
+// Sponsored mode: the browser talks only to the game service (VITE_POB_API_URL),
+// which holds the operator wallet and the Blockfrost token server-side.
+export const SPONSORED_API_URL = env.VITE_POB_API_URL || null;
+export const SPONSORED_MODE = Boolean(SPONSORED_API_URL);
+
 // Browser-side Blockfrost URLs would expose John's project token to everyone
 // who opens the page. Mainnet needs a trusted backend proxy or wallet-managed
 // endpoints; reject this configuration instead of silently leaking a token.
-if (NETWORK_ID === 'mainnet') {
+// The sponsored service IS that proxy, so mainnet is allowed when it is set.
+if (NETWORK_ID === 'mainnet' && !SPONSORED_MODE) {
   throw new Error('Browser mainnet endpoints are disabled until the Blockfrost token is kept behind a server proxy.');
 }
 if (NETWORK_ID !== 'undeployed' && CONTRACT_VARIANT !== 'state-only') {
@@ -28,8 +34,9 @@ if (NETWORK_ID !== 'undeployed' && CONTRACT_VARIANT !== 'state-only') {
 }
 
 const PUBLIC_TEST_NETWORKS = ['preview', 'preprod'];
-if (NETWORK_ID !== 'undeployed' && !PUBLIC_TEST_NETWORKS.includes(NETWORK_ID)) {
-  throw new Error(`Unsupported VITE_NETWORK_ID "${NETWORK_ID}" (use undeployed|preview|preprod).`);
+const SUPPORTED_NETWORKS = SPONSORED_MODE ? [...PUBLIC_TEST_NETWORKS, 'mainnet'] : PUBLIC_TEST_NETWORKS;
+if (NETWORK_ID !== 'undeployed' && !SUPPORTED_NETWORKS.includes(NETWORK_ID)) {
+  throw new Error(`Unsupported VITE_NETWORK_ID "${NETWORK_ID}" (use undeployed|${SUPPORTED_NETWORKS.join('|')}).`);
 }
 
 // Proof-server choice — the one component that sees private witnesses
