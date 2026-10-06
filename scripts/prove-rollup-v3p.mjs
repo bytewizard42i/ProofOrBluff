@@ -17,7 +17,7 @@ import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
 import { Contract, pureCircuits, ledger as decodeLedger } from '../realDeal/contracts/managed/proof-or-bluff-rollup-v3p/contract/index.js';
 import { createV3pReferee, KIND, MAX_ROUNDS, initialBoundary, roundFinished } from '../realDeal/contracts/rollup-v3p-referee.js';
-import { consentKeyPairFromSecret, buildCloseConsent, signCloseConsent, challengeReductionWitness } from '../realDeal/cli/src/rollup-consent.js';
+import { consentKeyPairFromSecret, buildCloseConsent, signCloseConsent, challengeReductionWitness, gameIdFromContractAddress } from '../realDeal/cli/src/rollup-consent.js';
 
 const PROOF_SERVER = process.argv[2] ?? process.env.POB_PROOF_SERVER ?? 'http://127.0.0.1:16300';
 const MANAGED_DIR = new URL('../realDeal/contracts/managed/proof-or-bluff-rollup-v3p', import.meta.url).pathname;
@@ -135,7 +135,7 @@ if (!round1.boundaryOut.ended) {
   const result = ref.result();
   const root = pureCircuits.commitTranscript(result.transcriptChain);
   const consent = buildCloseConsent(pureCircuits, {
-    gameId: root, transcriptRoot: result.transcriptChain, p1Score: result.p1Score, p2Score: result.p2Score, winner: result.winner,
+    gameId: gameIdFromContractAddress(runtime.dummyContractAddress()), transcriptRoot: result.transcriptChain, p1Score: result.p1Score, p2Score: result.p2Score, winner: result.winner,
   });
   witness.boundary = result.boundary;
   witness.p1CloseConsent = signCloseConsent(pureCircuits, consent, KP1);

@@ -167,7 +167,8 @@ export function createChainQueue({ chainForGame, stateDir = null, onReceipt, onE
           const r = await api.proveRound({ round: step.round, witnesses: step.witnesses });
           receipt = { step: 'proveRound', round: step.round, txHash: r.txHash, blockHeight: r.blockHeight };
         } else if (step.step === 'closeGame') {
-          const r = await api.closeGame(step.args);
+          if (!contractAddressRef.current) throw new Error('closeGame queued before the deploy receipt — deploy failed?');
+          const r = await api.closeGame(step.build ? step.build(contractAddressRef.current) : step.args);
           receipt = { step: 'closeGame', ...r };
         } else throw new Error(`unknown chain step ${step.step}`);
         receipt.seconds = Number(((Date.now() - started) / 1000).toFixed(1));
@@ -247,7 +248,7 @@ export function createSponsoredHttpApp({
     if (games.size >= MAX_OPEN_GAMES) throw new HttpError(429, 'Too many open games right now; try again in a minute.');
     const mode = body.mode ?? 1;
     const difficulty = body.difficulty ?? 'medium';
-    if (!MODES.includes(mode)) throw new HttpError(400, 'mode must be 0, 1 or 2.');
+    if (!MODES.includes(mode)) throw new HttpError(400, 'mode must be 0, 1 or 4.');
     if (!DIFFICULTIES.includes(difficulty)) throw new HttpError(400, 'difficulty must be easy, medium or hard.');
     const gameId = randomBytes(32).toString('hex');
     const game = createSponsoredGame({ gameId, mode, difficulty, pureCircuits, ai, random });

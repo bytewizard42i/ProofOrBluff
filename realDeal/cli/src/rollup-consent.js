@@ -54,6 +54,17 @@ export function generateConsentKeyPair(randomBytes32) {
  * Result JS shape: { sep: Uint8Array(32), gameId: Uint8Array(32),
  *   transcriptRoot: bigint, p1Score: bigint, p2Score: bigint, winner: bigint }.
  */
+/**
+ * The consent's gameId is the deployed contract address (kernel.self().bytes
+ * in closeGame), so a signed result can never be replayed onto a clone.
+ * Accepts the hex string midnight.js / the simulator report.
+ */
+export function gameIdFromContractAddress(address) {
+  const hex = String(address).replace(/^0x/, '');
+  if (!/^[0-9a-fA-F]{64}$/.test(hex)) throw new TypeError('contract address must be 32 bytes of hex');
+  return Uint8Array.from(Buffer.from(hex, 'hex'));
+}
+
 export function buildCloseConsent(pureCircuits, { gameId, transcriptRoot, p1Score, p2Score, winner }) {
   if (typeof pureCircuits?.closeConsentFor !== 'function') {
     throw new TypeError('pureCircuits must expose closeConsentFor — recompile the rollup contract');

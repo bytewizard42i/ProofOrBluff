@@ -21,13 +21,14 @@ import { randomBytes } from 'node:crypto';
 import {
   createV3pReferee, KIND, MAX_ROUNDS, handSize, roundFinished, winThreshold,
 } from '../../contracts/rollup-v3p-referee.js';
-import { consentKeyPairFromSecret, buildCloseConsent, signCloseConsent } from './rollup-consent.js';
+import { consentKeyPairFromSecret, buildCloseConsent, signCloseConsent, gameIdFromContractAddress } from './rollup-consent.js';
 import { RANKS } from '../../shared/dealing.js';
 import * as scriptedAi from '../../../demoLand/src/game/ai/scripted.js';
 
 export const SEAT = Object.freeze({ HUMAN: 0, BOT: 1 });
 export const GAME_STATUS = Object.freeze({ PLAYING: 'playing', ENDED: 'ended', CLOSED: 'closed' });
-export const MODES = Object.freeze([0, 1, 2]);
+// Contract modes: 0 Casual (5 cards, to 10), 1 Standard (7, to 15), 4 Casino (7, to 20).
+export const MODES = Object.freeze([0, 1, 4]);
 export const DIFFICULTIES = Object.freeze(['easy', 'medium', 'hard']);
 
 class GameError extends Error {
@@ -61,7 +62,7 @@ export function handCountsToRanks(handCounts) {
  * bindings; `ai` and `random` are injectable for tests.
  */
 export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureCircuits, ai = scriptedAi, random = randomBytes }) {
-  if (!MODES.includes(mode)) throw new GameError(400, 'mode must be 0, 1 or 2');
+  if (!MODES.includes(mode)) throw new GameError(400, 'mode must be 0, 1 or 4');
   if (!DIFFICULTIES.includes(difficulty)) throw new GameError(400, 'difficulty must be easy, medium or hard');
 
   // --- all secret material, generated once, never reused across games -----
@@ -112,16 +113,21 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
 
     status = GAME_STATUS.ENDED;
     const result = referee.result();
-    const root = pureCircuits.commitTranscript(result.transcriptChain);
-    const consent = buildCloseConsent(pureCircuits, {
-      gameId: root, transcriptRoot: result.transcriptChain, p1Score: result.p1Score, p2Score: result.p2Score, winner: result.winner,
-    });
+    // Consents bind to the deployed contract address, which may not be known
+    // yet (fast games end before the deploy receipt lands), so the step builds
+    // its arguments when the queue reaches it.
     pendingChainSteps.push({
       step: 'closeGame',
-      args: {
-        boundary: result.boundary, p1Score: result.p1Score, p2Score: result.p2Score, winner: result.winner,
-        p1CloseConsent: signCloseConsent(pureCircuits, consent, keyPairs[0]),
-        p2CloseConsent: signCloseConsent(pureCircuits, consent, keyPairs[1]),
+      build: (contractAddress) => {
+        const consent = buildCloseConsent(pureCircuits, {
+          gameId: gameIdFromContractAddress(contractAddress), transcriptRoot: result.transcriptChain,
+          p1Score: result.p1Score, p2Score: result.p2Score, winner: result.winner,
+        });
+        return {
+          boundary: result.boundary, p1Score: result.p1Score, p2Score: result.p2Score, winner: result.winner,
+          p1CloseConsent: signCloseConsent(pureCircuits, consent, keyPairs[0]),
+          p2CloseConsent: signCloseConsent(pureCircuits, consent, keyPairs[1]),
+        };
       },
     });
     chain.pending.push('closeGame');

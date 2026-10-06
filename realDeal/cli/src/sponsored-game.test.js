@@ -62,7 +62,7 @@ function simulatedChain(game) {
         return call('proveRound', BigInt(step.round));
       }
       if (step.step === 'closeGame') {
-        const c = step.args;
+        const c = step.build(runtime.dummyContractAddress());
         witness.boundary = c.boundary; witness.p1CloseConsent = c.p1CloseConsent; witness.p2CloseConsent = c.p2CloseConsent;
         return call('closeGame', c.p1Score, c.p2Score, c.winner);
       }
@@ -93,6 +93,7 @@ function playWholeGame(game, { challengeEvery = 3 } = {}) {
 describe('sponsored v3p game', () => {
   it('rejects bad modes and difficulties with 400s', () => {
     expect(() => createSponsoredGame({ gameId: 'g', mode: 7, pureCircuits })).toThrow(GameError);
+    expect(() => createSponsoredGame({ gameId: 'g', mode: 2, pureCircuits })).toThrow(/0, 1 or 4/);
     expect(() => createSponsoredGame({ gameId: 'g', mode: 1, difficulty: 'brutal', pureCircuits })).toThrow(/difficulty/);
   });
 
@@ -108,9 +109,9 @@ describe('sponsored v3p game', () => {
     expect(game.takePendingChainSteps()).toEqual([]);
   });
 
-  it('mode 0 deals 5 cards', () => {
-    const game = createSponsoredGame({ gameId: 'g0', mode: 0, pureCircuits, random: seededRandom(2) });
-    expect(game.view().hand).toHaveLength(5);
+  it('mode 0 deals 5 cards; casino (mode 4) deals 7', () => {
+    expect(createSponsoredGame({ gameId: 'g0', mode: 0, pureCircuits, random: seededRandom(2) }).view().hand).toHaveLength(5);
+    expect(createSponsoredGame({ gameId: 'g4', mode: 4, pureCircuits, random: seededRandom(2) }).view().hand).toHaveLength(7);
   });
 
   it('validates human plays against the rules and the real hand', () => {
@@ -144,8 +145,8 @@ describe('sponsored v3p game', () => {
     }
   });
 
-  it.each([1, 2, 3, 4, 5])('whole game #%i: every emitted chain step is accepted by the compiled circuit', (n) => {
-    const game = createSponsoredGame({ gameId: `full-${n}`, mode: 1, pureCircuits, random: seededRandom(10 + n) });
+  it.each([[1, 1], [2, 1], [3, 1], [4, 0], [5, 4]])('whole game #%i (mode %i): every emitted chain step is accepted by the compiled circuit', (n, mode) => {
+    const game = createSponsoredGame({ gameId: `full-${n}`, mode, pureCircuits, random: seededRandom(10 + n) });
     const chain = simulatedChain(game);
     playWholeGame(game);
     expect(game.status).toBe('ended');

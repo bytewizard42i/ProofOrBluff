@@ -16,16 +16,32 @@ const _descriptor_1 = new __compactRuntime.CompactTypeBytes(32);
 
 const _descriptor_2 = new __compactRuntime.CompactTypeUnsignedInteger(255n, 1);
 
-const _descriptor_3 = __compactRuntime.CompactTypeField;
-
-class _GameState_0 {
+class _ContractAddress_0 {
   alignment() {
-    return _descriptor_3.alignment().concat(_descriptor_3.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_0.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_3.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_0.alignment().concat(_descriptor_3.alignment())))))))))))))));
+    return _descriptor_1.alignment();
   }
   fromValue(value_0) {
     return {
-      played0: _descriptor_3.fromValue(value_0),
-      played1: _descriptor_3.fromValue(value_0),
+      bytes: _descriptor_1.fromValue(value_0)
+    }
+  }
+  toValue(value_0) {
+    return _descriptor_1.toValue(value_0.bytes);
+  }
+}
+
+const _descriptor_3 = new _ContractAddress_0();
+
+const _descriptor_4 = __compactRuntime.CompactTypeField;
+
+class _GameState_0 {
+  alignment() {
+    return _descriptor_4.alignment().concat(_descriptor_4.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_0.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_4.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_0.alignment().concat(_descriptor_4.alignment())))))))))))))));
+  }
+  fromValue(value_0) {
+    return {
+      played0: _descriptor_4.fromValue(value_0),
+      played1: _descriptor_4.fromValue(value_0),
       plays0: _descriptor_2.fromValue(value_0),
       plays1: _descriptor_2.fromValue(value_0),
       turn: _descriptor_2.fromValue(value_0),
@@ -33,107 +49,107 @@ class _GameState_0 {
       pending: _descriptor_0.fromValue(value_0),
       claimRank: _descriptor_2.fromValue(value_0),
       claimCount: _descriptor_2.fromValue(value_0),
-      claimSum: _descriptor_3.fromValue(value_0),
+      claimSum: _descriptor_4.fromValue(value_0),
       claimer: _descriptor_2.fromValue(value_0),
       score0: _descriptor_2.fromValue(value_0),
       score1: _descriptor_2.fromValue(value_0),
       round: _descriptor_2.fromValue(value_0),
       ended: _descriptor_0.fromValue(value_0),
-      chain: _descriptor_3.fromValue(value_0)
+      chain: _descriptor_4.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_3.toValue(value_0.played0).concat(_descriptor_3.toValue(value_0.played1).concat(_descriptor_2.toValue(value_0.plays0).concat(_descriptor_2.toValue(value_0.plays1).concat(_descriptor_2.toValue(value_0.turn).concat(_descriptor_2.toValue(value_0.currentRank).concat(_descriptor_0.toValue(value_0.pending).concat(_descriptor_2.toValue(value_0.claimRank).concat(_descriptor_2.toValue(value_0.claimCount).concat(_descriptor_3.toValue(value_0.claimSum).concat(_descriptor_2.toValue(value_0.claimer).concat(_descriptor_2.toValue(value_0.score0).concat(_descriptor_2.toValue(value_0.score1).concat(_descriptor_2.toValue(value_0.round).concat(_descriptor_0.toValue(value_0.ended).concat(_descriptor_3.toValue(value_0.chain))))))))))))))));
+    return _descriptor_4.toValue(value_0.played0).concat(_descriptor_4.toValue(value_0.played1).concat(_descriptor_2.toValue(value_0.plays0).concat(_descriptor_2.toValue(value_0.plays1).concat(_descriptor_2.toValue(value_0.turn).concat(_descriptor_2.toValue(value_0.currentRank).concat(_descriptor_0.toValue(value_0.pending).concat(_descriptor_2.toValue(value_0.claimRank).concat(_descriptor_2.toValue(value_0.claimCount).concat(_descriptor_4.toValue(value_0.claimSum).concat(_descriptor_2.toValue(value_0.claimer).concat(_descriptor_2.toValue(value_0.score0).concat(_descriptor_2.toValue(value_0.score1).concat(_descriptor_2.toValue(value_0.round).concat(_descriptor_0.toValue(value_0.ended).concat(_descriptor_4.toValue(value_0.chain))))))))))))))));
   }
 }
 
-const _descriptor_4 = new _GameState_0();
+const _descriptor_5 = new _GameState_0();
 
-const _descriptor_5 = new __compactRuntime.CompactTypeVector(4, _descriptor_2);
+const _descriptor_6 = new __compactRuntime.CompactTypeVector(4, _descriptor_2);
 
 class _Move_0 {
   alignment() {
-    return _descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_5.alignment().concat(_descriptor_3.alignment()))));
+    return _descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_6.alignment().concat(_descriptor_4.alignment()))));
   }
   fromValue(value_0) {
     return {
       kind: _descriptor_2.fromValue(value_0),
       rank: _descriptor_2.fromValue(value_0),
       count: _descriptor_2.fromValue(value_0),
-      cards: _descriptor_5.fromValue(value_0),
-      playSalt: _descriptor_3.fromValue(value_0)
+      cards: _descriptor_6.fromValue(value_0),
+      playSalt: _descriptor_4.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_2.toValue(value_0.kind).concat(_descriptor_2.toValue(value_0.rank).concat(_descriptor_2.toValue(value_0.count).concat(_descriptor_5.toValue(value_0.cards).concat(_descriptor_3.toValue(value_0.playSalt)))));
+    return _descriptor_2.toValue(value_0.kind).concat(_descriptor_2.toValue(value_0.rank).concat(_descriptor_2.toValue(value_0.count).concat(_descriptor_6.toValue(value_0.cards).concat(_descriptor_4.toValue(value_0.playSalt)))));
   }
 }
 
-const _descriptor_6 = new _Move_0();
+const _descriptor_7 = new _Move_0();
 
-const _descriptor_7 = new __compactRuntime.CompactTypeVector(6, _descriptor_1);
+const _descriptor_8 = new __compactRuntime.CompactTypeVector(6, _descriptor_1);
 
 class _CloseConsent_0 {
   alignment() {
-    return _descriptor_1.alignment().concat(_descriptor_1.alignment().concat(_descriptor_3.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment())))));
+    return _descriptor_1.alignment().concat(_descriptor_1.alignment().concat(_descriptor_4.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment())))));
   }
   fromValue(value_0) {
     return {
       sep: _descriptor_1.fromValue(value_0),
       gameId: _descriptor_1.fromValue(value_0),
-      transcriptRoot: _descriptor_3.fromValue(value_0),
+      transcriptRoot: _descriptor_4.fromValue(value_0),
       p1Score: _descriptor_2.fromValue(value_0),
       p2Score: _descriptor_2.fromValue(value_0),
       winner: _descriptor_2.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_1.toValue(value_0.sep).concat(_descriptor_1.toValue(value_0.gameId).concat(_descriptor_3.toValue(value_0.transcriptRoot).concat(_descriptor_2.toValue(value_0.p1Score).concat(_descriptor_2.toValue(value_0.p2Score).concat(_descriptor_2.toValue(value_0.winner))))));
+    return _descriptor_1.toValue(value_0.sep).concat(_descriptor_1.toValue(value_0.gameId).concat(_descriptor_4.toValue(value_0.transcriptRoot).concat(_descriptor_2.toValue(value_0.p1Score).concat(_descriptor_2.toValue(value_0.p2Score).concat(_descriptor_2.toValue(value_0.winner))))));
   }
 }
 
-const _descriptor_8 = new _CloseConsent_0();
+const _descriptor_9 = new _CloseConsent_0();
 
-const _descriptor_9 = __compactRuntime.CompactTypeJubjubPoint;
+const _descriptor_10 = __compactRuntime.CompactTypeJubjubPoint;
 
 class _Signature_0 {
   alignment() {
-    return _descriptor_9.alignment().concat(_descriptor_3.alignment());
+    return _descriptor_10.alignment().concat(_descriptor_4.alignment());
   }
   fromValue(value_0) {
     return {
-      r: _descriptor_9.fromValue(value_0),
-      s: _descriptor_3.fromValue(value_0)
+      r: _descriptor_10.fromValue(value_0),
+      s: _descriptor_4.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_9.toValue(value_0.r).concat(_descriptor_3.toValue(value_0.s));
+    return _descriptor_10.toValue(value_0.r).concat(_descriptor_4.toValue(value_0.s));
   }
 }
 
-const _descriptor_10 = new _Signature_0();
+const _descriptor_11 = new _Signature_0();
 
 class _SignedCredential_0 {
   alignment() {
-    return _descriptor_8.alignment().concat(_descriptor_10.alignment().concat(_descriptor_9.alignment()));
+    return _descriptor_9.alignment().concat(_descriptor_11.alignment().concat(_descriptor_10.alignment()));
   }
   fromValue(value_0) {
     return {
-      credential: _descriptor_8.fromValue(value_0),
-      signature: _descriptor_10.fromValue(value_0),
-      pk: _descriptor_9.fromValue(value_0)
+      credential: _descriptor_9.fromValue(value_0),
+      signature: _descriptor_11.fromValue(value_0),
+      pk: _descriptor_10.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_8.toValue(value_0.credential).concat(_descriptor_10.toValue(value_0.signature).concat(_descriptor_9.toValue(value_0.pk)));
+    return _descriptor_9.toValue(value_0.credential).concat(_descriptor_11.toValue(value_0.signature).concat(_descriptor_10.toValue(value_0.pk)));
   }
 }
 
-const _descriptor_11 = new _SignedCredential_0();
+const _descriptor_12 = new _SignedCredential_0();
 
 class _Boundary_0 {
   alignment() {
-    return _descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_0.alignment().concat(_descriptor_3.alignment()))))));
+    return _descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_0.alignment().concat(_descriptor_4.alignment()))))));
   }
   fromValue(value_0) {
     return {
@@ -143,38 +159,38 @@ class _Boundary_0 {
       score1: _descriptor_2.fromValue(value_0),
       round: _descriptor_2.fromValue(value_0),
       ended: _descriptor_0.fromValue(value_0),
-      chain: _descriptor_3.fromValue(value_0)
+      chain: _descriptor_4.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_2.toValue(value_0.turn).concat(_descriptor_2.toValue(value_0.currentRank).concat(_descriptor_2.toValue(value_0.score0).concat(_descriptor_2.toValue(value_0.score1).concat(_descriptor_2.toValue(value_0.round).concat(_descriptor_0.toValue(value_0.ended).concat(_descriptor_3.toValue(value_0.chain)))))));
+    return _descriptor_2.toValue(value_0.turn).concat(_descriptor_2.toValue(value_0.currentRank).concat(_descriptor_2.toValue(value_0.score0).concat(_descriptor_2.toValue(value_0.score1).concat(_descriptor_2.toValue(value_0.round).concat(_descriptor_0.toValue(value_0.ended).concat(_descriptor_4.toValue(value_0.chain)))))));
   }
 }
 
-const _descriptor_12 = new _Boundary_0();
+const _descriptor_13 = new _Boundary_0();
 
-const _descriptor_13 = new __compactRuntime.CompactTypeVector(7, _descriptor_2);
+const _descriptor_14 = new __compactRuntime.CompactTypeVector(7, _descriptor_2);
 
 class _tuple_0 {
   alignment() {
-    return _descriptor_13.alignment().concat(_descriptor_13.alignment());
+    return _descriptor_14.alignment().concat(_descriptor_14.alignment());
   }
   fromValue(value_0) {
     return [
-      _descriptor_13.fromValue(value_0),
-      _descriptor_13.fromValue(value_0)
+      _descriptor_14.fromValue(value_0),
+      _descriptor_14.fromValue(value_0)
     ]
   }
   toValue(value_0) {
-    return _descriptor_13.toValue(value_0[0]).concat(_descriptor_13.toValue(value_0[1]));
+    return _descriptor_14.toValue(value_0[0]).concat(_descriptor_14.toValue(value_0[1]));
   }
 }
 
-const _descriptor_14 = new _tuple_0();
+const _descriptor_15 = new _tuple_0();
 
-const _descriptor_15 = new __compactRuntime.CompactTypeVector(26, _descriptor_6);
+const _descriptor_16 = new __compactRuntime.CompactTypeVector(26, _descriptor_7);
 
-const _descriptor_16 = new __compactRuntime.CompactTypeVector(27, _descriptor_4);
+const _descriptor_17 = new __compactRuntime.CompactTypeVector(27, _descriptor_5);
 
 class _tuple_1 {
   alignment() {
@@ -191,83 +207,85 @@ class _tuple_1 {
   }
 }
 
-const _descriptor_17 = new _tuple_1();
+const _descriptor_18 = new _tuple_1();
 
-const _descriptor_18 = new __compactRuntime.CompactTypeUnsignedInteger(4294967295n, 4);
+const _descriptor_19 = new __compactRuntime.CompactTypeUnsignedInteger(4294967295n, 4);
 
-const _descriptor_19 = new __compactRuntime.CompactTypeVector(32, _descriptor_2);
+const _descriptor_20 = new __compactRuntime.CompactTypeVector(32, _descriptor_2);
 
-const _descriptor_20 = new __compactRuntime.CompactTypeUnsignedInteger(65535n, 2);
+const _descriptor_21 = new __compactRuntime.CompactTypeUnsignedInteger(65535n, 2);
 
 class _Nonce_0 {
   alignment() {
-    return _descriptor_3.alignment().concat(_descriptor_8.alignment());
+    return _descriptor_4.alignment().concat(_descriptor_9.alignment());
   }
   fromValue(value_0) {
     return {
-      sk: _descriptor_3.fromValue(value_0),
-      credential: _descriptor_8.fromValue(value_0)
+      sk: _descriptor_4.fromValue(value_0),
+      credential: _descriptor_9.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_3.toValue(value_0.sk).concat(_descriptor_8.toValue(value_0.credential));
+    return _descriptor_4.toValue(value_0.sk).concat(_descriptor_9.toValue(value_0.credential));
   }
 }
 
-const _descriptor_21 = new _Nonce_0();
+const _descriptor_22 = new _Nonce_0();
 
-const _descriptor_22 = new __compactRuntime.CompactTypeUnsignedInteger(452312848583266388373324160190187140051835877600158453279131187530910662655n, 31);
+const _descriptor_23 = new __compactRuntime.CompactTypeUnsignedInteger(127n, 1);
+
+const _descriptor_24 = new __compactRuntime.CompactTypeUnsignedInteger(452312848583266388373324160190187140051835877600158453279131187530910662655n, 31);
 
 class _tuple_2 {
   alignment() {
-    return _descriptor_3.alignment().concat(_descriptor_22.alignment());
+    return _descriptor_23.alignment().concat(_descriptor_24.alignment());
   }
   fromValue(value_0) {
     return [
-      _descriptor_3.fromValue(value_0),
-      _descriptor_22.fromValue(value_0)
+      _descriptor_23.fromValue(value_0),
+      _descriptor_24.fromValue(value_0)
     ]
   }
   toValue(value_0) {
-    return _descriptor_3.toValue(value_0[0]).concat(_descriptor_22.toValue(value_0[1]));
+    return _descriptor_23.toValue(value_0[0]).concat(_descriptor_24.toValue(value_0[1]));
   }
 }
 
-const _descriptor_23 = new _tuple_2();
+const _descriptor_25 = new _tuple_2();
 
 class _BoundaryCommitInput_0 {
   alignment() {
-    return _descriptor_1.alignment().concat(_descriptor_12.alignment());
+    return _descriptor_1.alignment().concat(_descriptor_13.alignment());
   }
   fromValue(value_0) {
     return {
       separator: _descriptor_1.fromValue(value_0),
-      b: _descriptor_12.fromValue(value_0)
+      b: _descriptor_13.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_1.toValue(value_0.separator).concat(_descriptor_12.toValue(value_0.b));
+    return _descriptor_1.toValue(value_0.separator).concat(_descriptor_13.toValue(value_0.b));
   }
 }
 
-const _descriptor_24 = new _BoundaryCommitInput_0();
+const _descriptor_26 = new _BoundaryCommitInput_0();
 
 class _ResultCommitInput_0 {
   alignment() {
-    return _descriptor_1.alignment().concat(_descriptor_3.alignment());
+    return _descriptor_1.alignment().concat(_descriptor_4.alignment());
   }
   fromValue(value_0) {
     return {
       separator: _descriptor_1.fromValue(value_0),
-      chain: _descriptor_3.fromValue(value_0)
+      chain: _descriptor_4.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_1.toValue(value_0.separator).concat(_descriptor_3.toValue(value_0.chain));
+    return _descriptor_1.toValue(value_0.separator).concat(_descriptor_4.toValue(value_0.chain));
   }
 }
 
-const _descriptor_25 = new _ResultCommitInput_0();
+const _descriptor_27 = new _ResultCommitInput_0();
 
 class _RoundSecretCommitInput_0 {
   alignment() {
@@ -285,25 +303,25 @@ class _RoundSecretCommitInput_0 {
   }
 }
 
-const _descriptor_26 = new _RoundSecretCommitInput_0();
+const _descriptor_28 = new _RoundSecretCommitInput_0();
 
 class _PlayerIdPreimage_0 {
   alignment() {
-    return _descriptor_1.alignment().concat(_descriptor_3.alignment().concat(_descriptor_3.alignment()));
+    return _descriptor_1.alignment().concat(_descriptor_4.alignment().concat(_descriptor_4.alignment()));
   }
   fromValue(value_0) {
     return {
       separator: _descriptor_1.fromValue(value_0),
-      x: _descriptor_3.fromValue(value_0),
-      y: _descriptor_3.fromValue(value_0)
+      x: _descriptor_4.fromValue(value_0),
+      y: _descriptor_4.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_1.toValue(value_0.separator).concat(_descriptor_3.toValue(value_0.x).concat(_descriptor_3.toValue(value_0.y)));
+    return _descriptor_1.toValue(value_0.separator).concat(_descriptor_4.toValue(value_0.x).concat(_descriptor_4.toValue(value_0.y)));
   }
 }
 
-const _descriptor_27 = new _PlayerIdPreimage_0();
+const _descriptor_29 = new _PlayerIdPreimage_0();
 
 class _EntropyCommitInput_0 {
   alignment() {
@@ -320,44 +338,44 @@ class _EntropyCommitInput_0 {
   }
 }
 
-const _descriptor_28 = new _EntropyCommitInput_0();
+const _descriptor_30 = new _EntropyCommitInput_0();
 
 class _Challenge_0 {
   alignment() {
-    return _descriptor_9.alignment().concat(_descriptor_9.alignment().concat(_descriptor_3.alignment()));
+    return _descriptor_10.alignment().concat(_descriptor_10.alignment().concat(_descriptor_4.alignment()));
   }
   fromValue(value_0) {
     return {
-      r: _descriptor_9.fromValue(value_0),
-      pk: _descriptor_9.fromValue(value_0),
-      ch: _descriptor_3.fromValue(value_0)
+      r: _descriptor_10.fromValue(value_0),
+      pk: _descriptor_10.fromValue(value_0),
+      ch: _descriptor_4.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_9.toValue(value_0.r).concat(_descriptor_9.toValue(value_0.pk).concat(_descriptor_3.toValue(value_0.ch)));
+    return _descriptor_10.toValue(value_0.r).concat(_descriptor_10.toValue(value_0.pk).concat(_descriptor_4.toValue(value_0.ch)));
   }
 }
 
-const _descriptor_29 = new _Challenge_0();
+const _descriptor_31 = new _Challenge_0();
 
 class _DealInput_0 {
   alignment() {
-    return _descriptor_1.alignment().concat(_descriptor_1.alignment().concat(_descriptor_3.alignment().concat(_descriptor_18.alignment())));
+    return _descriptor_1.alignment().concat(_descriptor_1.alignment().concat(_descriptor_4.alignment().concat(_descriptor_19.alignment())));
   }
   fromValue(value_0) {
     return {
       separator: _descriptor_1.fromValue(value_0),
       salt: _descriptor_1.fromValue(value_0),
-      seed: _descriptor_3.fromValue(value_0),
-      round: _descriptor_18.fromValue(value_0)
+      seed: _descriptor_4.fromValue(value_0),
+      round: _descriptor_19.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_1.toValue(value_0.separator).concat(_descriptor_1.toValue(value_0.salt).concat(_descriptor_3.toValue(value_0.seed).concat(_descriptor_18.toValue(value_0.round))));
+    return _descriptor_1.toValue(value_0.separator).concat(_descriptor_1.toValue(value_0.salt).concat(_descriptor_4.toValue(value_0.seed).concat(_descriptor_19.toValue(value_0.round))));
   }
 }
 
-const _descriptor_30 = new _DealInput_0();
+const _descriptor_32 = new _DealInput_0();
 
 class _SeedInput_0 {
   alignment() {
@@ -375,29 +393,29 @@ class _SeedInput_0 {
   }
 }
 
-const _descriptor_31 = new _SeedInput_0();
+const _descriptor_33 = new _SeedInput_0();
 
 class _tuple_3 {
   alignment() {
-    return _descriptor_3.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_3.alignment()))));
+    return _descriptor_4.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_2.alignment().concat(_descriptor_4.alignment()))));
   }
   fromValue(value_0) {
     return [
-      _descriptor_3.fromValue(value_0),
+      _descriptor_4.fromValue(value_0),
       _descriptor_2.fromValue(value_0),
       _descriptor_2.fromValue(value_0),
       _descriptor_2.fromValue(value_0),
-      _descriptor_3.fromValue(value_0)
+      _descriptor_4.fromValue(value_0)
     ]
   }
   toValue(value_0) {
-    return _descriptor_3.toValue(value_0[0]).concat(_descriptor_2.toValue(value_0[1]).concat(_descriptor_2.toValue(value_0[2]).concat(_descriptor_2.toValue(value_0[3]).concat(_descriptor_3.toValue(value_0[4])))));
+    return _descriptor_4.toValue(value_0[0]).concat(_descriptor_2.toValue(value_0[1]).concat(_descriptor_2.toValue(value_0[2]).concat(_descriptor_2.toValue(value_0[3]).concat(_descriptor_4.toValue(value_0[4])))));
   }
 }
 
-const _descriptor_32 = new _tuple_3();
+const _descriptor_34 = new _tuple_3();
 
-const _descriptor_33 = new __compactRuntime.CompactTypeUnsignedInteger(18446744073709551615n, 8);
+const _descriptor_35 = new __compactRuntime.CompactTypeUnsignedInteger(18446744073709551615n, 8);
 
 class _Either_0 {
   alignment() {
@@ -415,25 +433,9 @@ class _Either_0 {
   }
 }
 
-const _descriptor_34 = new _Either_0();
+const _descriptor_36 = new _Either_0();
 
-const _descriptor_35 = new __compactRuntime.CompactTypeUnsignedInteger(340282366920938463463374607431768211455n, 16);
-
-class _ContractAddress_0 {
-  alignment() {
-    return _descriptor_1.alignment();
-  }
-  fromValue(value_0) {
-    return {
-      bytes: _descriptor_1.fromValue(value_0)
-    }
-  }
-  toValue(value_0) {
-    return _descriptor_1.toValue(value_0.bytes);
-  }
-}
-
-const _descriptor_36 = new _ContractAddress_0();
+const _descriptor_37 = new __compactRuntime.CompactTypeUnsignedInteger(340282366920938463463374607431768211455n, 16);
 
 export class Contract {
   witnesses;
@@ -522,14 +524,14 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.currentQueryContext != undefined)) {
           __compactRuntime.typeError('proveRound',
                                      'argument 1 (as invoked from Typescript)',
-                                     'proof-or-bluff-rollup-v3p.compact line 396 char 1',
+                                     'proof-or-bluff-rollup-v3p.compact line 401 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(typeof(round_0) === 'bigint' && round_0 >= 0n && round_0 <= 255n)) {
           __compactRuntime.typeError('proveRound',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup-v3p.compact line 396 char 1',
+                                     'proof-or-bluff-rollup-v3p.compact line 401 char 1',
                                      'Uint<0..256>',
                                      round_0)
         }
@@ -558,28 +560,28 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.currentQueryContext != undefined)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 1 (as invoked from Typescript)',
-                                     'proof-or-bluff-rollup-v3p.compact line 478 char 1',
+                                     'proof-or-bluff-rollup-v3p.compact line 483 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(typeof(finalP1Score_0) === 'bigint' && finalP1Score_0 >= 0n && finalP1Score_0 <= 255n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup-v3p.compact line 478 char 1',
+                                     'proof-or-bluff-rollup-v3p.compact line 483 char 1',
                                      'Uint<0..256>',
                                      finalP1Score_0)
         }
         if (!(typeof(finalP2Score_0) === 'bigint' && finalP2Score_0 >= 0n && finalP2Score_0 <= 255n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 2 (argument 3 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup-v3p.compact line 478 char 1',
+                                     'proof-or-bluff-rollup-v3p.compact line 483 char 1',
                                      'Uint<0..256>',
                                      finalP2Score_0)
         }
         if (!(typeof(finalWinner_0) === 'bigint' && finalWinner_0 >= 0n && finalWinner_0 <= 255n)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 3 (argument 4 as invoked from Typescript)',
-                                     'proof-or-bluff-rollup-v3p.compact line 478 char 1',
+                                     'proof-or-bluff-rollup-v3p.compact line 483 char 1',
                                      'Uint<0..256>',
                                      finalWinner_0)
         }
@@ -768,8 +770,8 @@ export class Contract {
                                                  value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(5n),
                                                                                               alignment: _descriptor_2.alignment() }).encode() } },
                                        { push: { storage: true,
-                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_7.toValue(new Array(6).fill(new Uint8Array(32))),
-                                                                                              alignment: _descriptor_7.alignment() }).encode() } },
+                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_8.toValue(new Array(6).fill(new Uint8Array(32))),
+                                                                                              alignment: _descriptor_8.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
     __compactRuntime.queryLedgerState(context,
                                       partialProofData,
@@ -778,8 +780,8 @@ export class Contract {
                                                  value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(6n),
                                                                                               alignment: _descriptor_2.alignment() }).encode() } },
                                        { push: { storage: true,
-                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_7.toValue(new Array(6).fill(new Uint8Array(32))),
-                                                                                              alignment: _descriptor_7.alignment() }).encode() } },
+                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_8.toValue(new Array(6).fill(new Uint8Array(32))),
+                                                                                              alignment: _descriptor_8.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
     __compactRuntime.queryLedgerState(context,
                                       partialProofData,
@@ -899,6 +901,23 @@ export class Contract {
                                                  value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(m_0),
                                                                                               alignment: _descriptor_2.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
+    const e1_0 = p1Entropy_0;
+    const e2_0 = p2Entropy_0;
+    __compactRuntime.assert(!this._equal_4(e1_0, e2_0),
+                            'Entropy commitments must differ');
+    const r1_0 = p1Rounds_0;
+    const r2_0 = p2Rounds_0;
+    this._folder_0(context,
+                   partialProofData,
+                   ((context, partialProofData, t_0, i_0) =>
+                    {
+                      __compactRuntime.assert(!this._equal_5(r1_0[i_0],
+                                                             r2_0[i_0]),
+                                              'Round-secret commitments must differ');
+                      return t_0;
+                    }),
+                   [],
+                   [0n, 1n, 2n, 3n, 4n, 5n]);
     __compactRuntime.queryLedgerState(context,
                                       partialProofData,
                                       [
@@ -906,7 +925,7 @@ export class Contract {
                                                  value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(3n),
                                                                                               alignment: _descriptor_2.alignment() }).encode() } },
                                        { push: { storage: true,
-                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_1.toValue(p1Entropy_0),
+                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_1.toValue(e1_0),
                                                                                               alignment: _descriptor_1.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
     __compactRuntime.queryLedgerState(context,
@@ -916,7 +935,7 @@ export class Contract {
                                                  value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(4n),
                                                                                               alignment: _descriptor_2.alignment() }).encode() } },
                                        { push: { storage: true,
-                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_1.toValue(p2Entropy_0),
+                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_1.toValue(e2_0),
                                                                                               alignment: _descriptor_1.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
     __compactRuntime.queryLedgerState(context,
@@ -926,8 +945,8 @@ export class Contract {
                                                  value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(5n),
                                                                                               alignment: _descriptor_2.alignment() }).encode() } },
                                        { push: { storage: true,
-                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_7.toValue(p1Rounds_0),
-                                                                                              alignment: _descriptor_7.alignment() }).encode() } },
+                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_8.toValue(r1_0),
+                                                                                              alignment: _descriptor_8.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
     __compactRuntime.queryLedgerState(context,
                                       partialProofData,
@@ -936,8 +955,8 @@ export class Contract {
                                                  value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(6n),
                                                                                               alignment: _descriptor_2.alignment() }).encode() } },
                                        { push: { storage: true,
-                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_7.toValue(p2Rounds_0),
-                                                                                              alignment: _descriptor_7.alignment() }).encode() } },
+                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_8.toValue(r2_0),
+                                                                                              alignment: _descriptor_8.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
     const tmp_0 = 0n;
     __compactRuntime.queryLedgerState(context,
@@ -1039,53 +1058,53 @@ export class Contract {
     }
   }
   _transientHash_0(value_0) {
-    const result_0 = __compactRuntime.transientHash(_descriptor_31, value_0);
+    const result_0 = __compactRuntime.transientHash(_descriptor_33, value_0);
     return result_0;
   }
   _transientHash_1(value_0) {
-    const result_0 = __compactRuntime.transientHash(_descriptor_32, value_0);
+    const result_0 = __compactRuntime.transientHash(_descriptor_34, value_0);
     return result_0;
   }
   _transientHash_2(value_0) {
-    const result_0 = __compactRuntime.transientHash(_descriptor_21, value_0);
+    const result_0 = __compactRuntime.transientHash(_descriptor_22, value_0);
     return result_0;
   }
   _transientHash_3(value_0) {
-    const result_0 = __compactRuntime.transientHash(_descriptor_30, value_0);
+    const result_0 = __compactRuntime.transientHash(_descriptor_32, value_0);
     return result_0;
   }
   _transientHash_4(value_0) {
-    const result_0 = __compactRuntime.transientHash(_descriptor_8, value_0);
+    const result_0 = __compactRuntime.transientHash(_descriptor_9, value_0);
     return result_0;
   }
   _transientHash_5(value_0) {
-    const result_0 = __compactRuntime.transientHash(_descriptor_29, value_0);
+    const result_0 = __compactRuntime.transientHash(_descriptor_31, value_0);
     return result_0;
   }
   _transientCommit_0(value_0, rand_0) {
-    const result_0 = __compactRuntime.transientCommit(_descriptor_5,
+    const result_0 = __compactRuntime.transientCommit(_descriptor_6,
                                                       value_0,
                                                       rand_0);
     return result_0;
   }
   _persistentHash_0(value_0) {
-    const result_0 = __compactRuntime.persistentHash(_descriptor_28, value_0);
+    const result_0 = __compactRuntime.persistentHash(_descriptor_30, value_0);
     return result_0;
   }
   _persistentHash_1(value_0) {
-    const result_0 = __compactRuntime.persistentHash(_descriptor_26, value_0);
+    const result_0 = __compactRuntime.persistentHash(_descriptor_28, value_0);
     return result_0;
   }
   _persistentHash_2(value_0) {
-    const result_0 = __compactRuntime.persistentHash(_descriptor_27, value_0);
+    const result_0 = __compactRuntime.persistentHash(_descriptor_29, value_0);
     return result_0;
   }
   _persistentHash_3(value_0) {
-    const result_0 = __compactRuntime.persistentHash(_descriptor_24, value_0);
+    const result_0 = __compactRuntime.persistentHash(_descriptor_26, value_0);
     return result_0;
   }
   _persistentHash_4(value_0) {
-    const result_0 = __compactRuntime.persistentHash(_descriptor_25, value_0);
+    const result_0 = __compactRuntime.persistentHash(_descriptor_27, value_0);
     return result_0;
   }
   _jubjubPointX_0(np_0) {
@@ -1113,16 +1132,16 @@ export class Contract {
     const [nextPrivateState_0, result_0] = this.witnesses.get_challenge_reduction(witnessContext_0,
                                                                                   challenge_hash_0);
     context.currentPrivateState = nextPrivateState_0;
-    if (!(Array.isArray(result_0) && result_0.length === 2  && typeof(result_0[0]) === 'bigint' && result_0[0] >= 0 && result_0[0] <= __compactRuntime.MAX_FIELD && typeof(result_0[1]) === 'bigint' && result_0[1] >= 0n && result_0[1] <= 452312848583266388373324160190187140051835877600158453279131187530910662655n)) {
+    if (!(Array.isArray(result_0) && result_0.length === 2  && typeof(result_0[0]) === 'bigint' && result_0[0] >= 0n && result_0[0] <= 127n && typeof(result_0[1]) === 'bigint' && result_0[1] >= 0n && result_0[1] <= 452312848583266388373324160190187140051835877600158453279131187530910662655n)) {
       __compactRuntime.typeError('get_challenge_reduction',
                                  'return value',
-                                 'signed_credential.compact line 59 char 3',
-                                 '[Field, Uint<0..452312848583266388373324160190187140051835877600158453279131187530910662656>]',
+                                 'signed_credential.compact line 64 char 3',
+                                 '[Uint<0..128>, Uint<0..452312848583266388373324160190187140051835877600158453279131187530910662656>]',
                                  result_0)
     }
     partialProofData.privateTranscriptOutputs.push({
-      value: _descriptor_23.toValue(result_0),
-      alignment: _descriptor_23.alignment()
+      value: _descriptor_25.toValue(result_0),
+      alignment: _descriptor_25.alignment()
     });
     return result_0;
   }
@@ -1217,29 +1236,29 @@ export class Contract {
     return this._deterministic_k_0({ sk: sk_0, credential: consent_0 });
   }
   _rankWeight_0(r_0) {
-    return this._equal_4(r_0, 0n) ?
+    return this._equal_6(r_0, 0n) ?
            1n :
-           this._equal_5(r_0, 1n) ?
+           this._equal_7(r_0, 1n) ?
            16n :
-           this._equal_6(r_0, 2n) ?
+           this._equal_8(r_0, 2n) ?
            256n :
-           this._equal_7(r_0, 3n) ?
+           this._equal_9(r_0, 3n) ?
            4096n :
-           this._equal_8(r_0, 4n) ?
+           this._equal_10(r_0, 4n) ?
            65536n :
-           this._equal_9(r_0, 5n) ?
+           this._equal_11(r_0, 5n) ?
            1048576n :
-           this._equal_10(r_0, 6n) ?
+           this._equal_12(r_0, 6n) ?
            16777216n :
-           this._equal_11(r_0, 7n) ?
+           this._equal_13(r_0, 7n) ?
            268435456n :
-           this._equal_12(r_0, 8n) ?
+           this._equal_14(r_0, 8n) ?
            4294967296n :
-           this._equal_13(r_0, 9n) ?
+           this._equal_15(r_0, 9n) ?
            68719476736n :
-           this._equal_14(r_0, 10n) ?
+           this._equal_16(r_0, 10n) ?
            1099511627776n :
-           this._equal_15(r_0, 11n) ? 17592186044416n : 281474976710656n;
+           this._equal_17(r_0, 11n) ? 17592186044416n : 281474976710656n;
   }
   _packRanks_0(ranks_0, n_0) {
     const w0_0 = n_0 >= 1n ? this._rankWeight_0(ranks_0[0]) : 0n;
@@ -1249,7 +1268,7 @@ export class Contract {
     const w4_0 = n_0 >= 5n ? this._rankWeight_0(ranks_0[4]) : 0n;
     const w5_0 = n_0 >= 6n ? this._rankWeight_0(ranks_0[5]) : 0n;
     const w6_0 = n_0 >= 7n ? this._rankWeight_0(ranks_0[6]) : 0n;
-    this._folder_0(((t_0, i_0) =>
+    this._folder_1(((t_0, i_0) =>
                     {
                       let t_1, t_2;
                       __compactRuntime.assert((t_2 = i_0, t_2 >= n_0)
@@ -1335,48 +1354,48 @@ export class Contract {
   _dealSeven_0(b_0) {
     const c0_0 = this._boundedDraw_0(b_0[0], b_0[1], 46n);
     const t1_0 = this._boundedDraw_0(b_0[2], b_0[3], 47n);
-    const c1_0 = this._equal_16(t1_0, c0_0) ? 46n : t1_0;
+    const c1_0 = this._equal_18(t1_0, c0_0) ? 46n : t1_0;
     const t2_0 = this._boundedDraw_0(b_0[4], b_0[5], 48n);
-    const c2_0 = this._equal_17(t2_0, c0_0) || this._equal_18(t2_0, c1_0) ?
+    const c2_0 = this._equal_19(t2_0, c0_0) || this._equal_20(t2_0, c1_0) ?
                  47n :
                  t2_0;
     const t3_0 = this._boundedDraw_0(b_0[6], b_0[7], 49n);
-    const c3_0 = this._equal_19(t3_0, c0_0) || this._equal_20(t3_0, c1_0)
+    const c3_0 = this._equal_21(t3_0, c0_0) || this._equal_22(t3_0, c1_0)
                  ||
-                 this._equal_21(t3_0, c2_0)
+                 this._equal_23(t3_0, c2_0)
                  ?
                  48n :
                  t3_0;
     const t4_0 = this._boundedDraw_0(b_0[8], b_0[9], 50n);
-    const c4_0 = this._equal_22(t4_0, c0_0) || this._equal_23(t4_0, c1_0)
+    const c4_0 = this._equal_24(t4_0, c0_0) || this._equal_25(t4_0, c1_0)
                  ||
-                 this._equal_24(t4_0, c2_0)
+                 this._equal_26(t4_0, c2_0)
                  ||
-                 this._equal_25(t4_0, c3_0)
+                 this._equal_27(t4_0, c3_0)
                  ?
                  49n :
                  t4_0;
     const t5_0 = this._boundedDraw_0(b_0[10], b_0[11], 51n);
-    const c5_0 = this._equal_26(t5_0, c0_0) || this._equal_27(t5_0, c1_0)
+    const c5_0 = this._equal_28(t5_0, c0_0) || this._equal_29(t5_0, c1_0)
                  ||
-                 this._equal_28(t5_0, c2_0)
+                 this._equal_30(t5_0, c2_0)
                  ||
-                 this._equal_29(t5_0, c3_0)
+                 this._equal_31(t5_0, c3_0)
                  ||
-                 this._equal_30(t5_0, c4_0)
+                 this._equal_32(t5_0, c4_0)
                  ?
                  50n :
                  t5_0;
     const t6_0 = this._boundedDraw_0(b_0[12], b_0[13], 52n);
-    const c6_0 = this._equal_31(t6_0, c0_0) || this._equal_32(t6_0, c1_0)
+    const c6_0 = this._equal_33(t6_0, c0_0) || this._equal_34(t6_0, c1_0)
                  ||
-                 this._equal_33(t6_0, c2_0)
+                 this._equal_35(t6_0, c2_0)
                  ||
-                 this._equal_34(t6_0, c3_0)
+                 this._equal_36(t6_0, c3_0)
                  ||
-                 this._equal_35(t6_0, c4_0)
+                 this._equal_37(t6_0, c4_0)
                  ||
-                 this._equal_36(t6_0, c5_0)
+                 this._equal_38(t6_0, c5_0)
                  ?
                  51n :
                  t6_0;
@@ -1392,26 +1411,26 @@ export class Contract {
     let c0_0, t1_0, c1_0, t2_0, c2_0, t3_0, c3_0, t4_0, c4_0;
     return c0_0 = this._boundedDraw_0(b_0[0], b_0[1], 48n),
            (t1_0 = this._boundedDraw_0(b_0[2], b_0[3], 49n),
-            (c1_0 = this._equal_37(t1_0, c0_0) ? 48n : t1_0,
+            (c1_0 = this._equal_39(t1_0, c0_0) ? 48n : t1_0,
              (t2_0 = this._boundedDraw_0(b_0[4], b_0[5], 50n),
-              (c2_0 = this._equal_38(t2_0, c0_0) || this._equal_39(t2_0, c1_0) ?
+              (c2_0 = this._equal_40(t2_0, c0_0) || this._equal_41(t2_0, c1_0) ?
                       49n :
                       t2_0,
                (t3_0 = this._boundedDraw_0(b_0[6], b_0[7], 51n),
-                (c3_0 = this._equal_40(t3_0, c0_0) || this._equal_41(t3_0, c1_0)
+                (c3_0 = this._equal_42(t3_0, c0_0) || this._equal_43(t3_0, c1_0)
                         ||
-                        this._equal_42(t3_0, c2_0)
+                        this._equal_44(t3_0, c2_0)
                         ?
                         50n :
                         t3_0,
                  (t4_0 = this._boundedDraw_0(b_0[8], b_0[9], 52n),
-                  (c4_0 = this._equal_43(t4_0, c0_0)
+                  (c4_0 = this._equal_45(t4_0, c0_0)
                           ||
-                          this._equal_44(t4_0, c1_0)
+                          this._equal_46(t4_0, c1_0)
                           ||
-                          this._equal_45(t4_0, c2_0)
+                          this._equal_47(t4_0, c2_0)
                           ||
-                          this._equal_46(t4_0, c3_0)
+                          this._equal_48(t4_0, c3_0)
                           ?
                           51n :
                           t4_0,
@@ -1433,17 +1452,17 @@ export class Contract {
                                                                 digest_0,
                                                                 'proof-or-bluff-rollup-v3p.compact line 214 char 14'),
                            BigInt);
-    if (this._equal_47(size_0, 5n)) {
+    if (this._equal_49(size_0, 5n)) {
       return this._dealFive_0(b_0);
     } else {
       return this._dealSeven_0(b_0);
     }
   }
-  _handSize_0(mode_0) { return this._equal_48(mode_0, 0n) ? 5n : 7n; }
+  _handSize_0(mode_0) { return this._equal_50(mode_0, 0n) ? 5n : 7n; }
   _winThreshold_0(mode_0) {
-    return this._equal_49(mode_0, 0n) ?
+    return this._equal_51(mode_0, 0n) ?
            10n :
-           this._equal_50(mode_0, 1n) ? 15n : 20n;
+           this._equal_52(mode_0, 1n) ? 15n : 20n;
   }
   _startingRank_0(seed_0) {
     const b_0 = Array.from(__compactRuntime.convertFieldToBytes(32,
@@ -1465,7 +1484,7 @@ export class Contract {
     }
   }
   _minusOneFloor_0(score_0) {
-    if (this._equal_51(score_0, 0n)) {
+    if (this._equal_53(score_0, 0n)) {
       return 0n;
     } else {
       __compactRuntime.assert(score_0 >= 1n,
@@ -1495,8 +1514,8 @@ export class Contract {
                                  result_0)
     }
     partialProofData.privateTranscriptOutputs.push({
-      value: _descriptor_17.toValue(result_0),
-      alignment: _descriptor_17.alignment()
+      value: _descriptor_18.toValue(result_0),
+      alignment: _descriptor_18.alignment()
     });
     return result_0;
   }
@@ -1512,8 +1531,8 @@ export class Contract {
                                  result_0)
     }
     partialProofData.privateTranscriptOutputs.push({
-      value: _descriptor_17.toValue(result_0),
-      alignment: _descriptor_17.alignment()
+      value: _descriptor_18.toValue(result_0),
+      alignment: _descriptor_18.alignment()
     });
     return result_0;
   }
@@ -1529,8 +1548,8 @@ export class Contract {
                                  result_0)
     }
     partialProofData.privateTranscriptOutputs.push({
-      value: _descriptor_15.toValue(result_0),
-      alignment: _descriptor_15.alignment()
+      value: _descriptor_16.toValue(result_0),
+      alignment: _descriptor_16.alignment()
     });
     return result_0;
   }
@@ -1546,8 +1565,8 @@ export class Contract {
                                  result_0)
     }
     partialProofData.privateTranscriptOutputs.push({
-      value: _descriptor_16.toValue(result_0),
-      alignment: _descriptor_16.alignment()
+      value: _descriptor_17.toValue(result_0),
+      alignment: _descriptor_17.alignment()
     });
     return result_0;
   }
@@ -1563,8 +1582,8 @@ export class Contract {
                                  result_0)
     }
     partialProofData.privateTranscriptOutputs.push({
-      value: _descriptor_12.toValue(result_0),
-      alignment: _descriptor_12.alignment()
+      value: _descriptor_13.toValue(result_0),
+      alignment: _descriptor_13.alignment()
     });
     return result_0;
   }
@@ -1580,8 +1599,8 @@ export class Contract {
                                  result_0)
     }
     partialProofData.privateTranscriptOutputs.push({
-      value: _descriptor_14.toValue(result_0),
-      alignment: _descriptor_14.alignment()
+      value: _descriptor_15.toValue(result_0),
+      alignment: _descriptor_15.alignment()
     });
     return result_0;
   }
@@ -1597,8 +1616,8 @@ export class Contract {
                                  result_0)
     }
     partialProofData.privateTranscriptOutputs.push({
-      value: _descriptor_11.toValue(result_0),
-      alignment: _descriptor_11.alignment()
+      value: _descriptor_12.toValue(result_0),
+      alignment: _descriptor_12.alignment()
     });
     return result_0;
   }
@@ -1614,25 +1633,25 @@ export class Contract {
                                  result_0)
     }
     partialProofData.privateTranscriptOutputs.push({
-      value: _descriptor_11.toValue(result_0),
-      alignment: _descriptor_11.alignment()
+      value: _descriptor_12.toValue(result_0),
+      alignment: _descriptor_12.alignment()
     });
     return result_0;
   }
   _selectCommit_0(commits_0, round_0) {
-    if (this._equal_52(round_0, 1n)) {
+    if (this._equal_54(round_0, 1n)) {
       return commits_0[0];
     } else {
-      if (this._equal_53(round_0, 2n)) {
+      if (this._equal_55(round_0, 2n)) {
         return commits_0[1];
       } else {
-        if (this._equal_54(round_0, 3n)) {
+        if (this._equal_56(round_0, 3n)) {
           return commits_0[2];
         } else {
-          if (this._equal_55(round_0, 4n)) {
+          if (this._equal_57(round_0, 4n)) {
             return commits_0[3];
           } else {
-            if (this._equal_56(round_0, 5n)) {
+            if (this._equal_58(round_0, 5n)) {
               return commits_0[4];
             } else {
               return commits_0[5];
@@ -1647,16 +1666,16 @@ export class Contract {
            ||
            !s_0.pending
            &&
-           (this._equal_57(s_0.plays0, size_0)
+           (this._equal_59(s_0.plays0, size_0)
             ||
-            this._equal_58(s_0.plays1, size_0));
+            this._equal_60(s_0.plays1, size_0));
   }
   _applyRoundMove_0(s_0, m_0, threshold_0, maxRound_0, size_0) {
     const roundDone_0 = this._roundFinished_0(s_0, size_0);
-    const noop_0 = this._equal_59(m_0.kind, 0n);
-    const isPlay_0 = this._equal_60(m_0.kind, 1n);
-    const isAccept_0 = this._equal_61(m_0.kind, 2n);
-    const isChallenge_0 = this._equal_62(m_0.kind, 3n);
+    const noop_0 = this._equal_61(m_0.kind, 0n);
+    const isPlay_0 = this._equal_62(m_0.kind, 1n);
+    const isAccept_0 = this._equal_63(m_0.kind, 2n);
+    const isChallenge_0 = this._equal_64(m_0.kind, 3n);
     __compactRuntime.assert(noop_0 || isPlay_0 || isAccept_0 || isChallenge_0,
                             'unknown move kind');
     __compactRuntime.assert(!noop_0 || roundDone_0, 'padding before round end');
@@ -1668,7 +1687,7 @@ export class Contract {
     let t_0, t_1;
     __compactRuntime.assert(!isPlay_0
                             ||
-                            this._equal_63(m_0.rank, s_0.currentRank)
+                            this._equal_65(m_0.rank, s_0.currentRank)
                             &&
                             (t_1 = m_0.count, t_1 >= 1n)
                             &&
@@ -1687,23 +1706,23 @@ export class Contract {
                             &&
                             ((t_5 = 1n, t_5 < m_0.count)
                              ||
-                             this._equal_64(m_0.cards[1], 0n))
+                             this._equal_66(m_0.cards[1], 0n))
                             &&
                             ((t_8 = 2n, t_8 < m_0.count)
                              ||
-                             this._equal_65(m_0.cards[2], 0n))
+                             this._equal_67(m_0.cards[2], 0n))
                             &&
                             ((t_7 = 3n, t_7 < m_0.count)
                              ||
-                             this._equal_66(m_0.cards[3], 0n)),
+                             this._equal_68(m_0.cards[3], 0n)),
                             'played card out of range');
     __compactRuntime.assert(isPlay_0
                             ||
-                            this._equal_67(m_0.rank, 0n)
+                            this._equal_69(m_0.rank, 0n)
                             &&
-                            this._equal_68(m_0.count, 0n),
+                            this._equal_70(m_0.count, 0n),
                             'non-PLAY fields must be zero');
-    const moverIs0_0 = this._equal_69(s_0.turn, 0n);
+    const moverIs0_0 = this._equal_71(s_0.turn, 0n);
     const playCount_0 = isPlay_0 ? m_0.count : 0n;
     const sum_0 = this._playSum_0(m_0.cards, playCount_0);
     let t_9;
@@ -1723,7 +1742,7 @@ export class Contract {
     const nc0_0 = moverIs0_0 ?
                   ((t1) => {
                     if (t1 > 255n) {
-                      throw new __compactRuntime.CompactError('proof-or-bluff-rollup-v3p.compact line 358 char 36: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+                      throw new __compactRuntime.CompactError('proof-or-bluff-rollup-v3p.compact line 363 char 36: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
                     }
                     return t1;
                   })(s_0.plays0 + playCount_0)
@@ -1733,7 +1752,7 @@ export class Contract {
                   s_0.plays1 :
                   ((t1) => {
                     if (t1 > 255n) {
-                      throw new __compactRuntime.CompactError('proof-or-bluff-rollup-v3p.compact line 359 char 47: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+                      throw new __compactRuntime.CompactError('proof-or-bluff-rollup-v3p.compact line 364 char 47: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
                     }
                     return t1;
                   })(s_0.plays1 + playCount_0);
@@ -1741,7 +1760,7 @@ export class Contract {
                        ===
                        __compactRuntime.mulField(this._rankWeight_0(s_0.claimRank),
                                                  s_0.claimCount);
-    const challengerIs0_0 = this._equal_70(s_0.turn, 0n);
+    const challengerIs0_0 = this._equal_72(s_0.turn, 0n);
     const sc0_0 = !isChallenge_0 ?
                   s_0.score0 :
                   challengerIs0_0 ?
@@ -1749,7 +1768,7 @@ export class Contract {
                   this._minusOneFloor_0(s_0.score0) :
                   ((t1) => {
                     if (t1 > 255n) {
-                      throw new __compactRuntime.CompactError('proof-or-bluff-rollup-v3p.compact line 366 char 62: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+                      throw new __compactRuntime.CompactError('proof-or-bluff-rollup-v3p.compact line 371 char 62: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
                     }
                     return t1;
                   })(s_0.score0 + 3n)
@@ -1763,7 +1782,7 @@ export class Contract {
                   this._minusOneFloor_0(s_0.score1) :
                   ((t1) => {
                     if (t1 > 255n) {
-                      throw new __compactRuntime.CompactError('proof-or-bluff-rollup-v3p.compact line 368 char 73: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+                      throw new __compactRuntime.CompactError('proof-or-bluff-rollup-v3p.compact line 373 char 73: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
                     }
                     return t1;
                   })(s_0.score1 + 3n);
@@ -1771,9 +1790,9 @@ export class Contract {
     const scored_0 = s_0.ended || sc0_0 >= threshold_0 || sc1_0 >= threshold_0;
     const emptied_0 = resolved_0
                       &&
-                      (this._equal_71(nc0_0, size_0)
+                      (this._equal_73(nc0_0, size_0)
                        ||
-                       this._equal_72(nc1_0, size_0))
+                       this._equal_74(nc1_0, size_0))
                       &&
                       !scored_0;
     let t_10;
@@ -1795,7 +1814,7 @@ export class Contract {
     const nextTurn_0 = noop_0 ?
                        s_0.turn :
                        isPlay_0 ?
-                       this._equal_73(s_0.turn, 0n) ? 1n : 0n :
+                       this._equal_75(s_0.turn, 0n) ? 1n : 0n :
                        s_0.turn;
     return { played0: noop_0 ? s_0.played0 : np0_0,
              played1: noop_0 ? s_0.played1 : np1_0,
@@ -1843,10 +1862,10 @@ export class Contract {
                             'Proven history already reached game end');
     const r_0 = round_0;
     __compactRuntime.assert(r_0 >= 1n && r_0 <= 6n, 'bad round');
-    __compactRuntime.assert(this._equal_74(r_0,
+    __compactRuntime.assert(this._equal_76(r_0,
                                            ((t1) => {
                                              if (t1 > 255n) {
-                                               throw new __compactRuntime.CompactError('proof-or-bluff-rollup-v3p.compact line 401 char 16: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+                                               throw new __compactRuntime.CompactError('proof-or-bluff-rollup-v3p.compact line 406 char 16: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
                                              }
                                              return t1;
                                            })(_descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
@@ -1865,7 +1884,7 @@ export class Contract {
                                               1n)),
                             'rounds must be proven in order');
     const e_0 = this._entropyPair_0(context, partialProofData);
-    __compactRuntime.assert(this._equal_75(this._commitEntropy_0(e_0[0]),
+    __compactRuntime.assert(this._equal_77(this._commitEntropy_0(e_0[0]),
                                            _descriptor_1.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                      partialProofData,
                                                                                                      [
@@ -1879,7 +1898,7 @@ export class Contract {
                                                                                                       { popeq: { cached: false,
                                                                                                                  result: undefined } }]).value)),
                             'P1 entropy mismatch');
-    __compactRuntime.assert(this._equal_76(this._commitEntropy_0(e_0[1]),
+    __compactRuntime.assert(this._equal_78(this._commitEntropy_0(e_0[1]),
                                            _descriptor_1.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                      partialProofData,
                                                                                                      [
@@ -1894,9 +1913,9 @@ export class Contract {
                                                                                                                  result: undefined } }]).value)),
                             'P2 entropy mismatch');
     const secrets_0 = this._roundSecrets_0(context, partialProofData);
-    __compactRuntime.assert(this._equal_77(this._commitRoundSecret_0(secrets_0[0],
+    __compactRuntime.assert(this._equal_79(this._commitRoundSecret_0(secrets_0[0],
                                                                      r_0),
-                                           this._selectCommit_0(_descriptor_7.fromValue(__compactRuntime.queryLedgerState(context,
+                                           this._selectCommit_0(_descriptor_8.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                                           partialProofData,
                                                                                                                           [
                                                                                                                            { dup: { n: 0 } },
@@ -1910,9 +1929,9 @@ export class Contract {
                                                                                                                                       result: undefined } }]).value),
                                                                 r_0)),
                             'P1 round secret mismatch');
-    __compactRuntime.assert(this._equal_78(this._commitRoundSecret_0(secrets_0[1],
+    __compactRuntime.assert(this._equal_80(this._commitRoundSecret_0(secrets_0[1],
                                                                      r_0),
-                                           this._selectCommit_0(_descriptor_7.fromValue(__compactRuntime.queryLedgerState(context,
+                                           this._selectCommit_0(_descriptor_8.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                                           partialProofData,
                                                                                                                           [
                                                                                                                            { dup: { n: 0 } },
@@ -1928,7 +1947,7 @@ export class Contract {
                             'P2 round secret mismatch');
     const seed_0 = this._combineEntropy_0(e_0[0], e_0[1]);
     const prev_0 = this._startBoundary_0(context, partialProofData);
-    const b0_0 = this._equal_79(r_0, 1n) ?
+    const b0_0 = this._equal_81(r_0, 1n) ?
                  { turn: 0n,
                    currentRank: 0n,
                    score0: 0n,
@@ -1938,7 +1957,7 @@ export class Contract {
                    chain: 0n }
                  :
                  prev_0;
-    __compactRuntime.assert(this._equal_80(this._commitBoundary_0(b0_0),
+    __compactRuntime.assert(this._equal_82(this._commitBoundary_0(b0_0),
                                            _descriptor_1.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                      partialProofData,
                                                                                                      [
@@ -1952,12 +1971,12 @@ export class Contract {
                                                                                                       { popeq: { cached: false,
                                                                                                                  result: undefined } }]).value)),
                             'boundary does not open stateRoot');
-    __compactRuntime.assert(this._equal_81(b0_0.round,
+    __compactRuntime.assert(this._equal_83(b0_0.round,
                                            (__compactRuntime.assert(r_0 >= 1n,
                                                                     'result of subtraction would be negative'),
                                             r_0 - 1n)),
                             'boundary round mismatch');
-    const openingRank_0 = this._equal_82(r_0, 1n) ?
+    const openingRank_0 = this._equal_84(r_0, 1n) ?
                           this._startingRank_0(seed_0) :
                           b0_0.currentRank;
     const size32_0 = this._handSize_0(_descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
@@ -1974,7 +1993,7 @@ export class Contract {
                                                                                                             result: undefined } }]).value));
     const size_0 = ((t1) => {
                      if (t1 > 255n) {
-                       throw new __compactRuntime.CompactError('proof-or-bluff-rollup-v3p.compact line 430 char 16: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+                       throw new __compactRuntime.CompactError('proof-or-bluff-rollup-v3p.compact line 435 char 16: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
                      }
                      return t1;
                    })(size32_0);
@@ -1998,7 +2017,7 @@ export class Contract {
                         round: r_0,
                         ended: false,
                         chain: b0_0.chain };
-    __compactRuntime.assert(this._equal_83(states_0[0], opening_0),
+    __compactRuntime.assert(this._equal_85(states_0[0], opening_0),
                             'opening snapshot mismatch');
     const threshold_0 = this._winThreshold_0(_descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                        partialProofData,
@@ -2012,11 +2031,11 @@ export class Contract {
                                                                                                                                    alignment: _descriptor_2.alignment() } }] } },
                                                                                                         { popeq: { cached: false,
                                                                                                                    result: undefined } }]).value));
-    this._folder_1(context,
+    this._folder_2(context,
                    partialProofData,
                    ((context, partialProofData, t_0, i_0) =>
                     {
-                      __compactRuntime.assert(this._equal_84(this._applyRoundMove_0(states_0[i_0],
+                      __compactRuntime.assert(this._equal_86(this._applyRoundMove_0(states_0[i_0],
                                                                                     moves_0[i_0],
                                                                                     threshold_0,
                                                                                     6n,
@@ -2120,7 +2139,7 @@ export class Contract {
                                                  value: __compactRuntime.StateValue.newCell({ value: _descriptor_0.toValue(tmp_1),
                                                                                               alignment: _descriptor_0.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
-    if (this._equal_85(r_0, 6n)) {
+    if (this._equal_87(r_0, 6n)) {
       __compactRuntime.queryLedgerState(context,
                                         partialProofData,
                                         [
@@ -2167,7 +2186,7 @@ export class Contract {
                                                                                                   result: undefined } }]).value),
                             'Proven history has not reached game end');
     const b_0 = this._startBoundary_0(context, partialProofData);
-    __compactRuntime.assert(this._equal_86(this._commitBoundary_0(b_0),
+    __compactRuntime.assert(this._equal_88(this._commitBoundary_0(b_0),
                                            _descriptor_1.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                      partialProofData,
                                                                                                      [
@@ -2181,7 +2200,7 @@ export class Contract {
                                                                                                       { popeq: { cached: false,
                                                                                                                  result: undefined } }]).value)),
                             'boundary does not open stateRoot');
-    __compactRuntime.assert(this._equal_87(b_0.round,
+    __compactRuntime.assert(this._equal_89(b_0.round,
                                            _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                      partialProofData,
                                                                                                      [
@@ -2211,21 +2230,31 @@ export class Contract {
     const w_0 = (t_0 = b_0.score0, t_0 >= threshold_0) ?
                 1n :
                 (t_1 = b_0.score1, t_1 >= threshold_0) ? 2n : 0n;
-    __compactRuntime.assert(this._equal_88(finalP1Score_0, b_0.score0)
+    __compactRuntime.assert(this._equal_90(finalP1Score_0, b_0.score0)
                             &&
-                            this._equal_89(finalP2Score_0, b_0.score1),
+                            this._equal_91(finalP2Score_0, b_0.score1),
                             'final score mismatch');
-    __compactRuntime.assert(this._equal_90(finalWinner_0, w_0),
+    __compactRuntime.assert(this._equal_92(finalWinner_0, w_0),
                             'winner mismatch');
-    const root_0 = this._commitTranscript_0(b_0.chain);
     const consent1_0 = this._p1CloseConsent_0(context, partialProofData);
     const consent2_0 = this._p2CloseConsent_0(context, partialProofData);
-    const expected_0 = this._closeConsentFor_0(root_0,
+    const expected_0 = this._closeConsentFor_0(_descriptor_3.fromValue(__compactRuntime.queryLedgerState(context,
+                                                                                                         partialProofData,
+                                                                                                         [
+                                                                                                          { dup: { n: 2 } },
+                                                                                                          { idx: { cached: true,
+                                                                                                                   pushPath: false,
+                                                                                                                   path: [
+                                                                                                                          { tag: 'value',
+                                                                                                                            value: { value: _descriptor_2.toValue(0n),
+                                                                                                                                     alignment: _descriptor_2.alignment() } }] } },
+                                                                                                          { popeq: { cached: true,
+                                                                                                                     result: undefined } }]).value).bytes,
                                                b_0.chain,
                                                b_0.score0,
                                                b_0.score1,
                                                w_0);
-    __compactRuntime.assert(this._equal_91(this._playerIdFromPk_0(consent1_0.pk),
+    __compactRuntime.assert(this._equal_93(this._playerIdFromPk_0(consent1_0.pk),
                                            _descriptor_1.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                      partialProofData,
                                                                                                      [
@@ -2239,7 +2268,7 @@ export class Contract {
                                                                                                       { popeq: { cached: false,
                                                                                                                  result: undefined } }]).value)),
                             'P1 signer is not player one');
-    __compactRuntime.assert(this._equal_92(this._playerIdFromPk_0(consent2_0.pk),
+    __compactRuntime.assert(this._equal_94(this._playerIdFromPk_0(consent2_0.pk),
                                            _descriptor_1.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                      partialProofData,
                                                                                                      [
@@ -2253,9 +2282,9 @@ export class Contract {
                                                                                                       { popeq: { cached: false,
                                                                                                                  result: undefined } }]).value)),
                             'P2 signer is not player two');
-    __compactRuntime.assert(this._equal_93(consent1_0.credential, expected_0),
+    __compactRuntime.assert(this._equal_95(consent1_0.credential, expected_0),
                             'P1 signed a different result');
-    __compactRuntime.assert(this._equal_94(consent2_0.credential, expected_0),
+    __compactRuntime.assert(this._equal_96(consent2_0.credential, expected_0),
                             'P2 signed a different result');
     this._assert_signed_by_0(context,
                              partialProofData,
@@ -2265,6 +2294,7 @@ export class Contract {
                              partialProofData,
                              consent2_0,
                              consent2_0.pk);
+    const tmp_0 = this._commitTranscript_0(b_0.chain);
     __compactRuntime.queryLedgerState(context,
                                       partialProofData,
                                       [
@@ -2272,10 +2302,10 @@ export class Contract {
                                                  value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(11n),
                                                                                               alignment: _descriptor_2.alignment() }).encode() } },
                                        { push: { storage: true,
-                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_1.toValue(root_0),
+                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_1.toValue(tmp_0),
                                                                                               alignment: _descriptor_1.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
-    const tmp_0 = b_0.score0;
+    const tmp_1 = b_0.score0;
     __compactRuntime.queryLedgerState(context,
                                       partialProofData,
                                       [
@@ -2283,10 +2313,10 @@ export class Contract {
                                                  value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(12n),
                                                                                               alignment: _descriptor_2.alignment() }).encode() } },
                                        { push: { storage: true,
-                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(tmp_0),
+                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(tmp_1),
                                                                                               alignment: _descriptor_2.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
-    const tmp_1 = b_0.score1;
+    const tmp_2 = b_0.score1;
     __compactRuntime.queryLedgerState(context,
                                       partialProofData,
                                       [
@@ -2294,7 +2324,7 @@ export class Contract {
                                                  value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(13n),
                                                                                               alignment: _descriptor_2.alignment() }).encode() } },
                                        { push: { storage: true,
-                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(tmp_1),
+                                                 value: __compactRuntime.StateValue.newCell({ value: _descriptor_2.toValue(tmp_2),
                                                                                               alignment: _descriptor_2.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
     __compactRuntime.queryLedgerState(context,
@@ -2336,12 +2366,16 @@ export class Contract {
     return true;
   }
   _equal_4(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_5(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
+  }
+  _folder_0(context, partialProofData, f, x, a0) {
+    for (let i = 0; i < 6; i++) { x = f(context, partialProofData, x, a0[i]); }
+    return x;
   }
   _equal_6(x0, y0) {
     if (x0 !== y0) { return false; }
@@ -2383,10 +2417,6 @@ export class Contract {
     if (x0 !== y0) { return false; }
     return true;
   }
-  _folder_0(f, x, a0) {
-    for (let i = 0; i < 7; i++) { x = f(x, a0[i]); }
-    return x;
-  }
   _equal_16(x0, y0) {
     if (x0 !== y0) { return false; }
     return true;
@@ -2394,6 +2424,10 @@ export class Contract {
   _equal_17(x0, y0) {
     if (x0 !== y0) { return false; }
     return true;
+  }
+  _folder_1(f, x, a0) {
+    for (let i = 0; i < 7; i++) { x = f(x, a0[i]); }
+    return x;
   }
   _equal_18(x0, y0) {
     if (x0 !== y0) { return false; }
@@ -2624,11 +2658,11 @@ export class Contract {
     return true;
   }
   _equal_75(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
+    if (x0 !== y0) { return false; }
     return true;
   }
   _equal_76(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
+    if (x0 !== y0) { return false; }
     return true;
   }
   _equal_77(x0, y0) {
@@ -2640,7 +2674,7 @@ export class Contract {
     return true;
   }
   _equal_79(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_80(x0, y0) {
@@ -2652,193 +2686,193 @@ export class Contract {
     return true;
   }
   _equal_82(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_83(x0, y0) {
-    {
-      let x1 = x0.played0;
-      let y1 = y0.played0;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.played1;
-      let y1 = y0.played1;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.plays0;
-      let y1 = y0.plays0;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.plays1;
-      let y1 = y0.plays1;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.turn;
-      let y1 = y0.turn;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.currentRank;
-      let y1 = y0.currentRank;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.pending;
-      let y1 = y0.pending;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.claimRank;
-      let y1 = y0.claimRank;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.claimCount;
-      let y1 = y0.claimCount;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.claimSum;
-      let y1 = y0.claimSum;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.claimer;
-      let y1 = y0.claimer;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.score0;
-      let y1 = y0.score0;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.score1;
-      let y1 = y0.score1;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.round;
-      let y1 = y0.round;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.ended;
-      let y1 = y0.ended;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.chain;
-      let y1 = y0.chain;
-      if (x1 !== y1) { return false; }
-    }
-    return true;
-  }
-  _equal_84(x0, y0) {
-    {
-      let x1 = x0.played0;
-      let y1 = y0.played0;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.played1;
-      let y1 = y0.played1;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.plays0;
-      let y1 = y0.plays0;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.plays1;
-      let y1 = y0.plays1;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.turn;
-      let y1 = y0.turn;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.currentRank;
-      let y1 = y0.currentRank;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.pending;
-      let y1 = y0.pending;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.claimRank;
-      let y1 = y0.claimRank;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.claimCount;
-      let y1 = y0.claimCount;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.claimSum;
-      let y1 = y0.claimSum;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.claimer;
-      let y1 = y0.claimer;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.score0;
-      let y1 = y0.score0;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.score1;
-      let y1 = y0.score1;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.round;
-      let y1 = y0.round;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.ended;
-      let y1 = y0.ended;
-      if (x1 !== y1) { return false; }
-    }
-    {
-      let x1 = x0.chain;
-      let y1 = y0.chain;
-      if (x1 !== y1) { return false; }
-    }
-    return true;
-  }
-  _folder_1(context, partialProofData, f, x, a0) {
-    for (let i = 0; i < 26; i++) { x = f(context, partialProofData, x, a0[i]); }
-    return x;
-  }
-  _equal_85(x0, y0) {
     if (x0 !== y0) { return false; }
     return true;
   }
-  _equal_86(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
+  _equal_84(x0, y0) {
+    if (x0 !== y0) { return false; }
     return true;
+  }
+  _equal_85(x0, y0) {
+    {
+      let x1 = x0.played0;
+      let y1 = y0.played0;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.played1;
+      let y1 = y0.played1;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.plays0;
+      let y1 = y0.plays0;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.plays1;
+      let y1 = y0.plays1;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.turn;
+      let y1 = y0.turn;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.currentRank;
+      let y1 = y0.currentRank;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.pending;
+      let y1 = y0.pending;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.claimRank;
+      let y1 = y0.claimRank;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.claimCount;
+      let y1 = y0.claimCount;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.claimSum;
+      let y1 = y0.claimSum;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.claimer;
+      let y1 = y0.claimer;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.score0;
+      let y1 = y0.score0;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.score1;
+      let y1 = y0.score1;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.round;
+      let y1 = y0.round;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.ended;
+      let y1 = y0.ended;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.chain;
+      let y1 = y0.chain;
+      if (x1 !== y1) { return false; }
+    }
+    return true;
+  }
+  _equal_86(x0, y0) {
+    {
+      let x1 = x0.played0;
+      let y1 = y0.played0;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.played1;
+      let y1 = y0.played1;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.plays0;
+      let y1 = y0.plays0;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.plays1;
+      let y1 = y0.plays1;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.turn;
+      let y1 = y0.turn;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.currentRank;
+      let y1 = y0.currentRank;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.pending;
+      let y1 = y0.pending;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.claimRank;
+      let y1 = y0.claimRank;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.claimCount;
+      let y1 = y0.claimCount;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.claimSum;
+      let y1 = y0.claimSum;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.claimer;
+      let y1 = y0.claimer;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.score0;
+      let y1 = y0.score0;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.score1;
+      let y1 = y0.score1;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.round;
+      let y1 = y0.round;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.ended;
+      let y1 = y0.ended;
+      if (x1 !== y1) { return false; }
+    }
+    {
+      let x1 = x0.chain;
+      let y1 = y0.chain;
+      if (x1 !== y1) { return false; }
+    }
+    return true;
+  }
+  _folder_2(context, partialProofData, f, x, a0) {
+    for (let i = 0; i < 26; i++) { x = f(context, partialProofData, x, a0[i]); }
+    return x;
   }
   _equal_87(x0, y0) {
     if (x0 !== y0) { return false; }
     return true;
   }
   _equal_88(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_89(x0, y0) {
@@ -2850,14 +2884,22 @@ export class Contract {
     return true;
   }
   _equal_91(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
+    if (x0 !== y0) { return false; }
     return true;
   }
   _equal_92(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
+    if (x0 !== y0) { return false; }
     return true;
   }
   _equal_93(x0, y0) {
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
+    return true;
+  }
+  _equal_94(x0, y0) {
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
+    return true;
+  }
+  _equal_95(x0, y0) {
     {
       let x1 = x0.sep;
       let y1 = y0.sep;
@@ -2890,7 +2932,7 @@ export class Contract {
     }
     return true;
   }
-  _equal_94(x0, y0) {
+  _equal_96(x0, y0) {
     {
       let x1 = x0.sep;
       let y1 = y0.sep;
@@ -3009,7 +3051,7 @@ export function ledger(stateOrChargedState) {
                                                                                    result: undefined } }]).value);
     },
     get p1RoundCommits() {
-      return _descriptor_7.fromValue(__compactRuntime.queryLedgerState(context,
+      return _descriptor_8.fromValue(__compactRuntime.queryLedgerState(context,
                                                                        partialProofData,
                                                                        [
                                                                         { dup: { n: 0 } },
@@ -3023,7 +3065,7 @@ export function ledger(stateOrChargedState) {
                                                                                    result: undefined } }]).value);
     },
     get p2RoundCommits() {
-      return _descriptor_7.fromValue(__compactRuntime.queryLedgerState(context,
+      return _descriptor_8.fromValue(__compactRuntime.queryLedgerState(context,
                                                                        partialProofData,
                                                                        [
                                                                         { dup: { n: 0 } },

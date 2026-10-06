@@ -302,8 +302,13 @@ constructor(
   const p1 = disclose(playerOneId); const p2 = disclose(playerTwoId);
   assert(p1 != p2, "Players must differ");
   playerOne = p1; playerTwo = p2; mode = m;
-  p1EntropyCommit = disclose(p1Entropy); p2EntropyCommit = disclose(p2Entropy);
-  p1RoundCommits = disclose(p1Rounds); p2RoundCommits = disclose(p2Rounds);
+  const e1 = disclose(p1Entropy); const e2 = disclose(p2Entropy);
+  assert(e1 != e2, "Entropy commitments must differ");
+  const r1 = disclose(p1Rounds); const r2 = disclose(p2Rounds);
+  // Identical round commitments would deal both seats the same hand.
+  for (const i of 0..6) { assert(r1[i] != r2[i], "Round-secret commitments must differ"); }
+  p1EntropyCommit = e1; p2EntropyCommit = e2;
+  p1RoundCommits = r1; p2RoundCommits = r2;
   roundsProven = 0; ended = false; closed = false;
   stateRoot = commitBoundary(Boundary { turn: 0, currentRank: 0, score0: 0, score1: 0, round: 0, ended: false, chain: 0 });
   transcriptRoot = default<Bytes<32>>; p1Score = 0; p2Score = 0; winner = 0;
@@ -486,13 +491,12 @@ export circuit closeGame(finalP1Score: Uint<8>, finalP2Score: Uint<8>, finalWinn
   assert(disclose(finalP1Score) == b.score0 && disclose(finalP2Score) == b.score1, "final score mismatch");
   assert(disclose(finalWinner) == w, "winner mismatch");
 
-  // Result authorization: both registered players signed THIS exact result.
-  // gameId in the consent = this contract's identity: we use the persistent
-  // transcript commitment as the game-unique binding (one contract per game).
-  const root = commitTranscript(b.chain);
+  // Result authorization: both registered players signed THIS exact result
+  // for THIS contract. gameId = the deployed contract address, so a signed
+  // result cannot be replayed onto a clone that re-proves the same transcript.
   const consent1 = p1CloseConsent();
   const consent2 = p2CloseConsent();
-  const expected = closeConsentFor(root, b.chain, b.score0, b.score1, w);
+  const expected = closeConsentFor(kernel.self().bytes, b.chain, b.score0, b.score1, w);
   assert(playerIdFromPk(consent1.pk) == playerOne, "P1 signer is not player one");
   assert(playerIdFromPk(consent2.pk) == playerTwo, "P2 signer is not player two");
   assert(consent1.credential == expected, "P1 signed a different result");
@@ -501,7 +505,7 @@ export circuit closeGame(finalP1Score: Uint<8>, finalP2Score: Uint<8>, finalWinn
   assert_signed_by<CloseConsent>(consent2, consent2.pk);
 
   // The result IS the public output of the game.
-  transcriptRoot = disclose(root);
+  transcriptRoot = disclose(commitTranscript(b.chain));
   p1Score = disclose(b.score0); p2Score = disclose(b.score1); winner = disclose(w);
   closed = true;
 }

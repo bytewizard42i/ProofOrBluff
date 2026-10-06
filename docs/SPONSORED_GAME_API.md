@@ -11,7 +11,7 @@ Browser → service is JSON over HTTPS. CORS is locked to `https://prooforbluff.
 (+ localhost dev origins). No auth in Season 1; `gameId` is an unguessable
 32-byte hex token and is the only handle.
 
-Ranks are integers 0..12 (0 = Ace … 12 = King, same as the circuit). Seats:
+Ranks are integers 0..12 indexing `RANKS` in `realDeal/shared/dealing.js` (0 = '2' … 8 = '10', 9 = J, 10 = Q, 11 = K, 12 = A), same as the circuit. Seats:
 `human` (circuit seat 0 / playerOne) and `bot` (seat 1 / playerTwo).
 
 ## Endpoints
@@ -19,7 +19,7 @@ Ranks are integers 0..12 (0 = Ace … 12 = King, same as the circuit). Seats:
 | Method | Path | Body | Returns |
 |---|---|---|---|
 | GET | `/v1/health` | — | `{ ok, network, wallet: { address, dustReady }, proofQueue: { pending } }` |
-| POST | `/v1/games` | `{ mode: 0\|1\|2, difficulty?: 'easy'\|'medium'\|'hard' }` | `GameView` |
+| POST | `/v1/games` | `{ mode: 0\|1\|4, difficulty?: 'easy'\|'medium'\|'hard' }` | `GameView` |
 | GET | `/v1/games/:gameId` | — | `GameView` |
 | POST | `/v1/games/:gameId/play` | `{ rank, count, cards: [rank…] }` (cards.length === count, 1..4, rank === currentRank) | `GameView` (bot has responded: accept / challenge) |
 | POST | `/v1/games/:gameId/accept` | — | `GameView` (bot then plays if its turn) |
@@ -69,7 +69,7 @@ Rules of play are the circuit's: claims must name `currentRank`; 1..4 cards;
 a challenge scores the challenger −1 (floored at 0) if the claim was truthful,
 or +3 if it was a bluff; the responder takes the next turn; the rank advances
 after every resolution; a round ends when a hand empties (or the game does);
-win at 10 / 15 / 20 for mode 0 / 1 / 2; 6 rounds max.
+win at 10 / 15 / 20 for mode 0 (Casual) / 1 (Standard) / 4 (Casino); 6 rounds max.
 
 ## Chain lifecycle (server side, invisible to the player)
 

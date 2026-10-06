@@ -4,7 +4,7 @@ import {
   createV3pReferee as createV3Referee, packRanks, rankWeight, unpackHand, KIND, MAX_ROUNDS, MAX_ROUND_MOVES, initialBoundary, roundFinished, startingRank,
 } from './rollup-v3p-referee.js';
 import {
-  consentKeyPairFromSecret, buildCloseConsent, signCloseConsent, challengeReductionWitness,
+  consentKeyPairFromSecret, buildCloseConsent, signCloseConsent, challengeReductionWitness, gameIdFromContractAddress, JUBJUB_ORDER, TWO_248,
 } from '../cli/src/rollup-consent.js';
 
 const { Contract, pureCircuits, ledger } = await import('./managed/proof-or-bluff-rollup-v3p/contract/index.js');
@@ -46,7 +46,7 @@ function newGame({ mode = STANDARD, secrets = SECRETS, entropy = [E1, E2] } = {}
     remainingRanks: (ctx) => [ctx.privateState, witness.remaining],
     p1CloseConsent: (ctx) => [ctx.privateState, witness.p1CloseConsent],
     p2CloseConsent: (ctx) => [ctx.privateState, witness.p2CloseConsent],
-    get_challenge_reduction: (ctx, full) => challengeReductionWitness(ctx, full),
+    get_challenge_reduction: (ctx, full) => (witness.reduction ?? challengeReductionWitness)(ctx, full),
   });
   const commits = (seat) => secrets[seat].map((s, i) => pureCircuits.commitRoundSecret(s, BigInt(i + 1)));
   const initial = contract.initialState(
@@ -78,16 +78,18 @@ function newGame({ mode = STANDARD, secrets = SECRETS, entropy = [E1, E2] } = {}
   const closeGame = (over = {}, { kp1 = KP1, kp2 = KP2 } = {}) => {
     const r = referee.result();
     witness.boundary = { ...r.boundary };
-    const root = pureCircuits.commitTranscript(r.transcriptChain);
     const consent = buildCloseConsent(pureCircuits, {
-      gameId: root, transcriptRoot: r.transcriptChain,
+      gameId: gameIdFromContractAddress(runtime.dummyContractAddress()), transcriptRoot: r.transcriptChain,
       p1Score: over.p1Score ?? r.p1Score, p2Score: over.p2Score ?? r.p2Score, winner: over.winner ?? r.winner,
     });
     witness.p1CloseConsent = signCloseConsent(pureCircuits, consent, kp1);
-    witness.p2CloseConsent = signCloseConsent(pureCircuits, consent, kp2);
+    witness.p2CloseConsent = over.p2Signed ?? signCloseConsent(pureCircuits, consent, kp2);
     return call('closeGame', over.p1Score ?? r.p1Score, over.p2Score ?? r.p2Score, over.winner ?? r.winner);
   };
-  return { call, state, witness, referee, proveRound, closeGame };
+  return { call, state, witness, referee, proveRound, closeGame, consentFor: (r) => buildCloseConsent(pureCircuits, {
+    gameId: gameIdFromContractAddress(runtime.dummyContractAddress()), transcriptRoot: r.transcriptChain,
+    p1Score: r.p1Score, p2Score: r.p2Score, winner: r.winner,
+  }) };
 }
 
 /** Take `count` real cards of `rank` from `hand` (or any held cards if lying). */
@@ -298,6 +300,49 @@ describe('v3p rollup (hex-packed): every cheat is a failed proof', () => {
     for (const r of rounds) g.proveRound(r);
     const stranger = consentKeyPairFromSecret(new Uint8Array(32).fill(0x99));
     expect(() => g.closeGame({}, { kp2: stranger })).toThrow(/signer is not player two/);
+  });
+
+  // Security review 2026-10-06 (Critical): with an unbounded reduction quotient
+  // the identity q*2^248 + r == full is checked in BLS12-381 field arithmetic,
+  // so a prover can pick ANY challenge c < 2^248 and solve for q — forging a
+  // signature for a public key whose secret it never had. The quotient is now
+  // Uint<7>; this test performs the exact forgery and expects rejection.
+  it('REGRESSION: a forged Schnorr consent (chosen challenge, solved quotient) is rejected', () => {
+    const { g, rounds } = closedSetup();
+    for (const r of rounds) g.proveRound(r);
+    const result = g.referee.result();
+    const consent = g.consentFor(result);
+    const P = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001n;
+    const modInv = (a, m) => { let [o, r0, s0, s1] = [a % m, m, 1n, 0n]; while (o) { const q = r0 / o; [o, r0] = [r0 - q * o, o]; [s0, s1] = [s1 - q * s0, s0]; } return ((s1 % m) + m) % m; };
+    // Forger knows ONLY player two's public key.
+    const pk = KP2.pk;
+    const s = 12345n, c = 6789n;
+    const R = runtime.ecAdd(runtime.ecMulGenerator(s), runtime.ecMul(pk, JUBJUB_ORDER - c));
+    const full = BigInt(pureCircuits.closeConsentChallenge(R, pk, consent));
+    const forgedQ = (((full - c) % P) + P) % P * modInv(TWO_248, P) % P;
+    // Sanity: the forged pair satisfies the identity in the field, i.e. the OLD
+    // contract (q: Field) would have accepted it.
+    expect((forgedQ * TWO_248 + c) % P).toBe(full % P);
+    expect(forgedQ > 127n).toBe(true);
+    g.witness.reduction = (ctx, f) => (BigInt(f) === full ? [ctx.privateState, [forgedQ, c]] : challengeReductionWitness(ctx, f));
+    const forged = { credential: consent, signature: { r: R, s }, pk };
+    expect(() => g.closeGame({ p2Signed: forged })).toThrow();
+    expect(g.state().closed).toBe(false);
+    // Honest reduction with the same forged (R, s) is also rejected.
+    g.witness.reduction = null;
+    expect(() => g.closeGame({ p2Signed: forged })).toThrow(/signature/i);
+    expect(g.state().closed).toBe(false);
+  });
+
+  it('REGRESSION: a consent for the same result on a DIFFERENT contract address is rejected (no clone replay)', () => {
+    const { g, rounds } = closedSetup();
+    for (const r of rounds) g.proveRound(r);
+    const result = g.referee.result();
+    const other = buildCloseConsent(pureCircuits, {
+      gameId: gameIdFromContractAddress('ab'.repeat(32)), transcriptRoot: result.transcriptChain,
+      p1Score: result.p1Score, p2Score: result.p2Score, winner: result.winner,
+    });
+    expect(() => g.closeGame({ p2Signed: signCloseConsent(pureCircuits, other, KP2) })).toThrow(/signed a different result/);
   });
 });
 

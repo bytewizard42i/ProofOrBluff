@@ -30,7 +30,7 @@ dotenv.config({ path: path.join(cliDir, '.env.local'), override: true });
 const { buildWalletFromSeed } = await import('../realDeal/cli/src/wallet-node.js');
 const { getV3pContractApi, DEFAULT_V3P_MANAGED_DIR, bytesToHex } = await import('../realDeal/cli/src/rollup-v3p-contract.js');
 const { createV3pReferee, KIND, MAX_ROUNDS, roundFinished } = await import('../realDeal/contracts/rollup-v3p-referee.js');
-const { consentKeyPairFromSecret, buildCloseConsent, signCloseConsent } = await import('../realDeal/cli/src/rollup-consent.js');
+const { consentKeyPairFromSecret, buildCloseConsent, signCloseConsent, gameIdFromContractAddress } = await import('../realDeal/cli/src/rollup-consent.js');
 const { pureCircuits } = await import(path.join(DEFAULT_V3P_MANAGED_DIR, 'contract', 'index.js'));
 
 const networkId = process.env.POB_NETWORK_ID || 'preview';
@@ -135,7 +135,7 @@ try {
   if (ref.boundary.ended) {
     const result = ref.result();
     const root = pureCircuits.commitTranscript(result.transcriptChain);
-    const consent = buildCloseConsent(pureCircuits, { gameId: root, transcriptRoot: result.transcriptChain, p1Score: result.p1Score, p2Score: result.p2Score, winner: result.winner });
+    const consent = buildCloseConsent(pureCircuits, { gameId: gameIdFromContractAddress(record.contractAddress), transcriptRoot: result.transcriptChain, p1Score: result.p1Score, p2Score: result.p2Score, winner: result.winner });
     log(`closing: winner=${result.winner} ${result.p1Score}-${result.p2Score}, both consents signed…`);
     t = Date.now();
     const cl = await api.closeGame({
