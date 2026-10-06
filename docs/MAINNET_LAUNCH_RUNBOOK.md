@@ -219,32 +219,57 @@ rehearsal is ever needed; the mainnet faucet is
       wallet and proxy only the indexer reads. Implement, then lift the
       refusal behind an explicit `VITE_MAINNET_PROXY_URL`.
 
-### M4 — Deploy (one command, human-approved)
+### M4 — Deploy (one command, human-approved) — READY, awaiting DUST
 
-Preconditions: P3 live on Preview, M1 funded with visible DUST, M2 done or
-waived in writing, M3 complete, Discord answer recorded.
+**State on 2026-10-06 06:50 UTC.** Everything below the approval line is
+built, tested (461 tests) and rehearsed on Preview twice, the second time with
+the security-fixed contract from inside the production Docker image. The
+service is **already running on the VPS in Mainnet mode**, wallet synced
+through Blockfrost, LOCKED (no `POB_ALLOW_MAINNET_DEPLOY`), reporting
+`dustReady:false` until John's cNIGHT registration is ingested.
 
-1. John reviews `git diff` of the exact commit to be deployed and the
-   `deployments.json` custody entry.
-2. **Blocked until the rollup deployment CLI is implemented and rehearsed.**
-   Do not use `create-match --contract state-only`: it deploys the per-move
-   predecessor. The rollup API's `deploy()` already checks
-   `POB_ALLOW_MAINNET_DEPLOY=I_APPROVE_MAINNET_DEPLOYMENT`, but there is no
-   approved Season 1 CLI command yet. Once implemented, pin the release and
-   full artifact hashes, keep `BLOCKFROST_PROJECT_ID` and the fresh operator
-   seed server-side, and present the exact command to John for approval.
-   Deploy once; if submission status is uncertain, reconcile with the
-   indexer before retrying.
-3. Verify via Blockfrost indexer `contractAction(address)` → block height
-   + tx hash. Record in `deployments.json` and the launch log **before**
-   anything else.
-4. Point the hosted bot and the `.app` build at the mainnet address;
-   restart; smoke test with John's mainnet Lace. One full round.
+Preconditions still open: DUST visible (`node scripts/dust-status.mjs` →
+READY; a `--watch` is running), John's approval of the exact command.
+
+Season 1 deploy is NOT one contract — it is one contract PER GAME, created
+by the sponsored service when a player clicks "Deal me in". So "deploying to
+Mainnet" = unlocking the service and playing the first game.
+
+1. **Confirm DUST** (two sources): `node scripts/dust-status.mjs` and
+   `curl https://api.prooforbluff.app/v1/health` → `wallet.dust > 0`.
+2. **John approves this exact line** being appended to
+   `/opt/prooforbluff/pob-api.env` on the VPS:
+   ```
+   POB_ALLOW_MAINNET_DEPLOY=I_APPROVE_MAINNET_DEPLOYMENT
+   ```
+   then `docker compose up -d pob-api` (restart ≈ 20 min cold sync; see
+   hardening note). Penny runs it; John says the word.
+3. **First Mainnet game, scripted** (so the first tx on Mainnet is ours,
+   not a stranger's): `node /tmp/pob-drive.mjs` against
+   `https://api.prooforbluff.app/v1` with `Origin: https://prooforbluff.app`.
+   Expect: deploy ≈ 20 s, proveRound ≈ 55 s each, closeGame ≈ 30 s, all
+   visible in `/v1/stats` and on the Blockfrost dashboard ("submitted txs").
+4. **Record** contract address + every tx hash + measured DUST burn in
+   `midnight-launches-log/` and `deployments.json` BEFORE anything else.
+   `GET /v1/games/<id>/transcript` after close is the public verifiability
+   receipt — link it.
+5. **Flip the app**: `cd realDeal/app && VITE_POB_API_URL=https://api.prooforbluff.app npm run build:sponsored`
+   → prebuilt deploy to production (`prooforbluff.app`). Rehearsed as a Vercel
+   preview (`https://prooforbluff-1fpsdxpie-enterpisezk-labs-projects.vercel.app`),
+   CORS verified. Demo build stays one command away for rollback.
+6. **Smoke test in a real browser** on `prooforbluff.app`: one full game,
+   receipt strip reaches "sealed", explorer link resolves.
+
+Rollback at any step: remove the approval line + restart (service goes back
+to 503 on new games; in-flight proofs finish), or redeploy the demo build.
 
 ### M5 — Launch
 
 - [ ] Flip `site/` banner from "Preview testnet" to "Live on Midnight
-      mainnet. No real money. No wagers." only after M4 step 4 passes.
+      mainnet. No real money. No wagers." only after M4 step 6 passes.
+- [ ] Hardening (soon after launch): persist the wallet sync snapshot
+      (wallet-sdk `serializeState`) so a pob-api restart is seconds, not a
+      20-minute cold sync on the 2-vCPU box.
 - [ ] Observability: a cron/GitHub Action that queries
       `contractAction(address)` every 10 min and alerts if the bot's
       pending move is older than N minutes; DUST balance alert on the
