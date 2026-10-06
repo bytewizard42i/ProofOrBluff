@@ -308,6 +308,7 @@ export function createSponsoredHttpApp({
       if (!/^[0-9a-f]{64}$/.test(gameId ?? '')) throw new HttpError(404, 'Unknown game.');
       const entry = getGame(gameId);
       if (parts.length === 3 && request.method === 'GET') return sendJson(response, 200, withNetwork(entry.game.view()));
+      if (parts[3] === 'transcript' && request.method === 'GET') return sendJson(response, 200, act(entry, (g) => g.transcript()));
       if (request.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
       const action = parts[3];
       if (action === 'play') {

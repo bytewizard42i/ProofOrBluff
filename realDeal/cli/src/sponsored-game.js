@@ -82,6 +82,7 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
   let botPlays = [];               // the bot's real cards per PLAY, for reveals
   const chain = { contractAddress: null, receipts: [], pending: ['deploy'] };
   const pendingChainSteps = [];    // produced here, drained by the service
+  const finishedRounds = [];       // every finishRound() output, for the post-close transcript
 
   const push = (event) => events.push(event);
   const botHandAsCardObjects = () => handCountsToCardObjects(referee.hands[SEAT.BOT], 'bot');
@@ -101,6 +102,7 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
     if (!inRound() || !roundFinished(referee.state, size)) return;
     const fin = referee.finishRound();
     const round = Number(fin.round);
+    finishedRounds.push(fin);
     botPlays = [];
     push({ type: 'round-end', round, scores: { human: Number(fin.boundaryOut.score0), bot: Number(fin.boundaryOut.score1) } });
     pendingChainSteps.push({
@@ -233,6 +235,36 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
       referee.challenge();
       push({ type: 'human-challenge', truthful, revealed, dialogue: ai.getChallengeReaction({ aiWasChallenger: false, claimWasTrue: truthful }) });
       return afterHumanAction();
+    },
+
+    /**
+     * Full disclosure AFTER the game is closed on-chain: every secret, every
+     * move with its real cards and salt, both hands per round. Anyone can
+     * re-run rollup-v3p-referee.js on this and recompute the on-chain
+     * transcriptRoot — the operator's honesty becomes checkable, not assumed.
+     * Refused while the game is live (it would reveal hands) or merely ended
+     * (receipts not final yet).
+     */
+    transcript() {
+      if (status !== GAME_STATUS.CLOSED) throw new GameError(409, 'transcript is published once the game is closed on-chain');
+      return {
+        gameId, mode, difficulty, contractAddress: chain.contractAddress,
+        playerIds: playerIds.map((p) => Buffer.from(p).toString('hex')),
+        entropy: entropy.map((e) => Buffer.from(e).toString('hex')),
+        roundSecrets: roundSecrets.map((seat) => seat.map((s) => Buffer.from(s).toString('hex'))),
+        rounds: finishedRounds.map((fin) => ({
+          round: Number(fin.round),
+          dealt: fin.dealt.map((d) => d.toString()),
+          moves: fin.moves.filter((m) => m.kind !== KIND.NOOP).map((m) => ({
+            kind: Number(m.kind), rank: Number(m.rank), count: Number(m.count),
+            cards: m.cards.slice(0, Number(m.count)).map(Number), playSalt: m.playSalt.toString(),
+          })),
+          remaining: fin.remaining.map((r) => r.map(Number)),
+          boundaryOut: Object.fromEntries(Object.entries(fin.boundaryOut).map(([k, v]) => [k, typeof v === 'bigint' ? v.toString() : v])),
+        })),
+        result: (() => { const r = referee.result(); return { p1Score: Number(r.p1Score), p2Score: Number(r.p2Score), winner: winnerName(r.winner), transcriptChain: r.transcriptChain.toString() }; })(),
+        howToVerify: 'Re-run realDeal/contracts/rollup-v3p-referee.js with seed = combineEntropy(entropy) and these roundSecrets/moves; commitTranscript(result.transcriptChain) must equal the contract\'s transcriptRoot.',
+      };
     },
 
     view() {

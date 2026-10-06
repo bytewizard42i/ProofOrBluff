@@ -8,7 +8,8 @@ import { describe, expect, it } from 'vitest';
 import * as runtime from '@midnight-ntwrk/compact-runtime';
 import { createSponsoredGame, GAME_STATUS, GameError, handCountsToRanks } from './sponsored-game.js';
 import { challengeReductionWitness } from './rollup-consent.js';
-import { initialBoundary } from '../../contracts/rollup-v3p-referee.js';
+import { initialBoundary, createV3pReferee } from '../../contracts/rollup-v3p-referee.js';
+
 
 const { Contract, pureCircuits, ledger } = await import('../../contracts/managed/proof-or-bluff-rollup-v3p/contract/index.js');
 const SPONSOR = { bytes: new Uint8Array(32).fill(7) };
@@ -179,6 +180,28 @@ describe('sponsored v3p game', () => {
     expect(game.view().chain.pending).toEqual([]);
     expect(game.status).toBe('closed');
     expect(() => game.humanAccept()).toThrow(/game is over/);
+  });
+
+  it('transcript is refused until closed, then discloses everything needed to recompute transcriptRoot', () => {
+    const game = createSponsoredGame({ gameId: 'g6', mode: 1, pureCircuits, random: seededRandom(30) });
+    expect(() => game.transcript()).toThrow(/closed/);
+    playWholeGame(game);
+    expect(() => game.transcript()).toThrow(/closed/);
+    const steps = game.takePendingChainSteps();
+    game.recordReceipt({ step: 'deploy', contractAddress: 'ab'.repeat(32), txHash: 't', blockHeight: 1 });
+    for (const st of steps) game.recordReceipt({ step: st.step, round: st.round, txHash: 'x', blockHeight: 2 });
+    const t = game.transcript();
+    expect(t.roundSecrets[0]).toHaveLength(6);
+    expect(t.rounds.length).toBeGreaterThan(0);
+    // Independent re-derivation: replay the disclosed moves through a fresh referee.
+    const seed = pureCircuits.combineEntropy(...t.entropy.map((h) => Uint8Array.from(Buffer.from(h, 'hex'))));
+    const ref = createV3pReferee(pureCircuits, { seed, roundSecrets: t.roundSecrets.map((s) => s.map((h) => Uint8Array.from(Buffer.from(h, 'hex')))), mode: 1n });
+    for (const r of t.rounds) {
+      ref.startRound();
+      for (const m of r.moves) ref.apply({ kind: BigInt(m.kind), rank: BigInt(m.rank), count: BigInt(m.count), cards: m.cards.map(BigInt), playSalt: BigInt(m.playSalt) });
+      ref.finishRound();
+    }
+    expect(ref.result().transcriptChain.toString()).toBe(t.result.transcriptChain);
   });
 
   it('handCountsToRanks expands counts in rank order', () => {
