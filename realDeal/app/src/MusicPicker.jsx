@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
-import { MUSIC_TRACKS, SYNTH_TRACK_ID, findMusicTrack } from './musicTracks.js';
+import { MUSIC_TRACKS, DEFAULT_TRACK_ID, findMusicTrack } from './musicTracks.js';
 import { setMusicTrack, startBackgroundMusic, unlockAudio } from './sounds.js';
 
 const STORAGE_KEY = 'pob.musicTrack';
 
 function readStoredTrackId() {
   try {
-    return findMusicTrack(window.localStorage.getItem(STORAGE_KEY) || SYNTH_TRACK_ID).id;
+    return findMusicTrack(window.localStorage.getItem(STORAGE_KEY) || DEFAULT_TRACK_ID).id;
   } catch {
-    return SYNTH_TRACK_ID;
+    return DEFAULT_TRACK_ID;
   }
 }
 
