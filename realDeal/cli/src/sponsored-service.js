@@ -377,7 +377,10 @@ async function main() {
     : { node: `https://rpc.${networkId}.midnight.network`, indexer: `https://indexer.${networkId}.midnight.network/api/v4/graphql`, indexerWs: `wss://indexer.${networkId}.midnight.network/api/v4/graphql/ws`, proofServer };
 
   log(`sponsored service network=${networkId} proofServer=${proofServer} stateDir=${stateDir}`);
-  const walletHandle = await buildWalletFromSeed({ seed: seedHex, endpoints, networkId });
+  // Sync snapshot on the state volume: restart = ~40 s instead of a ~20 min cold
+  // sync (measured on Preview: 737 s cold → 37 s restored).
+  const snapshotPath = process.env.POB_WALLET_SNAPSHOT || path.join(stateDir, `wallet-${networkId}.snapshot.json`);
+  const walletHandle = await buildWalletFromSeed({ seed: seedHex, endpoints, networkId, snapshotPath });
 
   // One contract API instance per game (each binds to one contract address).
   const apis = new Map();

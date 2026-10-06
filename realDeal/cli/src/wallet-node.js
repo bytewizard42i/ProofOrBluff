@@ -14,6 +14,8 @@
  * NIGHT.
  */
 
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { WebSocket } from 'ws';
 import * as Rx from 'rxjs';
 import * as ledger from '@midnight-ntwrk/ledger-v8';
@@ -105,6 +107,7 @@ export async function buildWalletFromSeed({
   seed,
   endpoints,
   networkId,
+  snapshotPath = process.env.POB_WALLET_SNAPSHOT || null,
 }) {
   // Never print even a prefix of a production seed. Wallet addresses are
   // public; seed material is not, including in development logs.
@@ -116,18 +119,26 @@ export async function buildWalletFromSeed({
 
   const configuration = buildFacadeConfig(networkId, endpoints);
 
+  // Sync snapshot: without it every process start replays the whole chain
+  // for this wallet (~20 min on the 2-vCPU VPS for Mainnet). With it, the
+  // three wallets restore their last serialized state and only catch up the
+  // tail. The snapshot holds NO secret keys (those come from the seed every
+  // time); it is just indexed public state, so a stale/corrupt file is safe
+  // to ignore — we log and fall back to a cold start.
+  const snapshot = await readWalletSnapshot(snapshotPath, networkId);
+  if (snapshot) log.info(`  Restoring wallet sync snapshot from ${snapshotPath} (saved ${snapshot.savedAt})`);
+
   const facade = await WalletFacade.init({
     configuration,
-    shielded: (cfg) => ShieldedWallet(cfg).startWithSecretKeys(shieldedSecretKeys),
-    unshielded: (cfg) =>
-      UnshieldedWallet(cfg).startWithPublicKey(
-        UnshieldedPublicKey.fromKeyStore(unshieldedKeystore),
-      ),
-    dust: (cfg) =>
-      DustWallet(cfg).startWithSecretKey(
-        dustSecretKey,
-        ledger.LedgerParameters.initialParameters().dust,
-      ),
+    shielded: (cfg) => (snapshot
+      ? ShieldedWallet(cfg).restore(snapshot.shielded)
+      : ShieldedWallet(cfg).startWithSecretKeys(shieldedSecretKeys)),
+    unshielded: (cfg) => (snapshot
+      ? UnshieldedWallet(cfg).restore(snapshot.unshielded)
+      : UnshieldedWallet(cfg).startWithPublicKey(UnshieldedPublicKey.fromKeyStore(unshieldedKeystore))),
+    dust: (cfg) => (snapshot
+      ? DustWallet(cfg).restore(snapshot.dust)
+      : DustWallet(cfg).startWithSecretKey(dustSecretKey, ledger.LedgerParameters.initialParameters().dust)),
   });
   await facade.start(shieldedSecretKeys, dustSecretKey);
 
@@ -168,15 +179,49 @@ export async function buildWalletFromSeed({
     await registerNightForDust(ctx, networkId);
   }
 
+  const saveSnapshot = () => writeWalletSnapshot(snapshotPath, networkId, facade);
+  await saveSnapshot();
+  const snapshotTimer = snapshotPath ? setInterval(() => { saveSnapshot().catch(() => {}); }, 5 * 60_000) : null;
+  snapshotTimer?.unref?.();
+
   return {
     api: facade,
     ctx,
     address: unshieldedKeystore.getBech32Address().asString(),
     coinPublicKey: synced.shielded?.coinPublicKey?.toHexString?.() ?? null,
+    saveSnapshot,
     async shutdown() {
+      if (snapshotTimer) clearInterval(snapshotTimer);
+      try { await saveSnapshot(); } catch { /* best effort */ }
       try { await facade.stop(); } catch { /* noop */ }
     },
   };
+}
+
+async function readWalletSnapshot(snapshotPath, networkId) {
+  if (!snapshotPath) return null;
+  try {
+    const raw = JSON.parse(await fs.readFile(snapshotPath, 'utf8'));
+    if (raw.version !== 1 || raw.networkId !== networkId || !raw.shielded || !raw.unshielded || !raw.dust) {
+      log.warn(`  Wallet snapshot at ${snapshotPath} is for another network/version; cold start.`);
+      return null;
+    }
+    return raw;
+  } catch (error) {
+    if (error.code !== 'ENOENT') log.warn(`  Wallet snapshot unreadable (${error.message}); cold start.`);
+    return null;
+  }
+}
+
+async function writeWalletSnapshot(snapshotPath, networkId, facade) {
+  if (!snapshotPath) return;
+  const [shielded, unshielded, dust] = await Promise.all([
+    facade.shielded.serializeState(), facade.unshielded.serializeState(), facade.dust.serializeState(),
+  ]);
+  const body = JSON.stringify({ version: 1, networkId, savedAt: new Date().toISOString(), shielded, unshielded, dust });
+  await fs.mkdir(path.dirname(snapshotPath), { recursive: true });
+  await fs.writeFile(`${snapshotPath}.tmp`, body, 'utf8');
+  await fs.rename(`${snapshotPath}.tmp`, snapshotPath);
 }
 
 /**
