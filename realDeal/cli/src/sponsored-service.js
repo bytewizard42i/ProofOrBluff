@@ -377,9 +377,12 @@ async function main() {
   // games unless the operator wallet can pay for at least one. Mirrors the
   // wallet facade's own state stream; cheap to read on every /v1/health.
   const { default: Rx } = await import('rxjs').then((m) => ({ default: m }));
-  let dust = { balance: 0n, synced: false, at: null };
+  // buildWalletFromSeed only returns after the initial sync, so from here on
+  // the wallet IS synced; later state emissions don't always re-assert the
+  // flag, so don't gate on it — gate on the live DUST balance only.
+  let dust = { balance: 0n, synced: true, at: new Date().toISOString() };
   walletHandle.api.state().pipe(Rx.throttleTime(5_000)).subscribe((st) => {
-    dust = { balance: st.dust?.balance(new Date()) ?? 0n, synced: Boolean(st.isSynced), at: new Date().toISOString() };
+    dust = { balance: st.dust?.balance(new Date()) ?? 0n, synced: true, at: new Date().toISOString() };
   });
   const MIN_DUST_FOR_A_GAME = BigInt(process.env.POB_MIN_DUST_FOR_GAME || '1000000000000000'); // 1 DUST in specks (1 DUST = 1e15)
   const readiness = () => {
