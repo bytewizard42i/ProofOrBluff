@@ -210,7 +210,7 @@ function defaultSerializeStep(step) { return toJsonSafe({ ...step, witnesses: st
  */
 export function createSponsoredHttpApp({
   pureCircuits, queue, readiness = () => ({ ok: true }), allowedOrigins = new Set(DEFAULT_ALLOWED_ORIGINS), now = Date.now, ai, random,
-  network = process.env.POB_NETWORK_ID || 'undeployed', walletAddress = null,
+  network = process.env.POB_NETWORK_ID || 'undeployed', walletAddress = null, walletExtra = () => ({}),
 }) {
   /** gameId → { game, contractAddressRef, touchedAt } */
   const games = new Map();
@@ -279,7 +279,7 @@ export function createSponsoredHttpApp({
     const ready = readiness();
     return {
       ok: ready.ok, reason: ready.ok ? undefined : ready.reason, network,
-      wallet: { address: walletAddress, dustReady: ready.ok },
+      wallet: { address: walletAddress, dustReady: ready.ok, ...walletExtra() },
       proofQueue: { pending: queue.pending },
       openGames: games.size,
     };
@@ -372,12 +372,28 @@ async function main() {
     return api;
   };
 
+  // Live DUST view: a game costs several transactions, so refuse to open new
+  // games unless the operator wallet can pay for at least one. Mirrors the
+  // wallet facade's own state stream; cheap to read on every /v1/health.
+  const { default: Rx } = await import('rxjs').then((m) => ({ default: m }));
+  let dust = { balance: 0n, synced: false, at: null };
+  walletHandle.api.state().pipe(Rx.throttleTime(5_000)).subscribe((st) => {
+    dust = { balance: st.dust?.balance(new Date()) ?? 0n, synced: Boolean(st.isSynced), at: new Date().toISOString() };
+  });
+  const MIN_DUST_FOR_A_GAME = BigInt(process.env.POB_MIN_DUST_FOR_GAME || '1000000000000000'); // 1 DUST in specks (1 DUST = 1e15)
+  const readiness = () => {
+    if (!dust.synced) return { ok: false, reason: 'Wallet is syncing; try again in a minute.' };
+    if (dust.balance < MIN_DUST_FOR_A_GAME) return { ok: false, reason: 'Operator wallet has no DUST yet; games are paused.' };
+    return { ok: true };
+  };
+
   let app;
   const queue = createChainQueue({ chainForGame, stateDir, onReceipt: (gameId, r) => app.receipt(gameId, r) });
   app = createSponsoredHttpApp({
     pureCircuits, queue, network: networkId, allowedOrigins: allowedOriginsFromEnvironment(),
-    walletAddress: walletHandle.unshieldedAddress ?? null,
-    readiness: () => ({ ok: true }),
+    walletAddress: walletHandle.address ?? null,
+    readiness,
+    walletExtra: () => ({ dust: dust.balance.toString(), synced: dust.synced, observedAt: dust.at }),
   });
 
   const server = http.createServer((req, res) => app.handle(req, res));
