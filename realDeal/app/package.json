@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Proof or Bluff — realDeal mode. Midnight-backed PvP bluffing card game with on-chain Zswap escrow and ZK challenge resolution.",
+  "description": "Proof or Bluff \u2014 realDeal mode. Midnight-backed PvP bluffing card game with on-chain Zswap escrow and ZK challenge resolution.",
   "scripts": {
     "dev": "VITE_POB_MODE=testwired vite",
     "dev:testwired": "VITE_POB_MODE=testwired vite",
@@ -16,7 +16,8 @@
     "start": "VITE_POB_MODE=testwired vite --port 3016",
     "compile": "../../scripts/compile-contract.sh",
     "compile:state-only": "../../scripts/compile-contract.sh --mainnet",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:sponsored": "VITE_POB_MODE=sponsored VITE_NETWORK_ID=mainnet VITE_CONTRACT_VARIANT=state-only vite build"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-js": "2.5.1",
