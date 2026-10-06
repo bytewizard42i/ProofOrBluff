@@ -136,6 +136,17 @@ code { font-family: var(--mono); font-size: 0.95em; background: rgba(188, 177, 2
 
 /* ---------- Hero ---------- */
 
+/* Midnight brand backdrop: fixed ("sticky") to the viewport, semi-transparent,
+   feathered at the edges so copy stays readable. Sits behind everything. */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: url('assets/midnight-backdrop.webp') center / cover no-repeat;
+  opacity: 0.22;
+  -webkit-mask-image: radial-gradient(ellipse 80% 75% at 50% 45%, #000 40%, transparent 100%);
+  mask-image: radial-gradient(ellipse 80% 75% at 50% 45%, #000 40%, transparent 100%);
+}
+
 .hero {
   padding-block: clamp(2.5rem, 8vw, 5rem) clamp(2rem, 6vw, 4rem);
 }
