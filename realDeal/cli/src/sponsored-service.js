@@ -119,7 +119,15 @@ async function readJsonBody(request, maxBytes = MAX_JSON_BODY_BYTES) {
 }
 
 function safeErrorMessage(error, env = process.env) {
-  const message = error?.message || String(error);
+  // Include the whole cause chain: midnight.js wraps node rejections as
+  // "Transaction submission error" with the real reason in error.cause.
+  const parts = [];
+  for (let e = error, depth = 0; e && depth < 6; e = e.cause, depth += 1) {
+    parts.push(String(e?.message ?? e));
+    if (e?.response?.statusText) parts.push(`http ${e.response.status} ${e.response.statusText}`);
+    if (e?.data) parts.push(JSON.stringify(e.data).slice(0, 400));
+  }
+  const message = parts.join(' ← ') || String(error);
   const projectId = env.BLOCKFROST_PROJECT_ID?.trim();
   return projectId ? message.replaceAll(projectId, '[redacted]') : message;
 }
