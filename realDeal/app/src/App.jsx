@@ -7,8 +7,9 @@ import MusicPicker from './MusicPicker.jsx';
 import TestWiredPanel from './TestWiredPanel.jsx';
 import ProTeaser from './ProTeaser.jsx';
 import DemoGame from './DemoGame.jsx';
+import SponsoredGame from './SponsoredGame.jsx';
 import { useAudioSettings } from './components/table/useAudioSettings.js';
-import { NETWORK_ID } from './midnight/config.js';
+import { NETWORK_ID, SPONSORED_MODE } from './midnight/config.js';
 
 const APP_MODE = import.meta.env.VITE_POB_MODE || 'testwired';
 
@@ -75,8 +76,12 @@ export default function App() {
 
   // Demo mode is the public instant-play build: no wallet, no chain, no
   // diagnostics. The wallet header and the proof-server log are developer
-  // surfaces for the chain-wired modes only.
-  const DEMO_MODE = APP_MODE === 'demo';
+  // surfaces for the chain-wired modes only. Sponsored mode is the same
+  // player-facing surface, but every move goes to api.prooforbluff.app and
+  // rounds are proven on Midnight by the house — still no wallet.
+  const DEMO_MODE = APP_MODE === 'demo' || APP_MODE === 'sponsored';
+  const SPONSORED = APP_MODE === 'sponsored' && SPONSORED_MODE;
+  const Table = SPONSORED ? SponsoredGame : DemoGame;
   return (
     <div className="app">
       {!DEMO_MODE && <RealDealHeader />}
@@ -87,7 +92,7 @@ export default function App() {
       <header className="header">
         <div>
           <h1>
-            Proof or Bluff <span className="badge">on Midnight</span>
+            Proof or Bluff <span className="badge">{SPONSORED ? `on Midnight ${NETWORK_ID}` : 'on Midnight'}</span>
           </h1>
           <div className="tagline">Bluff in public. Prove in private.</div>
         </div>
@@ -99,7 +104,7 @@ export default function App() {
         />
       </header>
 
-      <DemoGame audio={audio} onScreenChange={setDemoScreen} menuRequest={menuRequest} />
+      <Table audio={audio} onScreenChange={setDemoScreen} menuRequest={menuRequest} />
 
       <SponsorInvite />
       <footer className="footer">

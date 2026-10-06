@@ -45,20 +45,38 @@ class HttpError extends Error {
   constructor(statusCode, message) { super(message); this.statusCode = statusCode; }
 }
 
+/**
+ * Comma-separated bare origins. An entry may start with `https://*` to allow
+ * a suffix (e.g. `https://*-enterpisezk-labs-projects.vercel.app` for our own
+ * Vercel preview deployments — never a bare `https://*`).
+ */
 export function allowedOriginsFromEnvironment(env = process.env) {
   if (!env.POB_ALLOWED_ORIGINS) return new Set(DEFAULT_ALLOWED_ORIGINS);
-  return new Set(env.POB_ALLOWED_ORIGINS.split(',').map((o) => {
-    const origin = new URL(o.trim()).origin;
-    if (origin !== o.trim().replace(/\/$/, '')) throw new Error(`POB_ALLOWED_ORIGINS entry "${o}" must be a bare origin.`);
+  return new Set(env.POB_ALLOWED_ORIGINS.split(',').map((raw) => {
+    const o = raw.trim();
+    if (o.startsWith('https://*')) {
+      if (o.length < 'https://*.x.yz'.length || o.includes('/', 8)) throw new Error(`POB_ALLOWED_ORIGINS wildcard "${o}" must be https://*<suffix> with a real suffix.`);
+      return o;
+    }
+    const origin = new URL(o).origin;
+    if (origin !== o.replace(/\/$/, '')) throw new Error(`POB_ALLOWED_ORIGINS entry "${o}" must be a bare origin.`);
     return origin;
   }));
+}
+
+export function originAllowed(origin, allowedOrigins) {
+  if (allowedOrigins.has(origin)) return true;
+  for (const a of allowedOrigins) {
+    if (a.startsWith('https://*') && origin.startsWith('https://') && origin.endsWith(a.slice('https://*'.length)) && !origin.includes('/', 8)) return true;
+  }
+  return false;
 }
 
 function applyCors(request, response, allowedOrigins) {
   const origin = request.headers.origin;
   response.setHeader('Vary', 'Origin');
   if (!origin) return;
-  if (!allowedOrigins.has(origin)) throw new HttpError(403, 'Origin not allowed.');
+  if (!originAllowed(origin, allowedOrigins)) throw new HttpError(403, 'Origin not allowed.');
   response.setHeader('Access-Control-Allow-Origin', origin);
   response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   response.setHeader('Access-Control-Allow-Headers', 'Content-Type');

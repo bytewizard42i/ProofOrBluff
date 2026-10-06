@@ -5,7 +5,7 @@
 
 import http from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createChainQueue, createSponsoredHttpApp, toJsonSafe, allowedOriginsFromEnvironment, installConsoleRedaction } from './sponsored-service.js';
+import { createChainQueue, createSponsoredHttpApp, toJsonSafe, allowedOriginsFromEnvironment, installConsoleRedaction, originAllowed } from './sponsored-service.js';
 
 const { pureCircuits } = await import('../../contracts/managed/proof-or-bluff-rollup-v3p/contract/index.js');
 const ORIGIN = 'https://prooforbluff.app';
@@ -168,5 +168,12 @@ describe('sponsored service HTTP', () => {
     expect(toJsonSafe(2n ** 70n)).toBe((2n ** 70n).toString());
     expect([...allowedOriginsFromEnvironment({ POB_ALLOWED_ORIGINS: 'https://prooforbluff.app, http://localhost:5173' })]).toEqual(['https://prooforbluff.app', 'http://localhost:5173']);
     expect(() => allowedOriginsFromEnvironment({ POB_ALLOWED_ORIGINS: 'https://prooforbluff.app/path' })).toThrow(/bare origin/);
+    const wild = allowedOriginsFromEnvironment({ POB_ALLOWED_ORIGINS: 'https://prooforbluff.app,https://*-enterpisezk-labs-projects.vercel.app' });
+    expect(originAllowed('https://prooforbluff.app', wild)).toBe(true);
+    expect(originAllowed('https://pob-git-main-enterpisezk-labs-projects.vercel.app', wild)).toBe(true);
+    expect(originAllowed('https://evil.vercel.app', wild)).toBe(false);
+    expect(originAllowed('http://pob-enterpisezk-labs-projects.vercel.app', wild)).toBe(false);
+    expect(originAllowed('https://evil.example/x-enterpisezk-labs-projects.vercel.app', wild)).toBe(false);
+    expect(() => allowedOriginsFromEnvironment({ POB_ALLOWED_ORIGINS: 'https://*' })).toThrow(/real suffix/);
   });
 });

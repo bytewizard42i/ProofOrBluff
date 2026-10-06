@@ -60,13 +60,13 @@ export default function Menu({ onStart, onShowHelp }) {
               className={mode === 'home' ? 'active' : ''}
               onClick={() => setMode('home')}
             >
-              Home (52 cards)
+              Home (race to 15)
             </button>
             <button
               className={mode === 'casino' ? 'active' : ''}
               onClick={() => setMode('casino')}
             >
-              Casino (5 decks)
+              Casino (race to 20)
             </button>
           </div>
         </div>

@@ -14,11 +14,17 @@
 	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
 }
 
-# Allowed browser origins. Add preview/staging origins here, never "*".
+# Allowed browser origins. Production, plus OUR Vercel preview deployments
+# (team-scoped suffix — never a bare *.vercel.app). The service re-checks the
+# Origin itself (POB_ALLOWED_ORIGINS) so this is defence in depth, not the
+# only gate. Preflights are answered here; the backends never see them.
 (pob_cors) {
 	@preflight method OPTIONS
+	@origin_prod header Origin https://prooforbluff.app
+	@origin_preview header Origin *-enterpisezk-labs-projects.vercel.app
+	header @origin_prod Access-Control-Allow-Origin "https://prooforbluff.app"
+	header @origin_preview Access-Control-Allow-Origin "{http.request.header.Origin}"
 	header {
-		Access-Control-Allow-Origin "https://prooforbluff.app"
 		Access-Control-Allow-Methods "GET, POST, OPTIONS"
 		Access-Control-Allow-Headers "Content-Type"
 		Access-Control-Max-Age "86400"

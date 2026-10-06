@@ -2899,3 +2899,27 @@ button.active {
  * stage + side columns. */
 .center-stage { display: flex; flex-direction: column; align-items: center; gap: 1rem; min-width: 0; }
 .center-side { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; }
+
+/* ── Sponsored (Midnight) table: chain receipt strip + service notices ───── */
+.chain-strip {
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  margin: 0.25rem auto 0.6rem; max-width: 1180px; padding: 0.45rem 0.9rem;
+  border: 1px solid rgba(157, 78, 221, 0.35); border-radius: 10px;
+  background: rgba(20, 12, 36, 0.7); color: var(--text-dim); font-size: 0.9rem;
+}
+.chain-strip a { color: var(--violet); text-decoration: none; margin-left: auto; font-family: var(--mono, monospace); }
+.chain-strip a:hover { text-decoration: underline; }
+.chain-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-dim); box-shadow: 0 0 8px currentColor; }
+.chain-dot[data-state="pending"] { background: var(--gold); color: var(--gold); animation: chain-pulse 1.4s ease-in-out infinite; }
+.chain-dot[data-state="live"] { background: var(--violet); color: var(--violet); animation: chain-pulse 2.2s ease-in-out infinite; }
+.chain-dot[data-state="closed"] { background: #4ade80; color: #4ade80; }
+@keyframes chain-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+.service-error, .service-busy {
+  max-width: 720px; margin: 0.75rem auto; padding: 0.6rem 0.9rem; border-radius: 10px; text-align: center; font-size: 0.95rem;
+}
+.service-error { border: 1px solid rgba(220, 38, 38, 0.5); background: rgba(80, 10, 20, 0.6); color: #fecaca; }
+.service-busy { border: 1px solid rgba(157, 78, 221, 0.35); background: rgba(20, 12, 36, 0.7); color: var(--text-dim); }
+
+.result-card.draw h2 { color: var(--violet); }
+.result-footnote { color: var(--text-dim); font-size: 0.85rem; margin: -1rem 0 1.25rem; }
