@@ -155,8 +155,13 @@ export function installConsoleRedaction(secret, target = console) {
  *                                        One per game; obtained via options.chainForGame(gameId, contractAddress|null).
  * @param {string} [options.stateDir]     where pending/done step files live (null = memory only)
  * @param {function} options.onReceipt    (gameId, receipt) → void
+ * @param {function} [options.beforeStep]   async (gameId, step) → void, awaited inside the
+ *                                        serialized tail before each step runs. Used by main()
+ *                                        to wait for spendable DUST so chained transactions
+ *                                        cannot outrun the wallet's fee-UTXO tracking.
+ *                                        Throwing fails the step loudly (recorded + logged).
  */
-export function createChainQueue({ chainForGame, stateDir = null, onReceipt, onError = () => {}, serializeStep = defaultSerializeStep }) {
+export function createChainQueue({ chainForGame, stateDir = null, onReceipt, onError = () => {}, serializeStep = defaultSerializeStep, beforeStep = async () => {} }) {
   let tail = Promise.resolve();
   const stats = { submitted: 0, failed: 0, lastError: null, seconds: [] };
   const inFlight = new Set();
@@ -183,6 +188,9 @@ export function createChainQueue({ chainForGame, stateDir = null, onReceipt, onE
       await persist(gameId, step, 'pending');
       const started = Date.now();
       try {
+        // beforeStep runs inside try: a throw must fail THIS step only — a
+        // rejection outside try would reject `tail` and skip every later step.
+        await beforeStep(gameId, step);
         const api = await chainForGame(gameId, contractAddressRef.current);
         let receipt;
         if (step.step === 'deploy') {
@@ -420,13 +428,38 @@ async function main() {
     return { ok: true };
   };
 
+  // Gate every chain step on spendable DUST. The operator wallet pays fees
+  // from ONE DUST UTXO: each submitted tx spends it and the wallet must spot
+  // the change UTXO before the next step can balance a fee. 2026-10-06 incident:
+  // seven rapid confirmed spends left the local view at 0 (indexer showed the
+  // capacity), and closeGame died with "could not balance dust". So: never fire
+  // a step while dust reads below the minimum — wait for the wallet view to
+  // recover, and fail loudly (with the fix) if it never does.
+  // POB_DUST_STEP_WAIT_MS bounds the wait (default 10 min; one poll / 15 s).
+  const DUST_STEP_WAIT_MS = Number(process.env.POB_DUST_STEP_WAIT_MS || 10 * 60_000);
+  let dustLowSince = null;
+  const waitDustReady = async (gameId, step) => {
+    if (dust.balance >= MIN_DUST_FOR_A_GAME) { dustLowSince = null; return; }
+    const label = `${step.step}${step.round != null ? `(${step.round})` : ''}`;
+    if (!dustLowSince) { dustLowSince = new Date(); log(`chain ${gameId.slice(0, 8)} ${label}: spendable DUST=${dust.balance} — waiting for the wallet view to catch up…`); }
+    const deadline = Date.now() + DUST_STEP_WAIT_MS;
+    while (dust.balance < MIN_DUST_FOR_A_GAME) {
+      if (Date.now() >= deadline) {
+        throw new Error(`dust-unready: spendable DUST stayed ${dust.balance} for ${DUST_STEP_WAIT_MS / 1000}s before ${label} — wallet dust tracking is likely stuck (lost change UTXO). Fix: restart pob-api with the wallet snapshot deleted (cold resync), then retry.`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 15_000));
+    }
+    log(`chain ${gameId.slice(0, 8)} ${label}: DUST back (${dust.balance}) after ${Math.round((Date.now() - dustLowSince.getTime()) / 1000)}s — proceeding`);
+    dustLowSince = null;
+  };
+
   let app;
-  const queue = createChainQueue({ chainForGame, stateDir, onReceipt: (gameId, r) => app.receipt(gameId, r) });
+  const queue = createChainQueue({ chainForGame, stateDir, onReceipt: (gameId, r) => app.receipt(gameId, r), beforeStep: waitDustReady });
   app = createSponsoredHttpApp({
     pureCircuits, queue, network: networkId, allowedOrigins: allowedOriginsFromEnvironment(),
     walletAddress: walletHandle.address ?? null,
     readiness,
-    walletExtra: () => ({ dust: dust.balance.toString(), synced: dust.synced, observedAt: dust.at }),
+    walletExtra: () => ({ dust: dust.balance.toString(), synced: dust.synced, observedAt: dust.at, dustLowSince: dustLowSince?.toISOString() ?? null }),
   });
 
   const server = http.createServer((req, res) => app.handle(req, res));

@@ -151,6 +151,32 @@ describe('sponsored service HTTP', () => {
     srv.close();
   });
 
+  it('beforeStep gates each chain step: a step waits for it, a throw fails only that step, the next step still runs', async () => {
+    const calls = [];
+    const okChain = { async deployGame() { calls.push('deploy'); return { contractAddress: 'c1', txHash: 't', blockHeight: 1 }; } };
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    let n = 0;
+    const beforeStep = async (gameId, step) => {
+      n += 1;
+      if (n === 1) throw new Error('dust-unready: spendable DUST stayed 0');   // game A's deploy fails loudly
+      if (n === 2) await gate;                                                 // game B's deploy waits until released
+    };
+    const q3 = createChainQueue({ chainForGame: async () => okChain, onReceipt: () => {}, beforeStep });
+    const refA = { current: null }; const refB = { current: null };
+    q3.enqueue('a'.repeat(64), { step: 'deploy', args: {} }, { contractAddressRef: refA });
+    const tailB = q3.enqueue('b'.repeat(64), { step: 'deploy', args: {} }, { contractAddressRef: refB });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(q3.stats.failed).toBe(1);                                   // A failed...
+    expect(q3.stats.lastError.message).toContain('dust-unready');
+    expect(calls).toEqual([]);                                         // ...and B has not fired yet (gated)
+    release();
+    await tailB;
+    expect(calls).toEqual(['deploy']);                                 // B ran once released
+    expect(refB.current).toBe('c1');
+    expect(q3.stats.submitted).toBe(1);
+  });
+
   it('console redaction scrubs the Blockfrost token from every log level, including URLs and Errors', () => {
     const lines = [];
     const fake = { log: (...a) => lines.push(['log', ...a]), error: (...a) => lines.push(['error', ...a]), info() {}, warn() {}, debug() {} };

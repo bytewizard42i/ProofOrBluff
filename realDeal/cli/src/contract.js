@@ -83,12 +83,25 @@ export async function withDustRetry(label, build, { attempts = 5, backoffMs = 2_
     } catch (error) {
       lastError = error;
       const text = flattenErrorText(error);
-      const staleDust = /\b170\b/.test(text) || /balance dust|InsufficientFunds/i.test(text);
+      // Three distinct transient causes — label them separately in logs so a
+      // stuck-funds condition is never mislabeled as a stale fee proof:
+      //   170            chain rejected the DUST spend proof as stale → rebuild.
+      //   InsufficientFunds/"could not balance dust"   the WALLET can't find a
+      //                  spendable DUST UTXO right now (change from the previous
+      //                  tx not indexed yet, or — 2026-10-06 — tracking lost it).
+      //                  Rebuilding only helps once the view recovers, so wait
+      //                  longer than the generic backoff to let it catch up.
+      //   socket drop    transport hiccup → plain retry.
+      const staleProof = /\b170\b/.test(text);
+      const lowFunds = /balance dust|InsufficientFunds/i.test(text);
       const socketDrop = /Normal Closure|disconnected/i.test(text);
-      if (attempt < attempts && (staleDust || socketDrop)) {
+      if (attempt < attempts && (staleProof || lowFunds || socketDrop)) {
+        const why = staleProof ? 'stale DUST fee proof — rebuilding'
+          : lowFunds ? 'no spendable DUST in wallet view — waiting for the indexer'
+            : 'socket drop — retrying';
         // eslint-disable-next-line no-console
-        console.warn(`[${label}] attempt ${attempt}/${attempts} failed (${staleDust ? 'stale DUST fee proof — rebuilding' : 'socket drop — retrying'})`);
-        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        console.warn(`[${label}] attempt ${attempt}/${attempts} failed (${why})`);
+        await new Promise((resolve) => setTimeout(resolve, lowFunds ? Math.max(backoffMs, 15_000) : backoffMs));
         continue;
       }
       throw lastError;
