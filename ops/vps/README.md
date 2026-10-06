@@ -82,3 +82,29 @@ Caddy then answers 502 on `api.` — acceptable; the browser falls back to the
 local demo. `proof.` is unaffected. To roll forward, run `deploy.sh` again.
 Never `docker volume rm pob-api-state` while games are mid-proof: it holds the
 queue of submitted-but-unconfirmed steps.
+
+## Proving runs on Terry (John's home server) — the VPS is fallback
+
+Terry (LAN, 8 cores/19 GiB, 4 proving workers) is THE production prover. It
+has no public address and opens no ports: it dials OUT to this box over SSH
+and holds a reverse tunnel (`~/.config/systemd/user/pob-tunnel.service` on
+Terry, user `j5i`, linger enabled so it survives logout/reboot).
+
+```
+pob-api → http://caddy:6301 → terry-proof:16300 (tunnel) → Terry 127.0.0.1:6300
+                            ↘ proof-server:6300 (local, fallback)
+```
+
+* Caddy `:6301` uses `lb_policy first` + `/ready` health checks every 15 s:
+  Terry when healthy, local proof-server otherwise. Jobs never get stuck,
+  they get slower.
+* VPS side: user `pobtunnel` (nologin, `ForceCommand /bin/false`, remote
+  forwarding only, `permitlisten` pinned to `172.16.2.1:16300` = the
+  prooforbluff compose network gateway), sshd drop-in
+  `/etc/ssh/sshd_config.d/10-pob-tunnel.conf`, ufw rule allowing only
+  `172.16.2.0/24 → 172.16.2.1:16300`. Nothing is reachable from the internet.
+* Check which prover is live: `docker compose exec caddy wget -qO- http://127.0.0.1:6301/ready`
+  → `jobCapacity: 24` = Terry, `10` = local fallback.
+* Terry down? `ssh j5i@terry systemctl --user status pob-tunnel` and
+  `curl 127.0.0.1:6300/ready` there. Terry's compose: `~/pob/compose.yaml`
+  (backup of the 1-worker version beside it).

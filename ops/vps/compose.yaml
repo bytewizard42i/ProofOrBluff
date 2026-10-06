@@ -130,6 +130,15 @@ services:
     image: caddy:2-alpine
     container_name: pob-caddy
     restart: unless-stopped
+    # terry-proof = the address where Terry's reverse SSH tunnel listens
+    # (Caddyfile :6301). It must be THIS compose network's gateway (the host's
+    # IP on our bridge), not docker0 — Docker isolates bridges from each other,
+    # so a listener on docker0 is unreachable from here. Verify with:
+    #   docker network inspect prooforbluff_default --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
+    # and keep Terry's pob-tunnel.service -R address + the pobtunnel
+    # authorized_keys permitlisten in lockstep with it.
+    extra_hosts:
+      - "terry-proof:172.16.2.1"
     ports:
       - "80:80"
       - "443:443"

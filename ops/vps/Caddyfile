@@ -81,3 +81,29 @@ api.prooforbluff.app {
 		}
 	}
 }
+
+# ── Internal prover route: Terry first, local proof-server as fallback ──────
+# Not a public hostname — listens on the compose network only (pob-api points
+# POB_PROOF_SERVER at http://caddy:6301). Terry (John's home server, 8 cores)
+# is THE production prover: it dials out to this box and holds a reverse SSH
+# tunnel, so from here Terry's proof server appears at terry-proof:16300
+# (= docker0 172.16.0.1, see compose extra_hosts). If Terry is down, lid
+# closed or the tunnel drops, active health checks mark it unhealthy within
+# 15 s and jobs flow to the local proof-server instead — slower, never stuck.
+:6301 {
+	reverse_proxy terry-proof:16300 proof-server:6300 {
+		lb_policy first
+		lb_try_duration 5s
+		health_uri /ready
+		health_interval 15s
+		health_timeout 5s
+		fail_duration 60s
+		transport http {
+			response_header_timeout 660s
+			read_timeout 660s
+		}
+	}
+	request_body {
+		max_size 512MB
+	}
+}
