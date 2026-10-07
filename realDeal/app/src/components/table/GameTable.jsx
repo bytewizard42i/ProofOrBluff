@@ -248,7 +248,7 @@ export default function GameTable({
             {pileSize > 0 ? (
               <CardBack label={`PILE × ${pileSize}`} />
             ) : (
-              <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>Empty pile</div>
+              <div className="pile-empty" aria-label="Empty pile"><span>Empty pile</span></div>
             )}
           </div>
         </div>

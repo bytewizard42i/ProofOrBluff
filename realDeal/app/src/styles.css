@@ -336,8 +336,12 @@ button.active {
 
 .table-main {
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 1rem;
+  /* Rows size to content and pack to the top: the rank/pile cluster sits
+   * right under the Ai bar and the hand right under that. Any spare height
+   * (tall monitors) collects BELOW the hand, never as a void in the middle. */
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  gap: 0.5rem;
   min-width: 0;
   /* No overflow:hidden here — the player-card toss animation flies out
    * to the LEFT toward the game log, which lives outside this column.
@@ -599,10 +603,10 @@ button.active {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  padding: 1.5rem;
-  min-height: 220px;
+  justify-content: flex-start;
+  gap: 0.6rem;
+  padding: 0.5rem 1.5rem 0.75rem;
+  min-height: 0;
   min-width: 0;          /* allow grid item to shrink */
   overflow: hidden;      /* clip rank halo within the center column */
 }
@@ -917,15 +921,18 @@ button.active {
   /* Each card is shifted by --i * step from the leftmost. We center the
    * whole fan by translating back by half the total span. Step shrinks
    * if the hand is huge so it always fits in ~220px. */
-  --step: 14px;
-  --span: calc(var(--count, 10) * var(--step));
+  /* Step must exceed half a card width or 2-4 cards read as ONE card.
+   * 30px on a 42px card leaves each face clearly visible; max span is
+   * 4 cards = 132px, well inside the 200px stage. */
+  --step: 30px;
+  --span: calc((var(--count, 1) - 1) * var(--step));
   transform: translateX(calc(var(--i) * var(--step) - var(--span) / 2));
   transition: transform 0.25s ease-out;
 }
 
 /* Subtle hover-spread for fun. */
 .ai-thinking-cards:hover .ai-thinking-card {
-  --step: 18px;
+  --step: 36px;
 }
 
 /* ────────── Play result banner ──────────
@@ -993,6 +1000,25 @@ button.active {
   position: absolute;
   top: 0;
   left: 0;
+}
+
+/* Empty pile: a ghost card outline the same size as a real card-back, so
+ * the slot reads as "the pile lands here" rather than empty space, and
+ * nothing shifts when the first cards arrive. */
+.pile-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed rgba(157, 78, 221, 0.45);
+  border-radius: 10px;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 0 0.5rem;
 }
 
 .last-play {
