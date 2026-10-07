@@ -22,13 +22,20 @@
 	@preflight method OPTIONS
 	@origin_prod header Origin https://prooforbluff.app
 	@origin_preview header Origin *-enterpisezk-labs-projects.vercel.app
-	header @origin_prod Access-Control-Allow-Origin "https://prooforbluff.app"
-	header @origin_preview Access-Control-Allow-Origin "{http.request.header.Origin}"
+	# `>` = defer until the upstream response arrives AND replace, so when a
+	# backend (pob-api) emits its own CORS headers we end up with exactly ONE
+	# Access-Control-Allow-Origin. Two copies make browsers reject the response.
+	header @origin_prod {
+		>Access-Control-Allow-Origin "https://prooforbluff.app"
+	}
+	header @origin_preview {
+		>Access-Control-Allow-Origin "{http.request.header.Origin}"
+	}
 	header {
-		Access-Control-Allow-Methods "GET, POST, OPTIONS"
-		Access-Control-Allow-Headers "Content-Type"
-		Access-Control-Max-Age "86400"
-		Vary "Origin"
+		>Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		>Access-Control-Allow-Headers "Content-Type"
+		>Access-Control-Max-Age "86400"
+		>Vary "Origin"
 		# Standard hardening
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
@@ -79,6 +86,13 @@ api.prooforbluff.app {
 			response_header_timeout 30s
 			read_timeout 30s
 		}
+		# pob-api emits its own CORS headers; pob_cors (deferred, above) is the
+		# single source of truth for what the browser sees. Drop the upstream
+		# copies here so there is exactly ONE Access-Control-Allow-Origin.
+		header_down -Access-Control-Allow-Origin
+		header_down -Access-Control-Allow-Methods
+		header_down -Access-Control-Allow-Headers
+		header_down -Access-Control-Max-Age
 	}
 }
 
