@@ -379,6 +379,37 @@ export class SponsoredGameProvider {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * Quit the live game. Server-side this is "like a failed transaction":
+   * nothing is saved, unstarted proofs are dropped. Resolves even if the
+   * service is unreachable — the local table is cleared regardless.
+   */
+  async abandonGame() {
+    const gameId = this.activeGameId;
+    if (gameId) {
+      try { await this.client.abandon(gameId); } catch { /* server sweeper is the backstop */ }
+    }
+    this.resetGame();
+    return null;
+  }
+
+  /**
+   * Tab/window closing: fire-and-forget abandon that is allowed to outlive
+   * the page. sendBeacon with an empty text body is a CORS "simple request",
+   * so no preflight stands between us and the server during unload.
+   * Returns true when a live game was signalled.
+   */
+  beaconAbandon() {
+    const gameId = this.activeGameId;
+    if (!gameId || this.view?.status !== 'playing') return false;
+    const url = this.client.abandonUrl(gameId);
+    let sent = false;
+    try { sent = typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function' ? navigator.sendBeacon(url, '') : false; } catch { sent = false; }
+    if (!sent) { try { fetch(url, { method: 'POST', keepalive: true }).catch(() => {}); } catch { /* best effort */ } }
+    this._storeGameId(null);
+    return true;
+  }
+
   resetGame() {
     this._storeGameId(null);
     this.view = null;

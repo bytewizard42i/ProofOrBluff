@@ -108,6 +108,29 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
 
   useEffect(() => { if (menuRequest > 0) handleMenu(); }, [menuRequest, handleMenu]);
 
+  // Quit: tell the service to drop the game (unstarted proofs are cancelled,
+  // nothing is saved), then back to the menu. Resolves even if the service
+  // is unreachable — the server's idle sweeper is the backstop.
+  const handleQuit = useCallback(() => {
+    run(async () => { await provider.abandonGame(); handleMenu(); });
+  }, [provider, handleMenu, run]);
+
+  // Tab closed / navigated away / refreshed mid-game: beacon the abandon so
+  // the table is shut down like a failed transaction. pagehide fires on
+  // every unload path (including bfcache) where beforeunload does not.
+  useEffect(() => {
+    if (screen !== 'game') return undefined;
+    const onHide = () => { provider.beaconAbandon(); };
+    window.addEventListener('pagehide', onHide);
+    return () => window.removeEventListener('pagehide', onHide);
+  }, [screen, provider]);
+
+  // A game id left in storage from a previous visit is a dead game (no
+  // saved games for now): abandon it server-side so it doesn't idle out.
+  useEffect(() => {
+    if (provider.activeGameId && !provider.getView()) provider.abandonGame().catch(() => {});
+  }, [provider]);
+
   // Receipts land asynchronously; poll while anything is pending so the
   // chain strip ticks from "deploying" → "round 2/3 proven" → "sealed".
   useEffect(() => {
@@ -171,6 +194,8 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
               banner={banner}
               skipFutureOutcomeSounds={skipFutureOutcomeSounds}
               outputComplete={outputComplete}
+              busy={busy}
+              onQuit={handleQuit}
             />
           </div>
           {state.status === 'gameover' && (

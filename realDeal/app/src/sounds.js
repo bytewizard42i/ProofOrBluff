@@ -356,7 +356,19 @@ let musicGain = null;
  * already playing. The loop is built from chord arpeggios scheduled in
  * advance via the AudioContext clock so it stays in tempo.
  */
+/**
+ * Phones: no lounge music. Mobile browsers (especially in-app browsers from
+ * messaging apps) hand <audio> MP3s to the OS and can fail with "could not
+ * find an appropriate application". Sound effects still play (WebAudio).
+ */
+export function isMobileDevice() {
+  if (typeof navigator === 'undefined') return false;
+  const coarse = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (coarse && window.innerWidth < 900);
+}
+
 export function startBackgroundMusic() {
+  if (isMobileDevice()) return;
   musicRequested = true;
   // An MP3 track was chosen: play it and make sure the synth loop is silent.
   if (currentTrack.url) {

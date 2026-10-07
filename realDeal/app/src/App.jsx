@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { unlockAudio } from './sounds.js';
+import { unlockAudio, isMobileDevice } from './sounds.js';
 import RealDealHeader from './RealDealHeader.jsx';
 import ProofServerLog from './ProofServerLog.jsx';
 import SponsorRail, { SponsorInvite } from './SponsorRail.jsx';
@@ -17,18 +17,20 @@ const APP_MODE = import.meta.env.VITE_POB_MODE || 'testwired';
  * Top-right music controls shared by both surfaces.
  */
 function MusicControls({ audio, extra }) {
+  // Phones get no music player at all (see sounds.js isMobileDevice).
+  const mobile = isMobileDevice();
   return (
     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
       <ProTeaser />
-      <MusicPicker compact />
-      <button
+      {!mobile && <MusicPicker compact />}
+      {!mobile && <button
         onClick={() => { unlockAudio(); audio.setMuted((m) => !m); }}
         title={audio.muted ? 'Unmute lounge music' : 'Mute lounge music'}
         aria-label={audio.muted ? 'Unmute lounge music' : 'Mute lounge music'}
       >
         {audio.muted ? '🔇' : '🎵'}
-      </button>
-      <input
+      </button>}
+      {!mobile && <input
         type="range"
         className="volume-slider"
         min="0"
@@ -40,7 +42,7 @@ function MusicControls({ audio, extra }) {
         aria-label="Music volume"
         title={`Music volume: ${Math.round(audio.musicVolume * 100)}%`}
         disabled={audio.muted}
-      />
+      />}
       {extra}
     </div>
   );

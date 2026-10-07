@@ -71,6 +71,9 @@ export function createSponsoredClient({ baseUrl = defaultBaseUrl(), fetchImpl = 
     play: (gameId, { rank, count, cards }) => request('POST', `/games/${requireGameId(gameId)}/play`, { rank, count, cards }),
     accept: (gameId) => request('POST', `/games/${requireGameId(gameId)}/accept`),
     challenge: (gameId) => request('POST', `/games/${requireGameId(gameId)}/challenge`),
+    abandon: (gameId) => request('POST', `/games/${requireGameId(gameId)}/abandon`),
+    /** Absolute URL for navigator.sendBeacon on tab close (no custom headers → no preflight). */
+    abandonUrl: (gameId) => `${apiRoot}/games/${requireGameId(gameId)}/abandon`,
   };
 }
 

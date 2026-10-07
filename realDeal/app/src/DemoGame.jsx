@@ -256,6 +256,7 @@ export default function DemoGame({ audio, onScreenChange, menuRequest = 0 }) {
               banner={banner}
               skipFutureOutcomeSounds={skipFutureOutcomeSounds}
               outputComplete={outputComplete}
+              onQuit={handleMenu}
             />
           </div>
           {state.status === 'gameover' && (

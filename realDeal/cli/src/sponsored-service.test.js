@@ -177,6 +177,69 @@ describe('sponsored service HTTP', () => {
     expect(q3.stats.submitted).toBe(1);
   });
 
+  it('abandon: quitting a live game forgets it, drops unstarted chain steps, and is beacon-friendly', async () => {
+    // A slow fake chain so the deploy is still queued when the player quits.
+    let release; const gate = new Promise((r) => { release = r; });
+    const calls = [];
+    const slow = {
+      async deployGame() { await gate; calls.push('deploy'); return { contractAddress: 'd'.repeat(64), txHash: 'tx-d', blockHeight: 1 }; },
+      async proveRound({ round }) { calls.push(`proveRound${round}`); return { txHash: 't', blockHeight: 2 }; },
+      async closeGame() { calls.push('closeGame'); return { txHash: 'c', blockHeight: 3 }; },
+    };
+    let app2;
+    const q = createChainQueue({ chainForGame: async () => slow, onReceipt: (id, r) => app2.receipt(id, r) });
+    app2 = createSponsoredHttpApp({ pureCircuits, queue: q, network: 'test' });
+    const srv = http.createServer((a, b) => app2.handle(a, b));
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const b2 = `http://127.0.0.1:${srv.address().port}`;
+    try {
+      // Game A: deploy is in flight (blocked on the gate). Game B: deploy queued behind it.
+      const a = await (await fetch(`${b2}/v1/games`, { method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' }, body: '{"mode":1}' })).json();
+      const b = await (await fetch(`${b2}/v1/games`, { method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' }, body: '{"mode":1}' })).json();
+      expect(app2._games.size).toBe(2);
+
+      // Quit B the way navigator.sendBeacon does: POST, no JSON body, text/plain.
+      const quit = await fetch(`${b2}/v1/games/${b.gameId}/abandon`, { method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'text/plain' }, body: '' });
+      expect(quit.status).toBe(200);
+      const view = await quit.json();
+      expect(view.status).toBe('abandoned'); expect(view.winner).toBeNull(); expect(view.chain.pending).toEqual([]);
+      expect(view.lastEvents).toEqual([{ type: 'game-abandoned' }]);
+      expect(app2._games.has(b.gameId)).toBe(false);
+      expect((await fetch(`${b2}/v1/games/${b.gameId}`, { headers: { Origin: ORIGIN } })).status).toBe(404);
+      // Idempotent / unknown id: still 200 (beacons must never error loudly).
+      expect((await fetch(`${b2}/v1/games/${b.gameId}/abandon`, { method: 'POST', headers: { Origin: ORIGIN } })).status).toBe(200);
+
+      // Moves on an abandoned game are refused.
+      release(); await q.idle();
+      // Only A's deploy ran; B's queued deploy was skipped — no proof, no tx.
+      expect(calls).toEqual(['deploy']);
+      expect(q.stats.cancelled).toBe(1);
+      const stats = await (await fetch(`${b2}/v1/stats`, { headers: { Origin: ORIGIN } })).json();
+      expect(stats.abandoned).toBe(1); expect(stats.ended).toBe(0);
+      expect(app2._games.get(a.gameId).game.view().chain.contractAddress).toBe('d'.repeat(64));
+    } finally { srv.close(); }
+  });
+
+  it('sweep abandons live games idle past the threshold, leaves active ones alone', async () => {
+    let t = 1_000_000;
+    const q = createChainQueue({ chainForGame: chain.chainForGame, onReceipt: () => {} });
+    const app3 = createSponsoredHttpApp({ pureCircuits, queue: q, network: 'test', now: () => t });
+    const srv = http.createServer((a, b) => app3.handle(a, b));
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const b3 = `http://127.0.0.1:${srv.address().port}`;
+    try {
+      const idle = await (await fetch(`${b3}/v1/games`, { method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' }, body: '{"mode":1}' })).json();
+      t += 9 * 60 * 1000;
+      const active = await (await fetch(`${b3}/v1/games`, { method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' }, body: '{"mode":1}' })).json();
+      t += 2 * 60 * 1000;              // idle game is now 11 min untouched; active one 2 min
+      app3.sweep();
+      expect(app3._games.has(idle.gameId)).toBe(false);
+      expect(app3._games.has(active.gameId)).toBe(true);
+      expect(app3.stats().abandoned).toBe(1);
+      await q.idle();
+    } finally { srv.close(); }
+  });
+
   it('console redaction scrubs the Blockfrost token from every log level, including URLs and Errors', () => {
     const lines = [];
     const fake = { log: (...a) => lines.push(['log', ...a]), error: (...a) => lines.push(['error', ...a]), info() {}, warn() {}, debug() {} };

@@ -38,9 +38,23 @@ export default function GameTable({
   skipFutureOutcomeSounds,
   outputComplete,
   busy = false,
+  onQuit = null,
 }) {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [claimedCount, setClaimedCount] = useState(1);
+  // Quit is two taps: the first arms it for 4 s ("Sure? Quit"), the second
+  // fires. Guards against a mis-click ending a live Mainnet game.
+  const [quitArmed, setQuitArmed] = useState(false);
+  useEffect(() => {
+    if (!quitArmed) return undefined;
+    const t = setTimeout(() => setQuitArmed(false), 4000);
+    return () => clearTimeout(t);
+  }, [quitArmed]);
+  const handleQuitClick = () => {
+    if (!quitArmed) { setQuitArmed(true); return; }
+    setQuitArmed(false);
+    onQuit?.();
+  };
   // IDs of cards currently mid-toss-animation. Held in local state so the
   // visual flourish completes before the new game state replaces them.
   const [tossingIds, setTossingIds] = useState(new Set());
@@ -244,6 +258,22 @@ export default function GameTable({
         )}
 
         <div className="pile-display">
+          {/* Far-left slot: quit the game. Mirrored by an empty right slot so
+            * the pile stays centred under the rank. Hidden once the game is over
+            * (the result overlay owns those buttons). */}
+          <div className="pile-side pile-side--left">
+            {onQuit && state.status === 'playing' && (
+              <button
+                type="button"
+                className={`btn-quit${quitArmed ? ' btn-quit--armed' : ''}`}
+                onClick={handleQuitClick}
+                disabled={busy}
+                aria-label={quitArmed ? 'Confirm quit game' : 'Quit game'}
+              >
+                {quitArmed ? <>Sure?<br />Quit</> : <>Safely<br />quit game</>}
+              </button>
+            )}
+          </div>
           <div className="pile-stack">
             {pileSize > 0 ? (
               <CardBack label={`PILE × ${pileSize}`} />
@@ -251,6 +281,7 @@ export default function GameTable({
               <div className="pile-empty" aria-label="Empty pile"><span>Empty pile</span></div>
             )}
           </div>
+          <div className="pile-side pile-side--right" aria-hidden="true" />
         </div>
 
         {banner && (

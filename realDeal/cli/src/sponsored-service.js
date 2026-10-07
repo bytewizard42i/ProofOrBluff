@@ -33,7 +33,10 @@ const LOOPBACK_HOST = process.env.POB_API_HOST || '127.0.0.1';
 const DEFAULT_PORT = 3020;
 const MAX_JSON_BODY_BYTES = 4 * 1024;
 const MAX_OPEN_GAMES = 200;
-const GAME_TTL_MS = 6 * 60 * 60 * 1000;   // idle games are forgotten after 6 h
+const GAME_TTL_MS = 6 * 60 * 60 * 1000;   // finished games are forgotten after 6 h
+// A LIVE game with no request for this long is abandoned (player closed the
+// tab without the beacon landing, lost power, walked away). Nothing is saved.
+const IDLE_ABANDON_MS = Number(process.env.POB_IDLE_ABANDON_MS || 10 * 60 * 1000);
 const DEFAULT_ALLOWED_ORIGINS = ['https://prooforbluff.app', 'http://localhost:3016', 'http://127.0.0.1:3016', 'http://localhost:5173'];
 
 const log = (m) => console.log(`${new Date().toISOString()}  ${m}`);
@@ -163,8 +166,10 @@ export function installConsoleRedaction(secret, target = console) {
  */
 export function createChainQueue({ chainForGame, stateDir = null, onReceipt, onError = () => {}, serializeStep = defaultSerializeStep, beforeStep = async () => {} }) {
   let tail = Promise.resolve();
-  const stats = { submitted: 0, failed: 0, lastError: null, seconds: [] };
+  const stats = { submitted: 0, failed: 0, cancelled: 0, lastError: null, seconds: [] };
   const inFlight = new Set();
+  /** gameIds whose not-yet-started steps must be skipped (player quit). */
+  const cancelled = new Set();
 
   async function persist(gameId, step, status) {
     if (!stateDir) return;
@@ -185,6 +190,14 @@ export function createChainQueue({ chainForGame, stateDir = null, onReceipt, onE
     const key = `${gameId}:${step.step}:${step.round ?? ''}`;
     inFlight.add(key);
     tail = tail.then(async () => {
+      if (cancelled.has(gameId)) {
+        // The player quit before this step started: drop it. No proof, no
+        // DUST, no transaction — exactly like a step that never existed.
+        stats.cancelled += 1; inFlight.delete(key);
+        await persist(gameId, step, 'abandoned');
+        log(`chain ${gameId.slice(0, 8)} ${step.step}${step.round ? `(${step.round})` : ''} skipped — game abandoned`);
+        return;
+      }
       await persist(gameId, step, 'pending');
       const started = Date.now();
       try {
@@ -219,8 +232,12 @@ export function createChainQueue({ chainForGame, stateDir = null, onReceipt, onE
     return tail;
   }
 
+  /** Skip every queued-but-unstarted step for `gameId`. A step mid-proof finishes; its receipt is ignored by the service. */
+  function cancel(gameId) { cancelled.add(gameId); }
+
   return {
     enqueue,
+    cancel,
     get pending() { return inFlight.size; },
     get stats() { return { ...stats, avgSeconds: stats.seconds.length ? Number((stats.seconds.reduce((a, b) => a + b, 0) / stats.seconds.length).toFixed(1)) : null }; },
     /** Resolves once everything queued so far has run (tests / shutdown). */
@@ -248,11 +265,38 @@ export function createSponsoredHttpApp({
 }) {
   /** gameId → { game, contractAddressRef, touchedAt } */
   const games = new Map();
-  const totals = { created: 0, ended: 0, closed: 0, wins: { human: 0, bot: 0, draw: 0 } };
+  const totals = { created: 0, ended: 0, closed: 0, abandoned: 0, wins: { human: 0, bot: 0, draw: 0 } };
 
+  /** Quit a live game: drop its unstarted chain steps and forget it. Idempotent; safe on unknown ids. */
+  function abandonGame(gameId, reason = 'quit') {
+    const entry = games.get(gameId);
+    if (!entry) return null;
+    const wasLive = entry.game.status === GAME_STATUS.PLAYING;
+    const view = entry.game.abandon();
+    if (wasLive) {
+      queue.cancel(gameId);
+      totals.abandoned += 1;
+      log(`game ${gameId.slice(0, 8)} abandoned (${reason})`);
+    }
+    games.delete(gameId);
+    return withNetwork(view);
+  }
+
+  /**
+   * Housekeeping, run on every createGame and from a timer in main():
+   *  - live games nobody has touched for IDLE_ABANDON_MS are abandoned
+   *    (the browser-closed-without-beacon case);
+   *  - finished games older than GAME_TTL_MS with no chain work left are forgotten.
+   */
   function sweep() {
-    const cutoff = now() - GAME_TTL_MS;
-    for (const [id, entry] of games) if (entry.touchedAt < cutoff && entry.game.view().chain.pending.length === 0) games.delete(id);
+    const t = now();
+    for (const [id, entry] of games) {
+      if (entry.game.status === GAME_STATUS.PLAYING) {
+        if (entry.touchedAt < t - IDLE_ABANDON_MS) abandonGame(id, 'idle');
+      } else if (entry.touchedAt < t - GAME_TTL_MS && entry.game.view().chain.pending.length === 0) {
+        games.delete(id);
+      }
+    }
   }
 
   function drain(entry) {
@@ -340,6 +384,13 @@ export function createSponsoredHttpApp({
       }
       const gameId = parts[2];
       if (!/^[0-9a-f]{64}$/.test(gameId ?? '')) throw new HttpError(404, 'Unknown game.');
+      // Quit. Also the target of navigator.sendBeacon on tab close, so the
+      // body may be empty / text/plain and the game may already be gone —
+      // never require JSON and never 404 here.
+      if (parts[3] === 'abandon' && request.method === 'POST') {
+        await readJsonBody(request).catch(() => ({}));
+        return sendJson(response, 200, abandonGame(gameId, 'quit') ?? { gameId, status: 'abandoned' });
+      }
       const entry = getGame(gameId);
       if (parts.length === 3 && request.method === 'GET') return sendJson(response, 200, withNetwork(entry.game.view()));
       if (parts[3] === 'transcript' && request.method === 'GET') return sendJson(response, 200, act(entry, (g) => g.transcript()));
@@ -359,7 +410,7 @@ export function createSponsoredHttpApp({
     }
   }
 
-  return { handle, receipt, health, stats: statsView, _games: games };
+  return { handle, receipt, health, stats: statsView, sweep, _games: games };
 }
 
 // ---------------------------------------------------------------------------
@@ -464,6 +515,10 @@ async function main() {
 
   const server = http.createServer((req, res) => app.handle(req, res));
   server.listen(port, LOOPBACK_HOST, () => log(`listening on http://${LOOPBACK_HOST}:${port}/v1`));
+  // Abandon live games nobody has touched for IDLE_ABANDON_MS (closed laptop,
+  // lost tab, no beacon). Checked every minute; unref so it never holds the
+  // process open on shutdown.
+  setInterval(() => app.sweep(), 60_000).unref();
 
   const shutdown = async (signal) => {
     log(`${signal}: draining chain queue…`);

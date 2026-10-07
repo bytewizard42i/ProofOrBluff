@@ -26,7 +26,7 @@ import { RANKS } from '../../shared/dealing.js';
 import * as scriptedAi from '../../../demoLand/src/game/ai/scripted.js';
 
 export const SEAT = Object.freeze({ HUMAN: 0, BOT: 1 });
-export const GAME_STATUS = Object.freeze({ PLAYING: 'playing', ENDED: 'ended', CLOSED: 'closed' });
+export const GAME_STATUS = Object.freeze({ PLAYING: 'playing', ENDED: 'ended', CLOSED: 'closed', ABANDONED: 'abandoned' });
 // Contract modes: 0 Casual (5 cards, to 10), 1 Standard (7, to 15), 4 Casino (7, to 20).
 export const MODES = Object.freeze([0, 1, 4]);
 export const DIFFICULTIES = Object.freeze(['easy', 'medium', 'hard']);
@@ -215,6 +215,22 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
       return afterHumanAction();
     },
 
+    /**
+     * The player quit (button, tab closed, or went idle). Treated like a
+     * failed transaction: nothing is saved, no result is recorded, and any
+     * chain work not yet started is dropped by the service. A contract that
+     * already deployed simply stays open on-chain — harmless, and provably
+     * unfinished. Idempotent.
+     */
+    abandon() {
+      if (status !== GAME_STATUS.PLAYING) return game.view();
+      status = GAME_STATUS.ABANDONED;
+      chain.pending = [];
+      pendingChainSteps.length = 0;
+      events = [{ type: 'game-abandoned' }];
+      return game.view();
+    },
+
     humanAccept() {
       requireHumanTurn();
       const s = referee.state;
@@ -280,7 +296,7 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
         scores: { human: Number(s ? s.score0 : b.score0), bot: Number(s ? s.score1 : b.score1) },
         hand: s ? handCountsToRanks(referee.hands[SEAT.HUMAN]) : [],
         cardsLeft: s ? { human: Number(size - s.plays0), bot: Number(size - s.plays1) } : { human: 0, bot: 0 },
-        winner: live ? null : winnerName(referee.result().winner),
+        winner: live || status === GAME_STATUS.ABANDONED ? null : winnerName(referee.result().winner),
         lastEvents: [...events],
         chain: { contractAddress: chain.contractAddress, receipts: [...chain.receipts], pending: [...chain.pending] },
       };
