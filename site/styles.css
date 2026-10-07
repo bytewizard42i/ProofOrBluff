@@ -118,21 +118,38 @@ code { font-family: var(--mono); font-size: 0.95em; background: rgba(188, 177, 2
 }
 .btn-primary:hover, .btn-primary:focus-visible { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(143, 124, 255, 0.5); }
 
-/* Racing neon: a bright arc that chases around the pill's edge. The ring is
-   a conic gradient on a pseudo-element 3px larger than the button, masked so
-   only the border band shows; the button body sits on top, text untouched. */
-.btn-neon { position: relative; isolation: isolate; }
+/* Racing neon: a bright arc chasing around the pill's edge.
+   The button gets a 3px transparent border; its own background is clipped to
+   the padding box, so that band is see-through. Behind it (z -1, clipped by
+   overflow:hidden + the pill radius) a big square with a conic gradient spins
+   with a plain transform — the only part that shows is the 3px ring. Uses
+   transform, not @property, so it animates in every browser. */
+.btn-neon {
+  position: relative; isolation: isolate;
+  /* clip-path, not overflow:hidden — overflow clips to the PADDING box and
+     would swallow the border band the ring lives in. */
+  clip-path: inset(0 round 999px);
+  border: 3px solid transparent;
+}
+/* The button face, re-drawn on ::after so it sits ABOVE the spinning ring
+   (a z:-1 child paints over its parent's own background, so the parent's
+   gradient alone would not hide the ring). inset:0 = the padding box, so the
+   3px border band stays open for the ring. */
+.btn-neon::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+  background: linear-gradient(135deg, #bcb1ff, #8f7cff);
+}
 .btn-neon::before {
-  content: ""; position: absolute; inset: -3px; border-radius: inherit; z-index: -1;
-  background: conic-gradient(from var(--neon-angle, 0deg),
-    transparent 0 62%, rgba(255, 214, 10, 0.35) 72%, #ffd60a 84%, #fff6c2 90%, #ffd60a 96%, transparent 100%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude; padding: 3px;
-  filter: drop-shadow(0 0 6px rgba(255, 214, 10, 0.85)) drop-shadow(0 0 14px rgba(255, 214, 10, 0.45));
+  content: ""; position: absolute; z-index: -1;
+  left: 50%; top: 50%; width: 220%; aspect-ratio: 1;
+  background: conic-gradient(
+    rgba(255, 214, 10, 0.18) 0 55%, rgba(255, 214, 10, 0.5) 70%, #ffd60a 84%, #fff6c2 90%, #ffd60a 96%, rgba(255, 214, 10, 0.18) 100%);
   animation: neon-race 2.4s linear infinite;
 }
-@property --neon-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-@keyframes neon-race { to { --neon-angle: 360deg; } }
+@keyframes neon-race {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
 .btn-secondary {
   background: rgba(26, 21, 48, 0.8); color: var(--text); border-color: var(--border);
 }
@@ -307,5 +324,5 @@ tbody tr:nth-child(even) td { background: rgba(26, 21, 48, 0.35); }
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition: none !important; animation: none !important; }
   .btn-primary:hover { transform: none; }
-  .btn-neon::before { background: conic-gradient(#ffd60a, #ffd60a); opacity: 0.6; }
+  .btn-neon::before { background: #ffd60a; opacity: 0.6; }
 }
