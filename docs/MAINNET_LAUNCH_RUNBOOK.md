@@ -301,3 +301,26 @@ to 503 on new games; in-flight proofs finish), or redeploy the demo build.
 - [ ] GoDaddy DNS changes for `.com` / `.app` once hosting exists (P3)
 - [ ] Pick the VPS provider + Blockfrost plan (P3 / M1)
 - [ ] Approve the one mainnet deploy command (M4)
+
+## DUST funding record (2026-10-06)
+
+Root cause of the first `closeGame` failure ("could not balance dust"): ONE
+cNIGHT UTXO backs ONE DUST UTXO, and the number of DUST UTXOs is the ceiling on
+transactions in flight (docs: Managing DUST → Sending several transactions).
+Fix = more backing UTXOs, plus the service now waits for spendable DUST before
+every chain step (`POB_DUST_STEP_WAIT_MS`).
+
+| | Wallet 0 (original) | Wallet 1 (added tonight) |
+|---|---|---|
+| Cardano stake | `stake1uyqefccugz88tswdheluaje7m5yqj89ev34az0tf2lyngcq06c2rq` | `stake1uxdsz3xna0440qd74fwcyj4p3yxtqa3z2kjvtmlmzwpml3smnc3t8` |
+| Payment addr | `addr1q8a2s89p…kxtu5` | `addr1qx999mz5…f9c6` |
+| cNIGHT shape | 1 × 5,000 | **15 × 333** (tx `3519cdf3…ef310a`, block 14035300) |
+| Registration | `8e008ec2…7b3e` (block 14031687) | `70207fc7…0d499c` (block 14035174) |
+| DUST address | both → `mn_dust1wwrkseeghlkz4rztjaphsknvfgmd6dl6l4u7kz40d59d9ll26p4jcwnx0jf` |
+
+Expected operator DUST UTXOs after ingestion (~12 h): **16**. Rules learned:
+only cNIGHT UTXOs created AFTER the registration generate; exactly one
+registration per stake address (never re-register wallet 0); Lace cannot build
+multi-output sends and its coin selection re-merges self-sends — build the
+split tx offline (CSL) and sign via CIP-30 (`~/dust-split/index.html`).
+Fees measured: deploy + 6 proveRound on Mainnet cost < 1 DUST total.
