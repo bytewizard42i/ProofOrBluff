@@ -1,0 +1,5 @@
+public/managed
+vendor/proof-or-bluff-mainnet/keys
+vendor/proof-or-bluff-mainnet/zkir
+dist
+.vercel

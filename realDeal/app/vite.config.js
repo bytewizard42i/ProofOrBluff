@@ -5,11 +5,18 @@ import topLevelAwait from 'vite-plugin-top-level-await';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
-import { readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const stateOnlyAssets = resolve(__dirname, '../contracts/managed/proof-or-bluff-mainnet');
+// Vercel CLI uploads only this directory, so files that live outside it
+// (../shared, ../contracts) must be vendored first (scripts/vendor-for-deploy.mjs
+// → vendor/). Prefer the real checkout when present; fall back to vendor/.
+const realStateOnlyAssets = resolve(__dirname, '../contracts/managed/proof-or-bluff-mainnet');
+const stateOnlyAssets = existsSync(realStateOnlyAssets)
+  ? realStateOnlyAssets
+  : resolve(__dirname, 'vendor/proof-or-bluff-mainnet');
 const stateOnlyBuild = process.env.VITE_CONTRACT_VARIANT === 'state-only';
+const sponsoredBuild = process.env.VITE_POB_MODE === 'sponsored';
 
 // Keep the generated state-only ZK assets separate from the wagered symlink.
 // Dev serves only known key/zkir file names; production emits the same assets
@@ -18,7 +25,7 @@ function stateOnlyZkAssetsPlugin() {
   return {
     name: 'pob-state-only-zk-assets',
     configureServer(server) {
-      if (!stateOnlyBuild) return;
+      if (!stateOnlyBuild || sponsoredBuild) return;
       server.middlewares.use((request, response, next) => {
         const match = /^\/managed\/proof-or-bluff-mainnet\/(keys|zkir)\/([a-zA-Z0-9_-]+\.(?:prover|verifier|bzkir|zkir))$/.exec(request.url?.split('?')[0] || '');
         if (!match) return next();
@@ -33,7 +40,7 @@ function stateOnlyZkAssetsPlugin() {
       });
     },
     generateBundle() {
-      if (!stateOnlyBuild) return;
+      if (!stateOnlyBuild || sponsoredBuild) return;
       for (const folder of ['keys', 'zkir']) {
         for (const filename of readdirSync(resolve(stateOnlyAssets, folder))) {
           this.emitFile({
@@ -102,6 +109,24 @@ function proofServerLogsPlugin() {
   };
 }
 
+// Redirects imports that escape this directory (`../shared/x.js`,
+// `../../media/Audio/y.mp3` at any depth) to vendor/<rest> when the real
+// path doesn't exist — i.e. inside a Vercel deploy upload, which contains
+// only this directory. Locally nothing changes.
+function vendorSharedPlugin() {
+  const vendored = resolve(__dirname, 'vendor');
+  return {
+    name: 'pob-vendor-shared',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (!source.startsWith('..') || !importer) return null;
+      if (existsSync(resolve(dirname(importer), source))) return null;
+      const local = resolve(vendored, source.replace(/^(\.\.\/)+/, ''));
+      return local.startsWith(vendored) && existsSync(local) ? local : null;
+    },
+  };
+}
+
 // Proof or Bluff — realDeal Vite app. Port 3016 (demoLand owns 3015).
 // Aliases let the Midnight SDK packages resolve correctly inside the
 // browser bundle even when their internal deps reach for Node built-ins.
@@ -112,7 +137,7 @@ function proofServerLogsPlugin() {
 // these plugins Vite errors with: "ESM integration proposal for Wasm
 // is not supported currently".
 export default defineConfig({
-  plugins: [react(), wasm(), topLevelAwait(), stateOnlyZkAssetsPlugin(), stripWageredAssetsPlugin(), proofServerLogsPlugin()],
+  plugins: [react(), wasm(), topLevelAwait(), stateOnlyZkAssetsPlugin(), stripWageredAssetsPlugin(), proofServerLogsPlugin(), vendorSharedPlugin()],
   resolve: {
     // Keep symlinks unresolved so the bindings imported via
     // src/contract/ keep their import paths anchored inside realDeal/app/,
