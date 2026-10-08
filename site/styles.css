@@ -167,15 +167,6 @@ code { font-family: var(--mono); font-size: 0.95em; background: rgba(188, 177, 2
 }
 .status-banner strong { color: var(--warn); }
 
-/* Temporary "we're tuning the table" banner — REMOVE when the v4 (shared-deck,
-   empty-hand-win) contract ships. Rebuild flagged 2026-10-08. */
-.build-banner {
-  background: repeating-linear-gradient(-45deg, rgba(255,159,28,0.14) 0 14px, rgba(255,159,28,0.05) 14px 28px);
-  border-bottom: 2px dashed rgba(255, 159, 28, 0.65);
-  color: #ffd8a8; font-size: 0.9rem; text-align: center; padding: 0.5rem 1rem;
-}
-.build-banner strong { color: #ffb454; }
-
 /* ---------- Hero ---------- */
 
 /* Midnight brand backdrop: fixed ("sticky") to the viewport, semi-transparent,
