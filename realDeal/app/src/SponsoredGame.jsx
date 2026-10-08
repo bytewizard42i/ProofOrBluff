@@ -140,8 +140,16 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
   }, [screen, chain, provider]);
 
   // The bot's challenge is announced by the dealer just like the demo does.
+  // The server keeps lastEvents until the next human action, and receipt
+  // polling re-returns them — so announce each distinct event set only once,
+  // keyed on its content signature (prevents the same challenge re-speaking
+  // on every poll).
+  const announcedEventsRef = useRef('');
   useEffect(() => {
     const lastEvents = provider.getView()?.lastEvents ?? [];
+    const signature = JSON.stringify(lastEvents.map((e) => [e.type, e.truthful, e.revealed, e.dialogue]));
+    if (signature === announcedEventsRef.current) return;
+    announcedEventsRef.current = signature;
     if (lastEvents.some((e) => e.type === 'bot-challenge')) speak('The Ai is challenging your claim.');
   }, [state, provider]);
 
