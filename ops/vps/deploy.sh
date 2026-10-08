@@ -54,7 +54,7 @@ case "${1:-up}" in
 
     echo "→ syncing compose.yaml, Caddyfile, Dockerfile to $VPS_HOST:$VPS_DIR"
     ssh_vps "mkdir -p $VPS_DIR/src"
-    scp -i "$SSH_KEY" -q "$HERE/compose.yaml" "$HERE/Caddyfile" "$HERE/pob-api.Dockerfile" "$VPS_USER@$VPS_HOST:$VPS_DIR/"
+    scp -i "$SSH_KEY" -q "$HERE/compose.yaml" "$HERE/Caddyfile" "$HERE/pob-api.Dockerfile" "$HERE/watchdog.sh" "$VPS_USER@$VPS_HOST:$VPS_DIR/"
     if [[ -f "$HERE/pob-api.env" ]]; then
       echo "→ syncing local pob-api.env (secrets; not in git)"
       scp -i "$SSH_KEY" -q "$HERE/pob-api.env" "$VPS_USER@$VPS_HOST:$VPS_DIR/pob-api.env"
@@ -71,6 +71,9 @@ case "${1:-up}" in
 
     echo "→ docker compose build pob-api && up -d"
     ssh_vps "cd $VPS_DIR && docker compose build --pull pob-api && docker compose up -d --remove-orphans && docker compose ps"
+
+    echo "→ installing watchdog cron (restarts a wedged pob-api automatically)"
+    ssh_vps "chmod +x $VPS_DIR/watchdog.sh && (crontab -l 2>/dev/null | grep -v watchdog.sh; echo '* * * * * $VPS_DIR/watchdog.sh >> $VPS_DIR/watchdog.log 2>&1') | crontab -"
     ;;
   *) echo "unknown command: $1" >&2; exit 2 ;;
 esac

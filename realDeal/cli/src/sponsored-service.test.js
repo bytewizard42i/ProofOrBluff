@@ -138,7 +138,7 @@ describe('sponsored service HTTP', () => {
 
   it('a failing chain step is recorded in stats and does not break the game', async () => {
     const failing = { async deployGame() { throw new Error('boom project_id=SECRET'); } };
-    const q2 = createChainQueue({ chainForGame: async () => failing, onReceipt: () => {} });
+    const q2 = createChainQueue({ chainForGame: async () => failing, onReceipt: () => {}, maxAttempts: 2, retryDelayMs: 5 });
     const app2 = createSponsoredHttpApp({ pureCircuits, queue: q2, network: 'test' });
     const srv = http.createServer((q, s) => app2.handle(q, s));
     await new Promise((r) => srv.listen(0, '127.0.0.1', r));
@@ -162,7 +162,7 @@ describe('sponsored service HTTP', () => {
       if (n === 1) throw new Error('dust-unready: spendable DUST stayed 0');   // game A's deploy fails loudly
       if (n === 2) await gate;                                                 // game B's deploy waits until released
     };
-    const q3 = createChainQueue({ chainForGame: async () => okChain, onReceipt: () => {}, beforeStep });
+    const q3 = createChainQueue({ chainForGame: async () => okChain, onReceipt: () => {}, beforeStep, maxAttempts: 1, retryDelayMs: 5 });
     const refA = { current: null }; const refB = { current: null };
     q3.enqueue('a'.repeat(64), { step: 'deploy', args: {} }, { contractAddressRef: refA });
     const tailB = q3.enqueue('b'.repeat(64), { step: 'deploy', args: {} }, { contractAddressRef: refB });
@@ -218,6 +218,37 @@ describe('sponsored service HTTP', () => {
       expect(stats.abandoned).toBe(1); expect(stats.ended).toBe(0);
       expect(app2._games.get(a.gameId).game.view().chain.contractAddress).toBe('d'.repeat(64));
     } finally { srv.close(); }
+  });
+
+  it('a transient chain failure is retried and recovered before failing', async () => {
+    // First attempt throws (e.g. node's Invalid Transaction blip), second lands.
+    let tries = 0;
+    const flaky = { async deployGame() { tries += 1; if (tries === 1) throw new Error('Invalid Transaction: Custom error: 170'); return { contractAddress: 'c2', txHash: 'tx-ok', blockHeight: 7 }; } };
+    const q = createChainQueue({ chainForGame: async () => flaky, onReceipt: () => {}, retryDelayMs: 5 });
+    q.enqueue('c'.repeat(64), { step: 'deploy', args: {} }, { contractAddressRef: { current: null } });
+    await q.idle();
+    expect(tries).toBe(2);
+    expect(q.stats.submitted).toBe(1);
+    expect(q.stats.failed).toBe(0);
+  });
+
+  it('a permanently failed step marks the game dead and skips its dependents', async () => {
+    const calls = [];
+    const broken = {
+      async deployGame() { calls.push('deploy'); throw new Error('Invalid Transaction: Custom error: 170'); },
+      async proveRound() { calls.push('proveRound'); return { txHash: 't', blockHeight: 2 }; },
+      async closeGame() { calls.push('closeGame'); return { txHash: 'c', blockHeight: 3 }; },
+    };
+    const q = createChainQueue({ chainForGame: async () => broken, onReceipt: () => {}, maxAttempts: 2, retryDelayMs: 5 });
+    const ref = { current: null };
+    q.enqueue('d'.repeat(64), { step: 'deploy', args: {} }, { contractAddressRef: ref });
+    q.enqueue('d'.repeat(64), { step: 'proveRound', round: 1, witnesses: {} }, { contractAddressRef: ref });
+    q.enqueue('d'.repeat(64), { step: 'closeGame', args: {} }, { contractAddressRef: ref });
+    await q.idle();
+    expect(calls).toEqual(['deploy', 'deploy']);            // two attempts, both failed
+    expect(q.stats.failed).toBe(1);
+    expect(q.stats.cancelled).toBe(2);                      // dependents skipped, never fired
+    expect(q.stats.submitted).toBe(0);
   });
 
   it('sweep abandons live games idle past the threshold, leaves active ones alone', async () => {

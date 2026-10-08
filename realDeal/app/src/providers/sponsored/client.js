@@ -44,18 +44,32 @@ export function createSponsoredClient({ baseUrl = defaultBaseUrl(), fetchImpl = 
       init.headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body ?? {});
     }
-    let response;
-    try {
-      response = await fetchImpl(`${apiRoot}${path}`, init);
-    } catch (error) {
-      throw new SponsoredApiError(0, `Could not reach the game service: ${error?.message || error}`);
+    // Network blips (and the rare proxy/keep-alive 502) must not cost a player
+    // their game: retry transport failures and 5xx up to 3 times, 1s/3s apart.
+    // Safe for POSTs here because every endpoint is idempotent or rejects a
+    // duplicate cleanly (createGame is the exception — a retried POST /games
+    // would make a second game, so it is attempted only once below).
+    const attempts = path === '/games' ? 1 : 3;
+    let lastError = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      let response;
+      try {
+        response = await fetchImpl(`${apiRoot}${path}`, init);
+      } catch (error) {
+        lastError = new SponsoredApiError(0, `Could not reach the game service: ${error?.message || error}`);
+        if (attempt < attempts) { await new Promise((r) => setTimeout(r, attempt * 2000)); continue; }
+        throw lastError;
+      }
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.error || response.statusText || `HTTP ${response.status}`;
+        lastError = new SponsoredApiError(response.status, message);
+        if (response.status >= 500 && attempt < attempts) { await new Promise((r) => setTimeout(r, attempt * 2000)); continue; }
+        throw lastError;
+      }
+      return payload;
     }
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      const message = payload?.error || response.statusText || `HTTP ${response.status}`;
-      throw new SponsoredApiError(response.status, message);
-    }
-    return payload;
+    throw lastError;
   }
 
   const requireGameId = (gameId) => {

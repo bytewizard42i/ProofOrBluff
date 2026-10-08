@@ -164,12 +164,15 @@ export function installConsoleRedaction(secret, target = console) {
  *                                        cannot outrun the wallet's fee-UTXO tracking.
  *                                        Throwing fails the step loudly (recorded + logged).
  */
-export function createChainQueue({ chainForGame, stateDir = null, onReceipt, onError = () => {}, serializeStep = defaultSerializeStep, beforeStep = async () => {} }) {
+export function createChainQueue({ chainForGame, stateDir = null, onReceipt, onError = () => {}, serializeStep = defaultSerializeStep, beforeStep = async () => {}, maxAttempts = 3, retryDelayMs = 20_000 }) {
   let tail = Promise.resolve();
   const stats = { submitted: 0, failed: 0, cancelled: 0, lastError: null, seconds: [] };
   const inFlight = new Set();
   /** gameIds whose not-yet-started steps must be skipped (player quit). */
   const cancelled = new Set();
+  /** gameIds whose chain is broken (a step failed for good): later steps skip. */
+  const dead = new Set();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   async function persist(gameId, step, status) {
     if (!stateDir) return;
@@ -198,8 +201,18 @@ export function createChainQueue({ chainForGame, stateDir = null, onReceipt, onE
         log(`chain ${gameId.slice(0, 8)} ${step.step}${step.round ? `(${step.round})` : ''} skipped — game abandoned`);
         return;
       }
+      if (dead.has(gameId)) {
+        // An earlier step for this game failed for good (e.g. its deploy never
+        // landed): dependents can never succeed, so drop them without burning
+        // a proof or a transaction.
+        stats.cancelled += 1; inFlight.delete(key);
+        await persist(gameId, step, 'abandoned');
+        log(`chain ${gameId.slice(0, 8)} ${step.step}${step.round ? `(${step.round})` : ''} skipped — earlier step failed`);
+        return;
+      }
       await persist(gameId, step, 'pending');
       const started = Date.now();
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
         // beforeStep runs inside try: a throw must fail THIS step only — a
         // rejection outside try would reject `tail` and skip every later step.
@@ -223,11 +236,32 @@ export function createChainQueue({ chainForGame, stateDir = null, onReceipt, onE
         await markDone(gameId, step);
         onReceipt(gameId, receipt);
         log(`chain ${gameId.slice(0, 8)} ${step.step}${step.round ? `(${step.round})` : ''} tx=${receipt.txHash} block=${receipt.blockHeight} ${receipt.seconds}s`);
+        break;
       } catch (error) {
+        // Player quit while we were sleeping between attempts: drop the step
+        // quietly — it's an abandonment, not a failure.
+        if (cancelled.has(gameId)) {
+          stats.cancelled += 1;
+          await persist(gameId, step, 'abandoned');
+          log(`chain ${gameId.slice(0, 8)} ${step.step}${step.round ? `(${step.round})` : ''} dropped — game abandoned during retry`);
+          break;
+        }
+        // A step that never submitted is safe to retry (the tx was rejected
+        // before inclusion). A tx that might have landed is retried too: the
+        // contract's own phase guards reject a true duplicate, which then
+        // fails loudly instead of silently double-applying.
+        if (attempt < maxAttempts) {
+          log(`chain ${gameId.slice(0, 8)} ${step.step}${step.round ? `(${step.round})` : ''} attempt ${attempt}/${maxAttempts} failed: ${safeErrorMessage(error)} — retrying in ${Math.round(retryDelayMs / 1000)}s`);
+          await sleep(retryDelayMs);
+          continue;
+        }
         stats.failed += 1; stats.lastError = { at: new Date().toISOString(), step: step.step, message: safeErrorMessage(error) };
-        log(`chain ${gameId.slice(0, 8)} ${step.step} FAILED: ${safeErrorMessage(error)}`);
+        dead.add(gameId);
+        log(`chain ${gameId.slice(0, 8)} ${step.step} FAILED after ${attempt} attempt${attempt > 1 ? 's' : ''}: ${safeErrorMessage(error)} — later steps for this game will be skipped`);
         onError(gameId, step, error);
-      } finally { inFlight.delete(key); }
+      }
+      }
+      inFlight.delete(key);
     });
     return tail;
   }
@@ -514,6 +548,12 @@ async function main() {
   });
 
   const server = http.createServer((req, res) => app.handle(req, res));
+  // Caddy pools keep-alive upstream connections and can reuse one a fraction
+  // of a second after Node's default 5 s keepAliveTimeout has begun closing it
+  // → "connection reset by peer" → the player sees a 502 mid-game (observed
+  // 2026-10-08). Keep server sockets alive well past the proxy's idle window.
+  server.keepAliveTimeout = 75_000;
+  server.headersTimeout = 80_000;
   server.listen(port, LOOPBACK_HOST, () => log(`listening on http://${LOOPBACK_HOST}:${port}/v1`));
   // Abandon live games nobody has touched for IDLE_ABANDON_MS (closed laptop,
   // lost tab, no beacon). Checked every minute; unref so it never holds the

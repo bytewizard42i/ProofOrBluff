@@ -120,6 +120,19 @@ services:
     # sits around 400–700 MiB RSS; 1.5 GiB leaves room for the proving-key
     # buffers midnight-js builds while inlining them into /prove payloads.
     mem_limit: 1536m
+    healthcheck:
+      # The image ships Node 22 (global fetch). Probes the service's own
+      # listener — the same URL Caddy proxies. start_period must exceed the
+      # wallet resync on boot (~8-12 min on this box): the listener only comes
+      # up after sync, so without this the container would flap during it.
+      # watchdog.sh (cron on the host) restarts the container when this stays
+      # unhealthy — the automatic recovery for a wedged wallet-sync, which
+      # otherwise needs a human.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3020/v1/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 15m
     depends_on:
       - proof-server
     logging:
