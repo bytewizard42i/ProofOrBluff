@@ -34,9 +34,10 @@ function normaliseBaseUrl(baseUrl) {
  * @param {string} [options.baseUrl]      service origin, with or without the /v1 suffix
  * @param {Function} [options.fetchImpl]  fetch-compatible function (injectable for tests)
  */
-export function createSponsoredClient({ baseUrl = defaultBaseUrl(), fetchImpl = globalThis.fetch } = {}) {
+export function createSponsoredClient({ baseUrl = defaultBaseUrl(), fetchImpl = globalThis.fetch, retryDelayMs = null } = {}) {
   const apiRoot = normaliseBaseUrl(baseUrl);
   if (typeof fetchImpl !== 'function') throw new Error('createSponsoredClient needs a fetch implementation.');
+  const backoff = (attempt) => (retryDelayMs ?? attempt * 2000);
 
   async function request(method, path, body) {
     const init = { method, headers: { Accept: 'application/json' } };
@@ -57,14 +58,14 @@ export function createSponsoredClient({ baseUrl = defaultBaseUrl(), fetchImpl = 
         response = await fetchImpl(`${apiRoot}${path}`, init);
       } catch (error) {
         lastError = new SponsoredApiError(0, `Could not reach the game service: ${error?.message || error}`);
-        if (attempt < attempts) { await new Promise((r) => setTimeout(r, attempt * 2000)); continue; }
+        if (attempt < attempts) { await new Promise((r) => setTimeout(r, backoff(attempt))); continue; }
         throw lastError;
       }
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
         const message = payload?.error || response.statusText || `HTTP ${response.status}`;
         lastError = new SponsoredApiError(response.status, message);
-        if (response.status >= 500 && attempt < attempts) { await new Promise((r) => setTimeout(r, attempt * 2000)); continue; }
+        if (response.status >= 500 && attempt < attempts) { await new Promise((r) => setTimeout(r, backoff(attempt))); continue; }
         throw lastError;
       }
       return payload;

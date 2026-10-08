@@ -109,8 +109,8 @@ describe('createSponsoredClient', () => {
     await expect(client.createGame()).rejects.toMatchObject({ status: 429 });
   });
 
-  it('wraps network failures as status 0', async () => {
-    const client = createSponsoredClient({ baseUrl: 'http://down.local', fetchImpl: async () => { throw new Error('ECONNREFUSED'); } });
+  it('wraps network failures as status 0 (after exhausting retries)', async () => {
+    const client = createSponsoredClient({ baseUrl: 'http://down.local', retryDelayMs: 0, fetchImpl: async () => { throw new Error('ECONNREFUSED'); } });
     await expect(client.health()).rejects.toMatchObject({ status: 0, message: expect.stringContaining('ECONNREFUSED') });
   });
 });

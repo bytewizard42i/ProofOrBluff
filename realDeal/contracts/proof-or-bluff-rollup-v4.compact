@@ -1,0 +1,613 @@
+pragma language_version >= 0.16 && <= 0.23;
+include "signed_credential";
+import CompactStandardLibrary;
+import SignedCredentials;
+
+// ---------------------------------------------------------------------------
+// Sizes. Fixed at compile time; measured before freezing (spec §6a.3).
+//   MAX_MOVES  = 64  transcript slots (PLAY / ACCEPT / CHALLENGE / NOOP padding)
+//   MAX_ROUNDS = 6   deals per player; a game needing more ends as a draw
+//
+// v4 RULE CHANGES vs v3p:
+//   * SHARED DECK: both hands come from ONE 52-card deck — 2*size distinct
+//     cards keyed on BOTH round secrets (dealPairPacked). Cross-hand rank
+//     overlap beyond four-of-a-kind is now impossible AND provable, matching
+//     a real table (v3p dealt each seat independently → duplicate cards could
+//     appear in both hands).
+//   * EMPTY-HAND WIN: playing your last card wins the game — IF the final
+//     claim survives. Accepted claim or a wrongly-challenged honest claim:
+//     the emptier wins. Caught bluffing on the door ("last card only wins on
+//         a bluff if accepted"): no win, the round ends and redeals as usual.
+//   * Boundary + GameState carry `winner` (0 none/draw · 1 · 2); closeGame
+//     trusts the proven boundary's winner instead of re-deriving from scores.
+// ---------------------------------------------------------------------------
+
+export enum GameMode { CASUAL, STANDARD, STRATEGIC, CLASSIC, CASINO }
+
+
+// One transcript slot. kind: 0 NOOP (padding after game end) · 1 PLAY ·
+// 2 ACCEPT · 3 CHALLENGE. `cards`/`playSalt` are private (PLAY only).
+struct Move {
+  kind: Uint<8>;
+  rank: Uint<8>;
+  count: Uint<8>;
+  cards: Vector<4, Uint<8>>;
+  playSalt: Field;
+}
+
+// HAND PACKING (v3p). A hand is ONE Field: 13 base-16 digits, digit r = how
+// many cards of rank r, Ace in the lowest digit. weight(r) = 16^r.
+//   dealt  D = Σ weight(card) over the dealt cards            (built in-circuit)
+//   played P = Σ weight(card) over every card PLAYed this round
+//   rest   R = Σ weight(card) over the cards still held at round end (witness)
+// Conservation at round end: D == P + R. Sound without carries because D has
+// <= 7 cards and P + R has exactly `size` terms, so every digit <= 7 < 16; the
+// field (~2^254) never wraps at 16^13 (~2^52). Equal numbers <=> equal multisets.
+// The circuit never extracts a digit mid-round (that would be the expensive
+// bit-decomposition); it only adds and compares totals.
+struct GameState {
+  played0: Field;                // packed cards P0 played so far this round
+  played1: Field;
+  plays0: Uint<8>;               // how many cards P0 has played this round (<= size)
+  plays1: Uint<8>;
+  turn: Uint<8>;
+  currentRank: Uint<8>;
+  pending: Boolean;
+  claimRank: Uint<8>;
+  claimCount: Uint<8>;
+  claimSum: Field;               // packed weight-sum of the cards in the pending claim
+  claimer: Uint<8>;
+  score0: Uint<8>;
+  score1: Uint<8>;
+  round: Uint<8>;
+  ended: Boolean;
+  winner: Uint<8>;                // v4: 0 undecided/draw · 1 P1 · 2 P2
+  chain: Field;
+}
+
+struct SeedInput { separator: Bytes<32>; p1Entropy: Bytes<32>; p2Entropy: Bytes<32>; }
+struct EntropyCommitInput { separator: Bytes<32>; entropy: Bytes<32>; }
+struct RoundSecretCommitInput { separator: Bytes<32>; secret: Bytes<32>; round: Uint<8>; }
+struct DealInput { separator: Bytes<32>; salt: Bytes<32>; seed: Field; round: Uint<32>; }
+// v4 shared deck: one digest, BOTH seats' round secrets, 2*size distinct cards.
+struct DealPairInput { separator: Bytes<32>; salt0: Bytes<32>; salt1: Bytes<32>; seed: Field; round: Uint<32>; }
+// What both players sign to authorize a close (spec §7). SignedCredential<T>
+// comes from the vendored SignedCredentials module; the `pk` inside each
+// credential is bound to the stored player identity via playerIdFromPk.
+export struct CloseConsent {
+  sep: Bytes<32>;
+  gameId: Bytes<32>;
+  transcriptRoot: Field;
+  p1Score: Uint<8>;
+  p2Score: Uint<8>;
+  winner: Uint<8>;
+}
+struct PlayerIdPreimage { separator: Bytes<32>; x: Field; y: Field; }
+
+
+
+// ---------------------------------------------------------------------------
+// Commitments (same separators as the per-move contract: clients reuse code).
+// ---------------------------------------------------------------------------
+export pure circuit commitEntropy(entropy: Bytes<32>): Bytes<32> {
+  return persistentHash<EntropyCommitInput>(EntropyCommitInput { separator: pad(32, "pob:entropy:v1"), entropy: entropy });
+}
+// The seed never touches the ledger, so it lives in the transient domain
+// (circuit-native hash, ~30x cheaper than SHA-256 — spec §6a.1).
+export pure circuit combineEntropy(p1Entropy: Bytes<32>, p2Entropy: Bytes<32>): Field {
+  return transientHash<SeedInput>(SeedInput { separator: pad(32, "pob:seed:v2"), p1Entropy: p1Entropy, p2Entropy: p2Entropy });
+}
+// One commitment PER ROUND (v3): a player reveals round r's secret only after
+// round r ends, so the background prover never learns a live hand.
+export pure circuit commitRoundSecret(secret: Bytes<32>, round: Uint<8>): Bytes<32> {
+  return persistentHash<RoundSecretCommitInput>(RoundSecretCommitInput { separator: pad(32, "pob:round-secret:v3"), secret: secret, round: round });
+}
+// Transient-domain play commitment: published to the opponent at play time so
+// the cards cannot change after a challenge. Exported so clients compute it.
+export pure circuit commitPlayCards(cards: Vector<4, Uint<8>>, playSalt: Field): Field {
+  return transientCommit<Vector<4, Uint<8>>>(cards, playSalt);
+}
+// One link of the transcript chain. Exported so both clients and the bot
+// maintain exactly the chain the circuit will verify.
+export pure circuit chainMove(prev: Field, kind: Uint<8>, rank: Uint<8>, count: Uint<8>, playCommit: Field): Field {
+  return transientHash<[Field, Uint<8>, Uint<8>, Uint<8>, Field]>([prev, kind, rank, count, playCommit]);
+}
+
+// A player's stored Bytes<32> identity is the persistentHash of their Jubjub
+// session public key, so closeGame can bind a signer's pk to the registered
+// seat without ever storing the key itself on the ledger.
+export pure circuit playerIdFromPk(pk: JubjubPoint): Bytes<32> {
+  return persistentHash<PlayerIdPreimage>(PlayerIdPreimage {
+    separator: pad(32, "pob:pk:v1"), x: jubjubPointX(pk), y: jubjubPointY(pk)
+  });
+}
+// The canonical CloseConsent for a finished game. Exported so the off-chain
+// signer builds byte-identical separators instead of guessing pad() layout.
+export pure circuit closeConsentFor(
+  gameId: Bytes<32>, transcriptRoot: Field, p1Score: Uint<8>, p2Score: Uint<8>, winner: Uint<8>
+): CloseConsent {
+  return CloseConsent {
+    sep: pad(32, "pob:close:v1"), gameId: gameId, transcriptRoot: transcriptRoot,
+    p1Score: p1Score, p2Score: p2Score, winner: winner
+  };
+}
+// The circuit's own Fiat-Shamir challenge and deterministic nonce, exported so
+// the off-chain signer (cli/src/rollup-consent.js) hashes EXACTLY as the
+// verifier will — see signer.mjs in midnight-modules for the pattern.
+export pure circuit closeConsentChallenge(r: JubjubPoint, pk: JubjubPoint, consent: CloseConsent): Field {
+  return compute_challenge<CloseConsent>(r, pk, consent);
+}
+export pure circuit closeConsentK(sk: Field, consent: CloseConsent): Field {
+  return deterministic_k<CloseConsent>(Nonce<CloseConsent> { sk: sk, credential: consent });
+}
+
+
+// ---------------------------------------------------------------------------
+// Hex packing helpers.
+// ---------------------------------------------------------------------------
+circuit rankWeight(r: Uint<8>): Field {
+  return r == (0 as Uint<8>) ? 1 : r == (1 as Uint<8>) ? 16 : r == (2 as Uint<8>) ? 256 : r == (3 as Uint<8>) ? 4096
+       : r == (4 as Uint<8>) ? 65536 : r == (5 as Uint<8>) ? 1048576 : r == (6 as Uint<8>) ? 16777216
+       : r == (7 as Uint<8>) ? 268435456 : r == (8 as Uint<8>) ? 4294967296 : r == (9 as Uint<8>) ? 68719476736
+       : r == (10 as Uint<8>) ? 1099511627776 : r == (11 as Uint<8>) ? 17592186044416 : 281474976710656;
+}
+// Pack the first `n` of up to 7 ranks. Every slot used must be a rank 0..12.
+circuit packRanks(ranks: Vector<7, Uint<8>>, n: Uint<8>): Field {
+  const w0: Field = n >= (1 as Uint<8>) ? rankWeight(ranks[0]) : 0;
+  const w1: Field = n >= (2 as Uint<8>) ? rankWeight(ranks[1]) : 0;
+  const w2: Field = n >= (3 as Uint<8>) ? rankWeight(ranks[2]) : 0;
+  const w3: Field = n >= (4 as Uint<8>) ? rankWeight(ranks[3]) : 0;
+  const w4: Field = n >= (5 as Uint<8>) ? rankWeight(ranks[4]) : 0;
+  const w5: Field = n >= (6 as Uint<8>) ? rankWeight(ranks[5]) : 0;
+  const w6: Field = n >= (7 as Uint<8>) ? rankWeight(ranks[6]) : 0;
+  for (const i of 0..7) { assert((i as Uint<8>) >= n || ranks[i] <= (12 as Uint<8>), "rank out of range"); }
+  return w0 + w1 + w2 + w3 + w4 + w5 + w6;
+}
+// The dealt hand, packed. dealHandRanks is the UNCHANGED exact Floyd deal.
+export pure circuit dealPacked(salt: Bytes<32>, seed: Field, round: Uint<32>, size: Uint<32>): Field {
+  return packRanks(dealHandRanks(salt, seed, round, size), size as Uint<8>);
+}
+// Weight-sum of the first `count` (<= 4) played cards.
+circuit playSum(cards: Vector<4, Uint<8>>, count: Uint<8>): Field {
+  const w0: Field = count >= (1 as Uint<8>) ? rankWeight(cards[0]) : 0;
+  const w1: Field = count >= (2 as Uint<8>) ? rankWeight(cards[1]) : 0;
+  const w2: Field = count >= (3 as Uint<8>) ? rankWeight(cards[2]) : 0;
+  const w3: Field = count >= (4 as Uint<8>) ? rankWeight(cards[3]) : 0;
+  return w0 + w1 + w2 + w3;
+}
+
+// ---------------------------------------------------------------------------
+// Provably fair deal (v2, shipped Oct 3 2026) — identical to the per-move
+// contract so dealHandRanks conformance tests apply unchanged.
+// ---------------------------------------------------------------------------
+circuit boundedDraw(hi: Uint<8>, lo: Uint<8>, m: Uint<16>): Uint<8> {
+  const u = ((hi as Uint<16>) * (256 as Uint<16>) + (lo as Uint<16>)) as Uint<16>;
+  const p = ((u as Uint<32>) * (m as Uint<32>)) as Uint<32>;
+  const pb = (p as Bytes<3>) as Vector<3, Uint<8>>;
+  return pb[2];
+}
+circuit cardToRank(c: Uint<8>): Uint<8> {
+  return ((c >= (4 as Uint<8>) ? 1 : 0) + (c >= (8 as Uint<8>) ? 1 : 0) + (c >= (12 as Uint<8>) ? 1 : 0)
+        + (c >= (16 as Uint<8>) ? 1 : 0) + (c >= (20 as Uint<8>) ? 1 : 0) + (c >= (24 as Uint<8>) ? 1 : 0)
+        + (c >= (28 as Uint<8>) ? 1 : 0) + (c >= (32 as Uint<8>) ? 1 : 0) + (c >= (36 as Uint<8>) ? 1 : 0)
+        + (c >= (40 as Uint<8>) ? 1 : 0) + (c >= (44 as Uint<8>) ? 1 : 0) + (c >= (48 as Uint<8>) ? 1 : 0)) as Uint<8>;
+}
+circuit dealSeven(b: Vector<32, Uint<8>>): Vector<7, Uint<8>> {
+  const c0 = boundedDraw(b[0], b[1], 46);
+  const t1 = boundedDraw(b[2], b[3], 47);
+  const c1 = t1 == c0 ? (46 as Uint<8>) : t1;
+  const t2 = boundedDraw(b[4], b[5], 48);
+  const c2 = (t2 == c0 || t2 == c1) ? (47 as Uint<8>) : t2;
+  const t3 = boundedDraw(b[6], b[7], 49);
+  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (48 as Uint<8>) : t3;
+  const t4 = boundedDraw(b[8], b[9], 50);
+  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (49 as Uint<8>) : t4;
+  const t5 = boundedDraw(b[10], b[11], 51);
+  const c5 = (t5 == c0 || t5 == c1 || t5 == c2 || t5 == c3 || t5 == c4) ? (50 as Uint<8>) : t5;
+  const t6 = boundedDraw(b[12], b[13], 52);
+  const c6 = (t6 == c0 || t6 == c1 || t6 == c2 || t6 == c3 || t6 == c4 || t6 == c5) ? (51 as Uint<8>) : t6;
+  return [cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3), cardToRank(c4), cardToRank(c5), cardToRank(c6)];
+}
+circuit dealFive(b: Vector<32, Uint<8>>): Vector<7, Uint<8>> {
+  const c0 = boundedDraw(b[0], b[1], 48);
+  const t1 = boundedDraw(b[2], b[3], 49);
+  const c1 = t1 == c0 ? (48 as Uint<8>) : t1;
+  const t2 = boundedDraw(b[4], b[5], 50);
+  const c2 = (t2 == c0 || t2 == c1) ? (49 as Uint<8>) : t2;
+  const t3 = boundedDraw(b[6], b[7], 51);
+  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (50 as Uint<8>) : t3;
+  const t4 = boundedDraw(b[8], b[9], 52);
+  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (51 as Uint<8>) : t4;
+  return [cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3), cardToRank(c4), 0, 0];
+}
+// Deal digest in the transient domain too (12 of these per closeGame; as
+// SHA-256 they blew key generation past 12 GB — measured Oct 3 2026). The
+// Field→Bytes cast is little-endian; bytes 0..13 are full-entropy bytes.
+export pure circuit dealHandRanks(salt: Bytes<32>, seed: Field, round: Uint<32>, size: Uint<32>): Vector<7, Uint<8>> {
+  const digest = transientHash<DealInput>(DealInput { separator: pad(32, "pob:deal:v3"), salt: salt, seed: seed, round: round });
+  const b = (digest as Bytes<32>) as Vector<32, Uint<8>>;
+  return size == (5 as Uint<32>) ? dealFive(b) : dealSeven(b);
+}
+// ---------------------------------------------------------------------------
+// v4 SHARED DECK. One Floyd deal of 2*size distinct card indices from a single
+// 52-card deck — the first `size` go to seat 0, the rest to seat 1, so no card
+// (and therefore no fifth copy of a rank) can appear in both hands. The digest
+// is keyed on BOTH seats' round secrets: a prover holding only one secret still
+// cannot derive either hand. Draw ranges/fallback slots follow the same Floyd
+// scheme as dealSeven/dealFive (m_i = 52-k+1+i, fallback = m_i-1).
+//   k = 14 draws → digest bytes 0..27   ·   k = 10 draws → bytes 0..19
+// ---------------------------------------------------------------------------
+circuit dealFourteen(b: Vector<32, Uint<8>>): [Vector<7, Uint<8>>, Vector<7, Uint<8>>] {
+  const c0 = boundedDraw(b[0], b[1], 39);
+  const t1 = boundedDraw(b[2], b[3], 40);
+  const c1 = t1 == c0 ? (38 as Uint<8>) : t1;
+  const t2 = boundedDraw(b[4], b[5], 41);
+  const c2 = (t2 == c0 || t2 == c1) ? (39 as Uint<8>) : t2;
+  const t3 = boundedDraw(b[6], b[7], 42);
+  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (40 as Uint<8>) : t3;
+  const t4 = boundedDraw(b[8], b[9], 43);
+  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (41 as Uint<8>) : t4;
+  const t5 = boundedDraw(b[10], b[11], 44);
+  const c5 = (t5 == c0 || t5 == c1 || t5 == c2 || t5 == c3 || t5 == c4) ? (42 as Uint<8>) : t5;
+  const t6 = boundedDraw(b[12], b[13], 45);
+  const c6 = (t6 == c0 || t6 == c1 || t6 == c2 || t6 == c3 || t6 == c4 || t6 == c5) ? (43 as Uint<8>) : t6;
+  const t7 = boundedDraw(b[14], b[15], 46);
+  const c7 = (t7 == c0 || t7 == c1 || t7 == c2 || t7 == c3 || t7 == c4 || t7 == c5 || t7 == c6) ? (44 as Uint<8>) : t7;
+  const t8 = boundedDraw(b[16], b[17], 47);
+  const c8 = (t8 == c0 || t8 == c1 || t8 == c2 || t8 == c3 || t8 == c4 || t8 == c5 || t8 == c6 || t8 == c7) ? (45 as Uint<8>) : t8;
+  const t9 = boundedDraw(b[18], b[19], 48);
+  const c9 = (t9 == c0 || t9 == c1 || t9 == c2 || t9 == c3 || t9 == c4 || t9 == c5 || t9 == c6 || t9 == c7 || t9 == c8) ? (46 as Uint<8>) : t9;
+  const t10 = boundedDraw(b[20], b[21], 49);
+  const c10 = (t10 == c0 || t10 == c1 || t10 == c2 || t10 == c3 || t10 == c4 || t10 == c5 || t10 == c6 || t10 == c7 || t10 == c8 || t10 == c9) ? (47 as Uint<8>) : t10;
+  const t11 = boundedDraw(b[22], b[23], 50);
+  const c11 = (t11 == c0 || t11 == c1 || t11 == c2 || t11 == c3 || t11 == c4 || t11 == c5 || t11 == c6 || t11 == c7 || t11 == c8 || t11 == c9 || t11 == c10) ? (48 as Uint<8>) : t11;
+  const t12 = boundedDraw(b[24], b[25], 51);
+  const c12 = (t12 == c0 || t12 == c1 || t12 == c2 || t12 == c3 || t12 == c4 || t12 == c5 || t12 == c6 || t12 == c7 || t12 == c8 || t12 == c9 || t12 == c10 || t12 == c11) ? (49 as Uint<8>) : t12;
+  const t13 = boundedDraw(b[26], b[27], 52);
+  const c13 = (t13 == c0 || t13 == c1 || t13 == c2 || t13 == c3 || t13 == c4 || t13 == c5 || t13 == c6 || t13 == c7 || t13 == c8 || t13 == c9 || t13 == c10 || t13 == c11 || t13 == c12) ? (50 as Uint<8>) : t13;
+  return [[cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3), cardToRank(c4), cardToRank(c5), cardToRank(c6)],
+          [cardToRank(c7), cardToRank(c8), cardToRank(c9), cardToRank(c10), cardToRank(c11), cardToRank(c12), cardToRank(c13)]];
+}
+circuit dealTen(b: Vector<32, Uint<8>>): [Vector<7, Uint<8>>, Vector<7, Uint<8>>] {
+  const c0 = boundedDraw(b[0], b[1], 43);
+  const t1 = boundedDraw(b[2], b[3], 44);
+  const c1 = t1 == c0 ? (42 as Uint<8>) : t1;
+  const t2 = boundedDraw(b[4], b[5], 45);
+  const c2 = (t2 == c0 || t2 == c1) ? (43 as Uint<8>) : t2;
+  const t3 = boundedDraw(b[6], b[7], 46);
+  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (44 as Uint<8>) : t3;
+  const t4 = boundedDraw(b[8], b[9], 47);
+  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (45 as Uint<8>) : t4;
+  const t5 = boundedDraw(b[10], b[11], 48);
+  const c5 = (t5 == c0 || t5 == c1 || t5 == c2 || t5 == c3 || t5 == c4) ? (46 as Uint<8>) : t5;
+  const t6 = boundedDraw(b[12], b[13], 49);
+  const c6 = (t6 == c0 || t6 == c1 || t6 == c2 || t6 == c3 || t6 == c4 || t6 == c5) ? (47 as Uint<8>) : t6;
+  const t7 = boundedDraw(b[14], b[15], 50);
+  const c7 = (t7 == c0 || t7 == c1 || t7 == c2 || t7 == c3 || t7 == c4 || t7 == c5 || t7 == c6) ? (48 as Uint<8>) : t7;
+  const t8 = boundedDraw(b[16], b[17], 51);
+  const c8 = (t8 == c0 || t8 == c1 || t8 == c2 || t8 == c3 || t8 == c4 || t8 == c5 || t8 == c6 || t8 == c7) ? (49 as Uint<8>) : t8;
+  const t9 = boundedDraw(b[18], b[19], 52);
+  const c9 = (t9 == c0 || t9 == c1 || t9 == c2 || t9 == c3 || t9 == c4 || t9 == c5 || t9 == c6 || t9 == c7 || t9 == c8) ? (50 as Uint<8>) : t9;
+  return [[cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3), cardToRank(c4), 0, 0],
+          [cardToRank(c5), cardToRank(c6), cardToRank(c7), cardToRank(c8), cardToRank(c9), 0, 0]];
+}
+// Packed pair of hands from the shared deck. Exported for the referee/clients.
+export pure circuit dealPairPacked(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>, size: Uint<32>): [Field, Field] {
+  const digest = transientHash<DealPairInput>(DealPairInput { separator: pad(32, "pob:deal:v4"), salt0: salt0, salt1: salt1, seed: seed, round: round });
+  const b = (digest as Bytes<32>) as Vector<32, Uint<8>>;
+  const pair = size == (5 as Uint<32>) ? dealTen(b) : dealFourteen(b);
+  return [packRanks(pair[0], size as Uint<8>), packRanks(pair[1], size as Uint<8>)];
+}
+
+circuit handSize(mode: Uint<8>): Uint<32> { return mode == (0 as Uint<8>) ? 5 : 7; }
+circuit winThreshold(mode: Uint<8>): Uint<8> {
+  if (mode == (0 as Uint<8>)) { return 10; }
+  if (mode == (1 as Uint<8>)) { return 15; }
+  return 20;
+}
+// Starting rank derived from the seed (no extra hash, no extra message).
+circuit startingRank(seed: Field): Uint<8> {
+  const b = (seed as Bytes<32>) as Vector<32, Uint<8>>;
+  return boundedDraw(b[16], b[17], 13);   // mid bytes: full entropy (byte 31 is biased)
+}
+
+circuit nextRankOf(rank: Uint<8>): Uint<8> { return rank >= (12 as Uint<8>) ? 0 : (rank + 1) as Uint<8>; }
+circuit minusOneFloor(score: Uint<8>): Uint<8> { return score == (0 as Uint<8>) ? 0 : (score - 1) as Uint<8>; }
+
+
+// ---------------------------------------------------------------------------
+// Sizes for one round. 7-card hands: a round ends as soon as one hand empties,
+// so at most 7 + 6 = 13 PLAYs, each followed by one response: 26 moves.
+// Slots after the round ends are NOOP padding (enforced by roundDone).
+// ---------------------------------------------------------------------------
+// Boundary state between rounds. NO HANDS: the round proof ends after the
+// rollover discards them and the next proof deals afresh from that round's
+// secrets. Hashing this leaks only what the chain already shows.
+struct Boundary {
+  turn: Uint<8>;
+  currentRank: Uint<8>;
+  score0: Uint<8>;
+  score1: Uint<8>;
+  round: Uint<8>;        // the round that has been COMPLETED (0 before any)
+  ended: Boolean;
+  winner: Uint<8>;       // v4: decided at the ending move; 0 = draw/not yet
+  chain: Field;          // transcript chain head so far (carried, never recomputed)
+}
+struct BoundaryCommitInput { separator: Bytes<32>; b: Boundary; }
+export pure circuit commitBoundary(b: Boundary): Bytes<32> {
+  return persistentHash<BoundaryCommitInput>(BoundaryCommitInput { separator: pad(32, "pob:boundary:v4"), b: b });
+}
+struct ResultCommitInput { separator: Bytes<32>; chain: Field; }
+// The chain head is a transient-domain value; what we WRITE is its persistent hash.
+export pure circuit commitTranscript(chain: Field): Bytes<32> {
+  return persistentHash<ResultCommitInput>(ResultCommitInput { separator: pad(32, "pob:transcript:v3"), chain: chain });
+}
+
+// Private witnesses for proveRound / closeGame. Supplied per call by the prover;
+// the circuit trusts none of them — each is checked against a ledger commitment.
+witness entropyPair(): [Bytes<32>, Bytes<32>];
+witness roundSecrets(): [Bytes<32>, Bytes<32>];        // [p1, p2] for THIS round
+witness roundMoves(): Vector<26, Move>;
+witness roundSnapshots(): Vector<27, GameState>;
+witness startBoundary(): Boundary;                     // opens stateRoot (ignored for round 1)
+witness remainingRanks(): [Vector<7, Uint<8>>, Vector<7, Uint<8>>];  // cards still held at round end, per seat
+witness p1CloseConsent(): SignedCredential<CloseConsent>;
+witness p2CloseConsent(): SignedCredential<CloseConsent>;
+
+// ---------------------------------------------------------------------------
+// Ledger — one game.
+// ---------------------------------------------------------------------------
+export ledger playerOne: Bytes<32>;
+export ledger playerTwo: Bytes<32>;
+export ledger mode: Uint<8>;
+export ledger p1EntropyCommit: Bytes<32>;
+export ledger p2EntropyCommit: Bytes<32>;
+export ledger p1RoundCommits: Vector<6, Bytes<32>>;
+export ledger p2RoundCommits: Vector<6, Bytes<32>>;
+export ledger roundsProven: Uint<8>;                   // phase guard: next round to prove is roundsProven + 1
+export ledger stateRoot: Bytes<32>;                    // commitBoundary(...) after the last proven round
+export ledger ended: Boolean;                          // the proven history has reached game end
+export ledger closed: Boolean;
+export ledger transcriptRoot: Bytes<32>;               // commitTranscript(final chain), written at close
+export ledger p1Score: Uint<8>;
+export ledger p2Score: Uint<8>;
+export ledger winner: Uint<8>;                         // 0 draw · 1 · 2
+
+// openGame == construction. The bot (sponsor) deploys one contract per game
+// with both players' identities and commitments. Nothing private is passed.
+constructor(
+  playerOneId: Bytes<32>, playerTwoId: Bytes<32>, gameMode: Uint<8>,
+  p1Entropy: Bytes<32>, p2Entropy: Bytes<32>,
+  p1Rounds: Vector<6, Bytes<32>>, p2Rounds: Vector<6, Bytes<32>>
+) {
+  // Every constructor argument is PUBLIC by design: identities, mode and the
+  // commitments (never the openings). disclose() states that explicitly.
+  const m = disclose(gameMode);
+  assert(m == (0 as Uint<8>) || m == (1 as Uint<8>) || m == (4 as Uint<8>),
+    "Only score-based modes (CASUAL, STANDARD, CASINO) are enabled");
+  const p1 = disclose(playerOneId); const p2 = disclose(playerTwoId);
+  assert(p1 != p2, "Players must differ");
+  playerOne = p1; playerTwo = p2; mode = m;
+  const e1 = disclose(p1Entropy); const e2 = disclose(p2Entropy);
+  assert(e1 != e2, "Entropy commitments must differ");
+  const r1 = disclose(p1Rounds); const r2 = disclose(p2Rounds);
+  // Identical round commitments would deal both seats the same hand.
+  for (const i of 0..6) { assert(r1[i] != r2[i], "Round-secret commitments must differ"); }
+  p1EntropyCommit = e1; p2EntropyCommit = e2;
+  p1RoundCommits = r1; p2RoundCommits = r2;
+  roundsProven = 0; ended = false; closed = false;
+  stateRoot = commitBoundary(Boundary { turn: 0, currentRank: 0, score0: 0, score1: 0, round: 0, ended: false, winner: 0, chain: 0 });
+  transcriptRoot = default<Bytes<32>>; p1Score = 0; p2Score = 0; winner = 0;
+}
+
+circuit selectCommit(commits: Vector<6, Bytes<32>>, round: Uint<8>): Bytes<32> {
+  return round == (1 as Uint<8>) ? commits[0] : round == (2 as Uint<8>) ? commits[1] : round == (3 as Uint<8>) ? commits[2]
+       : round == (4 as Uint<8>) ? commits[3] : round == (5 as Uint<8>) ? commits[4] : commits[5];
+}
+
+// ---------------------------------------------------------------------------
+// One round's move semantics. Identical legality to v2's applyMove EXCEPT:
+//   * rollover does not deal — it marks the round complete (roundDone);
+//   * NOOP padding is legal once the round is done (not only at game end).
+// ---------------------------------------------------------------------------
+// A round is finished when the game is over, or a hand has emptied (that
+// player has played `size` cards — sound because conservation proves every
+// played card was dealt) and the claim that emptied it has been resolved.
+circuit roundFinished(s: GameState, size: Uint<8>): Boolean {
+  return s.ended || (!s.pending && (s.plays0 == size || s.plays1 == size));
+}
+circuit applyRoundMove(s: GameState, m: Move, threshold: Uint<8>, maxRound: Uint<8>, size: Uint<8>): GameState {
+  const roundDone = roundFinished(s, size);
+  const noop = m.kind == (0 as Uint<8>);
+  const isPlay = m.kind == (1 as Uint<8>);
+  const isAccept = m.kind == (2 as Uint<8>);
+  const isChallenge = m.kind == (3 as Uint<8>);
+  assert(noop || isPlay || isAccept || isChallenge, "unknown move kind");
+  assert(!noop || roundDone, "padding before round end");
+  assert(noop || !roundDone, "move after round end");
+  assert(!isPlay || !s.pending, "play while claim pending");
+  assert(!(isAccept || isChallenge) || s.pending, "response without claim");
+  assert(!isPlay || (m.rank == s.currentRank && m.count >= (1 as Uint<8>) && m.count <= (4 as Uint<8>)), "bad claim");
+  assert(!isPlay || (
+    m.cards[0] <= (12 as Uint<8>) && m.cards[1] <= (12 as Uint<8>) &&
+    m.cards[2] <= (12 as Uint<8>) && m.cards[3] <= (12 as Uint<8>) &&
+    ((1 as Uint<8>) < m.count || m.cards[1] == (0 as Uint<8>)) &&
+    ((2 as Uint<8>) < m.count || m.cards[2] == (0 as Uint<8>)) &&
+    ((3 as Uint<8>) < m.count || m.cards[3] == (0 as Uint<8>))
+  ), "played card out of range");
+  assert(isPlay || (m.rank == (0 as Uint<8>) && m.count == (0 as Uint<8>)), "non-PLAY fields must be zero");
+
+  // PLAY: tally the packed weights. The mover may never exceed `size` cards
+  // this round — that bound is what keeps every digit below 16 (no carries),
+  // which is what makes the round-end equality D == P + R a multiset proof.
+  const moverIs0 = s.turn == (0 as Uint<8>);
+  const playCount: Uint<8> = isPlay ? m.count : 0;
+  const sum = playSum(m.cards, playCount);
+  assert(!isPlay || ((moverIs0 ? s.plays0 : s.plays1) + m.count) <= size, "more cards than dealt");
+  const np0 = moverIs0 ? s.played0 + sum : s.played0;
+  const np1 = moverIs0 ? s.played1 : s.played1 + sum;
+  const nc0: Uint<8> = moverIs0 ? ((s.plays0 + playCount) as Uint<8>) : s.plays0;
+  const nc1: Uint<8> = moverIs0 ? s.plays1 : ((s.plays1 + playCount) as Uint<8>);
+
+  // CHALLENGE truth in ONE equation: `count` powers of 16 sum to count*16^rank
+  // iff every one of them IS 16^rank (count <= 4 < 16, no carries).
+  const truthful = s.claimSum == rankWeight(s.claimRank) * (s.claimCount as Field);
+  const challengerIs0 = s.turn == (0 as Uint<8>);
+  const sc0: Uint<8> = !isChallenge ? s.score0
+    : challengerIs0 ? (truthful ? minusOneFloor(s.score0) : ((s.score0 + 3) as Uint<8>)) : s.score0;
+  const sc1: Uint<8> = !isChallenge ? s.score1
+    : challengerIs0 ? s.score1 : (truthful ? minusOneFloor(s.score1) : ((s.score1 + 3) as Uint<8>));
+
+  const resolved = isAccept || isChallenge;
+  // v4: a hand is empty once its owner has played `size` cards AND the claim
+  // that emptied it has been resolved. Going out WINS — except caught at the
+  // door: a challenge that proves the final claim a lie means no win (the
+  // challenger still banks +3), the round just ends and redeals.
+  const emptied = resolved && (nc0 == size || nc1 == size);
+  const caughtAtDoor = emptied && isChallenge && !truthful;
+  const emptyWin = emptied && !caughtAtDoor;
+  const scored = s.ended || sc0 >= threshold || sc1 >= threshold;
+  const outOfRounds = emptied && s.round >= maxRound;
+  const gameEnded = scored || emptyWin || outOfRounds;
+  // Winner precedence: a challenge that both catches the door bluff AND
+  // crosses the threshold is a points win for the challenger (scored first).
+  // Otherwise going out wins; running out of rounds leaves winner 0 (draw).
+  const w: Uint<8> = scored ? (sc0 >= threshold ? 1 : 2)
+                   : emptyWin ? (nc0 == size ? 1 : 2)
+                   : (0 as Uint<8>);
+
+  const playCommit = isPlay ? commitPlayCards(m.cards, m.playSalt) : (0 as Field);
+  const chain = noop ? s.chain : chainMove(s.chain, m.kind, m.rank, m.count, playCommit);
+  const nextRank = resolved ? nextRankOf(s.currentRank) : s.currentRank;
+  const nextTurn: Uint<8> = noop ? s.turn : (isPlay ? (s.turn == (0 as Uint<8>) ? 1 : 0) : s.turn);
+
+  return GameState {
+    played0: noop ? s.played0 : np0, played1: noop ? s.played1 : np1,
+    plays0: noop ? s.plays0 : nc0, plays1: noop ? s.plays1 : nc1,
+    turn: nextTurn, currentRank: noop ? s.currentRank : nextRank,
+    pending: noop ? s.pending : isPlay,
+    claimRank: isPlay ? m.rank : s.claimRank, claimCount: isPlay ? m.count : s.claimCount,
+    claimSum: isPlay ? sum : s.claimSum, claimer: isPlay ? s.turn : s.claimer,
+    score0: sc0, score1: sc1, round: s.round, ended: noop ? s.ended : gameEnded,
+    winner: noop ? s.winner : (gameEnded ? w : s.winner), chain: chain
+  };
+}
+
+// ---------------------------------------------------------------------------
+// proveRound: round r's deal + every move of round r, chained to the previous
+// boundary. Proven in the background once both round-r secrets are released.
+// ---------------------------------------------------------------------------
+export circuit proveRound(round: Uint<8>): [] {
+  assert(!closed, "Game already closed");
+  assert(!ended, "Proven history already reached game end");
+  const r = disclose(round);
+  assert(r >= (1 as Uint<8>) && r <= (6 as Uint<8>), "bad round");
+  assert(r == ((roundsProven + 1) as Uint<8>), "rounds must be proven in order");   // phase guard
+
+  // 1. Open the entropy seals (every round: the seed is never stored) and
+  //    THIS round's two secrets.
+  const e = entropyPair();
+  assert(commitEntropy(e[0]) == p1EntropyCommit, "P1 entropy mismatch");
+  assert(commitEntropy(e[1]) == p2EntropyCommit, "P2 entropy mismatch");
+  const secrets = roundSecrets();
+  assert(commitRoundSecret(secrets[0], r) == selectCommit(p1RoundCommits, r), "P1 round secret mismatch");
+  assert(commitRoundSecret(secrets[1], r) == selectCommit(p2RoundCommits, r), "P2 round secret mismatch");
+
+  // 2. Where this round starts: round 1 from the seed; later rounds from the
+  //    committed boundary the previous proof wrote.
+  const seed = combineEntropy(e[0], e[1]);
+  // Round 1 opens the constructor's initial boundary (all zero); later rounds
+  // open the boundary the previous proof wrote. The seed-derived starting
+  // rank is applied to the OPENING SNAPSHOT below, never to the boundary —
+  // caught on Preview 2026-10-05 (block 1158119): the simulator fixture's
+  // seed happened to give rank 0, which hid a mismatch here.
+  const prev = startBoundary();
+  const b0 = r == (1 as Uint<8>)
+    ? Boundary { turn: 0, currentRank: 0, score0: 0, score1: 0, round: 0, ended: false, winner: 0, chain: 0 }
+    : prev;
+  assert(commitBoundary(b0) == stateRoot, "boundary does not open stateRoot");
+  assert(b0.round == ((r - 1) as Uint<8>), "boundary round mismatch");
+  const openingRank: Uint<8> = r == (1 as Uint<8>) ? startingRank(seed) : b0.currentRank;
+
+  // 3. Deal round r — ONCE, here, from ONE shared 52-card deck (v4): 2*size
+  //    distinct cards keyed on both seats' secrets, split between the seats.
+  const size32 = handSize(mode);
+  const size = size32 as Uint<8>;
+  const dealt = dealPairPacked(secrets[0], secrets[1], seed, r as Uint<32>, size32);
+  const dealt0 = dealt[0];
+  const dealt1 = dealt[1];
+  const states = roundSnapshots();
+  const moves = roundMoves();
+  const opening = GameState {
+    played0: 0, played1: 0, plays0: 0, plays1: 0, turn: b0.turn, currentRank: openingRank,
+    pending: false, claimRank: 0, claimCount: 0, claimSum: 0, claimer: 0,
+    score0: b0.score0, score1: b0.score1, round: r, ended: false, winner: b0.winner, chain: b0.chain
+  };
+  assert(states[0] == opening, "opening snapshot mismatch");
+
+  // 4. Replay every slot. NOOP padding is legal only once roundDone is set,
+  //    so the prover cannot stop a round early or continue a finished one.
+  const threshold = winThreshold(mode);
+  for (const i of 0..26) {
+    assert(applyRoundMove(states[i], moves[i], threshold, 6, size) == states[i + 1], "invalid transition");
+  }
+  const fin = states[26];
+  assert(roundFinished(fin, size), "round did not finish");
+
+  // 4b. CONSERVATION (the whole point of the packing): for each seat,
+  //     dealt == played + remaining, with `remaining` a witness of exactly
+  //     size - plays ranks, each 0..12. No carries (see HAND PACKING), so this
+  //     single equality proves every played card was dealt and nothing was
+  //     played twice.
+  const rest = remainingRanks();
+  assert(fin.plays0 <= size && fin.plays1 <= size, "more cards than dealt");
+  const rest0 = packRanks(rest[0], (size - fin.plays0) as Uint<8>);
+  const rest1 = packRanks(rest[1], (size - fin.plays1) as Uint<8>);
+  assert(dealt0 == fin.played0 + rest0, "P1 cards do not reconcile with the deal");
+  assert(dealt1 == fin.played1 + rest1, "P2 cards do not reconcile with the deal");
+
+  // 5. Write the new boundary. Hands are discarded here by construction.
+  const b1 = Boundary { turn: fin.turn, currentRank: fin.currentRank, score0: fin.score0, score1: fin.score1,
+                        round: r, ended: fin.ended, winner: fin.winner, chain: fin.chain };
+  // Disclosed on purpose: a SHA-256 commitment of the boundary (no hands in
+  // it), and whether the proven history has reached game end.
+  stateRoot = disclose(commitBoundary(b1));
+  roundsProven = r;
+  ended = disclose(fin.ended);
+  // Out of rounds without a winner is a draw: the game is over after round 6 regardless.
+  if (r == (6 as Uint<8>)) { ended = true; }
+}
+
+// ---------------------------------------------------------------------------
+// closeGame: tiny. Open the final boundary, bind result + both signatures.
+// ---------------------------------------------------------------------------
+export circuit closeGame(finalP1Score: Uint<8>, finalP2Score: Uint<8>, finalWinner: Uint<8>): [] {
+  assert(!closed, "Game already closed");
+  assert(ended, "Proven history has not reached game end");
+  const b = startBoundary();
+  assert(commitBoundary(b) == stateRoot, "boundary does not open stateRoot");
+  assert(b.round == roundsProven, "boundary round mismatch");
+  // v4: the ending move already wrote the winner into the proven boundary —
+  // threshold crossings, going-out wins and draws all land here decided.
+  const w: Uint<8> = b.winner;
+  assert(disclose(finalP1Score) == b.score0 && disclose(finalP2Score) == b.score1, "final score mismatch");
+  assert(disclose(finalWinner) == w, "winner mismatch");
+
+  // Result authorization: both registered players signed THIS exact result
+  // for THIS contract. gameId = the deployed contract address, so a signed
+  // result cannot be replayed onto a clone that re-proves the same transcript.
+  const consent1 = p1CloseConsent();
+  const consent2 = p2CloseConsent();
+  const expected = closeConsentFor(kernel.self().bytes, b.chain, b.score0, b.score1, w);
+  assert(playerIdFromPk(consent1.pk) == playerOne, "P1 signer is not player one");
+  assert(playerIdFromPk(consent2.pk) == playerTwo, "P2 signer is not player two");
+  assert(consent1.credential == expected, "P1 signed a different result");
+  assert(consent2.credential == expected, "P2 signed a different result");
+  assert_signed_by<CloseConsent>(consent1, consent1.pk);
+  assert_signed_by<CloseConsent>(consent2, consent2.pk);
+
+  // The result IS the public output of the game.
+  transcriptRoot = disclose(commitTranscript(b.chain));
+  p1Score = disclose(b.score0); p2Score = disclose(b.score1); winner = disclose(w);
+  closed = true;
+}
