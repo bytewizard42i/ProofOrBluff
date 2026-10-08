@@ -867,6 +867,7 @@ button.active {
   align-items: center;
   gap: 1rem;
   width: 100%;
+  align-self: stretch;   /* span the whole centre column so the quit button hugs the left edge */
 }
 .pile-side { display: flex; align-items: center; min-width: 0; }
 .pile-side--left { justify-content: flex-start; }
@@ -2955,7 +2956,7 @@ button.active {
 /* Centre wrappers (shared by demo and Midnight tables). In the demo's
  * flex-column centre these simply stack; the play layout turns them into
  * stage + side columns. */
-.center-stage { display: flex; flex-direction: column; align-items: center; gap: 1rem; min-width: 0; }
+.center-stage { display: flex; flex-direction: column; align-items: center; gap: 1rem; min-width: 0; width: 100%; }
 .center-side { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; }
 
 /* ── Sponsored (Midnight) table: chain receipt strip + service notices ───── */

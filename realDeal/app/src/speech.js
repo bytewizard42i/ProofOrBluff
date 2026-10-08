@@ -18,6 +18,8 @@
 let cachedVoice = null;
 let muted = false;
 let volume = 0.95; // 0..1, applied to every utterance
+import { isMobileDevice } from './sounds.js';
+
 const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
 
 function chooseVoice() {
@@ -92,6 +94,9 @@ function cleanForSpeech(text) {
 export function speak(text) {
   if (!supported) return;
   if (muted) return;
+  // Phones: text only. Mobile speechSynthesis stalls, double-speaks or
+  // pops the OS audio route; the dialogue is still shown on the table.
+  if (isMobileDevice()) return;
   const cleaned = cleanForSpeech(text);
   if (!cleaned) return;
   const u = new SpeechSynthesisUtterance(cleaned);
