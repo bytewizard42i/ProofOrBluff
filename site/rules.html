@@ -64,16 +64,16 @@
 
       <div class="prose">
         <h2 id="modes">Game modes</h2>
-        <p>The launch edition ships three <strong>score-based</strong> modes. They differ in hand size and in how many points it takes to win.</p>
+        <p>The launch edition ships three modes. They differ in hand size and in the score target that also wins the match.</p>
         <div class="table-wrap">
           <table>
             <thead>
               <tr><th scope="col">Mode</th><th scope="col">Hand size</th><th scope="col">Cards per play</th><th scope="col">Win condition</th><th scope="col">Feel</th></tr>
             </thead>
             <tbody>
-              <tr><td><strong>Casual</strong></td><td>5 cards</td><td>1 to 4</td><td>First to 10 points</td><td>Quick, forgiving, good for learning</td></tr>
-              <tr><td><strong>Standard</strong></td><td>7 cards</td><td>1 to 4</td><td>First to 15 points</td><td>The default table</td></tr>
-              <tr><td><strong>Casino</strong></td><td>7 cards</td><td>1 to 4</td><td>First to 20 points</td><td>Longer match, more swings</td></tr>
+              <tr><td><strong>Casual</strong></td><td>5 cards</td><td>1 to 4</td><td>Empty your hand — or first to 10 points</td><td>Quick, forgiving, good for learning</td></tr>
+              <tr><td><strong>Standard</strong></td><td>7 cards</td><td>1 to 4</td><td>Empty your hand — or first to 15 points</td><td>The default table</td></tr>
+              <tr><td><strong>Casino</strong></td><td>7 cards</td><td>1 to 4</td><td>Empty your hand — or first to 20 points</td><td>Longer match, more swings</td></tr>
             </tbody>
           </table>
         </div>
@@ -82,7 +82,7 @@
         <ol>
           <li>Both players commit a secret random value (entropy) and a secret <em>hand salt</em>. Commitments are published; the values are not.</li>
           <li>Both entropies are revealed and combined into a shared seed. Because each side committed before seeing the other's value, neither can bias the seed. Only a commitment to the seed is published.</li>
-          <li>Each player's hand is dealt <em>inside the zero-knowledge proof</em> from their own salt plus the shared seed. Your opponent never learns your salt, so they cannot reconstruct your hand.</li>
+          <li>Both hands are dealt <em>inside the zero-knowledge proof</em> from <strong>one shared 52-card deck</strong>, keyed by both players' secrets plus the shared seed. A card dealt to you provably cannot also be in your opponent's hand — and no rank can appear more than four times across the table, just like a physical deck.</li>
           <li>A starting required rank is set. Player one goes first. The pile starts empty and both scores start at zero.</li>
         </ol>
 
@@ -130,8 +130,14 @@
         </div>
         <p>A challenged player who never produces a proof is treated as caught bluffing once the timeout window passes. A player who abandons an idle turn for the timeout period forfeits the match.</p>
 
-        <h3>Running out of cards</h3>
-        <p>When either hand empties, the round ends and both players receive a fresh hand dealt from the same committed seed material — as fair as the first deal. Scores carry over. The match continues until someone reaches the target score.</p>
+        <h3>Emptying your hand — going out</h3>
+        <p>Playing your last card is how you win — but the final claim must still survive scrutiny:</p>
+        <ul>
+          <li><strong>Your last play is accepted</strong> — you win the match.</li>
+          <li><strong>Your last play is challenged and your claim was true</strong> — you still win; the challenger simply called it wrong.</li>
+          <li><strong>Your last play is challenged and your claim was a bluff</strong> — caught at the door. No win: the challenger still scores +3, the round ends, and both players re-deal and play on.</li>
+        </ul>
+        <p>If neither player empties a hand, the match can still be decided by points (below). Six completed rounds with no winner is a draw.</p>
 
         <h2 id="scoring">Scoring</h2>
         <div class="table-wrap">
@@ -145,7 +151,7 @@
             </tbody>
           </table>
         </div>
-        <p>The first player to reach the mode's target score (10, 15, or 20) wins the match. Accepted plays score nothing directly — but getting a bluff accepted is still how you empty your hand and keep the pressure on your opponent.</p>
+        <p>A player also wins the match the moment their score reaches the mode's target (10, 15, or 20) — so a caught-at-the-door challenge can itself end the game in the challenger's favor. Accepted plays score nothing directly — but getting a bluff accepted is still how you empty your hand and win.</p>
 
         <h2 id="example">Example round (Standard mode)</h2>
         <ol class="steps">
@@ -159,9 +165,9 @@
 
         <h2 id="edition">Launch edition notes</h2>
         <ul>
-          <li>Only the three score-based modes are enabled. Empty-hand modes (Strategic, Classic) are designed but deferred.</li>
+          <li>Every match is played against the house bot — there is no player-versus-player matchmaking in the launch edition.</li>
           <li>There is no "pass" action in the launch edition: on your turn you play, and when a claim is on the table you accept or challenge.</li>
-          <li>There are no wagers, stakes, or payouts. Players pay only the network's normal transaction fee (test DUST on the Preview testnet).</li>
+          <li>There are no wagers, stakes, or payouts. The house sponsors every game — all network fees are covered; you need no wallet and no crypto to play.</li>
           <li>The original design document, including roadmap mechanics not yet built, lives in the project repository: <a href="https://github.com/bytewizard42i/ProofOrBluff/blob/main/docs/RULES.md" rel="noopener">docs/RULES.md</a>.</li>
         </ul>
 

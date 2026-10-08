@@ -84,6 +84,8 @@ COPY realDeal/contracts/rollup-*-referee.js ./realDeal/contracts/
 # (gitignored, see the big note at the top). compiler/contract-info.json is
 # tiny and useful for `docker exec` debugging of which compiler built the keys.
 COPY realDeal/contracts/managed/proof-or-bluff-rollup-v3p ./realDeal/contracts/managed/proof-or-bluff-rollup-v3p
+# v4 (shared-deck, empty-hand-wins) — staged alongside v3p; POB_CONTRACT_VERSION picks.
+COPY realDeal/contracts/managed/proof-or-bluff-rollup-v4 ./realDeal/contracts/managed/proof-or-bluff-rollup-v4
 # rollup-v3p-contract.js reuses guards/bridges from rollup-contract.js (v2),
 # which statically imports the v2 generated bindings. Only the committed JS is
 # needed — v2 is never proven here, so its keys/zkir are not copied.
