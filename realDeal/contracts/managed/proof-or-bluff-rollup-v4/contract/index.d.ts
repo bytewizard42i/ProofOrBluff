@@ -107,16 +107,16 @@ export type PureCircuits = {
                         pk_0: __compactRuntime.JubjubPoint,
                         consent_0: CloseConsent): bigint;
   closeConsentK(sk_0: bigint, consent_0: CloseConsent): bigint;
-  dealPacked(salt_0: Uint8Array, seed_0: bigint, round_0: bigint, size_0: bigint): bigint;
-  dealHandRanks(salt_0: Uint8Array,
-                seed_0: bigint,
-                round_0: bigint,
-                size_0: bigint): bigint[];
   dealPairPacked(salt0_0: Uint8Array,
                  salt1_0: Uint8Array,
                  seed_0: bigint,
                  round_0: bigint,
                  size_0: bigint): [bigint, bigint];
+  dealPairIndices(salt0_0: Uint8Array,
+                  salt1_0: Uint8Array,
+                  seed_0: bigint,
+                  round_0: bigint,
+                  size_0: bigint): bigint[];
   commitBoundary(b_0: { turn: bigint,
                         currentRank: bigint,
                         score0: bigint,
@@ -162,16 +162,6 @@ export type Circuits<PS> = {
   closeConsentK(context: __compactRuntime.CircuitContext<PS>,
                 sk_0: bigint,
                 consent_0: CloseConsent): __compactRuntime.CircuitResults<PS, bigint>;
-  dealPacked(context: __compactRuntime.CircuitContext<PS>,
-             salt_0: Uint8Array,
-             seed_0: bigint,
-             round_0: bigint,
-             size_0: bigint): __compactRuntime.CircuitResults<PS, bigint>;
-  dealHandRanks(context: __compactRuntime.CircuitContext<PS>,
-                salt_0: Uint8Array,
-                seed_0: bigint,
-                round_0: bigint,
-                size_0: bigint): __compactRuntime.CircuitResults<PS, bigint[]>;
   dealPairPacked(context: __compactRuntime.CircuitContext<PS>,
                  salt0_0: Uint8Array,
                  salt1_0: Uint8Array,
@@ -179,6 +169,12 @@ export type Circuits<PS> = {
                  round_0: bigint,
                  size_0: bigint): __compactRuntime.CircuitResults<PS, [bigint,
                                                                        bigint]>;
+  dealPairIndices(context: __compactRuntime.CircuitContext<PS>,
+                  salt0_0: Uint8Array,
+                  salt1_0: Uint8Array,
+                  seed_0: bigint,
+                  round_0: bigint,
+                  size_0: bigint): __compactRuntime.CircuitResults<PS, bigint[]>;
   commitBoundary(context: __compactRuntime.CircuitContext<PS>,
                  b_0: { turn: bigint,
                         currentRank: bigint,

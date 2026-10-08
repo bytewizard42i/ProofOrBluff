@@ -296,6 +296,7 @@ function defaultSerializeStep(step) { return toJsonSafe({ ...step, witnesses: st
 export function createSponsoredHttpApp({
   pureCircuits, queue, readiness = () => ({ ok: true }), allowedOrigins = new Set(DEFAULT_ALLOWED_ORIGINS), now = Date.now, ai, random,
   network = process.env.POB_NETWORK_ID || 'undeployed', walletAddress = null, walletExtra = () => ({}),
+  contractVersion = process.env.POB_CONTRACT_VERSION || 'v3p',
 }) {
   /** gameId → { game, contractAddressRef, touchedAt } */
   const games = new Map();
@@ -363,7 +364,7 @@ export function createSponsoredHttpApp({
     if (!MODES.includes(mode)) throw new HttpError(400, 'mode must be 0, 1 or 4.');
     if (!DIFFICULTIES.includes(difficulty)) throw new HttpError(400, 'difficulty must be easy, medium or hard.');
     const gameId = randomBytes(32).toString('hex');
-    const game = createSponsoredGame({ gameId, mode, difficulty, pureCircuits, ai, random });
+    const game = createSponsoredGame({ gameId, mode, difficulty, pureCircuits, ai, random, contractVersion });
     const entry = { game, contractAddressRef: { current: null }, touchedAt: now() };
     games.set(gameId, entry);
     totals.created += 1;
@@ -470,8 +471,15 @@ async function main() {
   installConsoleRedaction(process.env.BLOCKFROST_PROJECT_ID?.trim());
 
   const { buildWalletFromSeed } = await import('./wallet-node.js');
-  const { getV3pContractApi, DEFAULT_V3P_MANAGED_DIR } = await import('./rollup-v3p-contract.js');
-  const { pureCircuits } = await import(path.join(DEFAULT_V3P_MANAGED_DIR, 'contract', 'index.js'));
+  // Contract version switch: 'v3p' is the live contract; 'v4' is the shared-deck
+  // + empty-hand-win revision. v4 needs its managed bindings + keys deployed.
+  const contractVersion = process.env.POB_CONTRACT_VERSION || 'v3p';
+  if (!['v3p', 'v4'].includes(contractVersion)) throw new Error(`POB_CONTRACT_VERSION must be v3p or v4 (got ${contractVersion}).`);
+  const contractModule = contractVersion === 'v4' ? './rollup-v4-contract.js' : './rollup-v3p-contract.js';
+  const contractApi = await import(contractModule);
+  const getContractApi = contractVersion === 'v4' ? contractApi.getV4ContractApi : contractApi.getV3pContractApi;
+  const managedDir = contractVersion === 'v4' ? contractApi.DEFAULT_V4_MANAGED_DIR : contractApi.DEFAULT_V3P_MANAGED_DIR;
+  const { pureCircuits } = await import(path.join(managedDir, 'contract', 'index.js'));
 
   const endpoints = networkId === 'mainnet'
     ? (() => { const t = (u) => `${u}?project_id=${encodeURIComponent(process.env.BLOCKFROST_PROJECT_ID.trim())}`; return { node: t('https://rpc.midnight-mainnet.blockfrost.io'), indexer: t('https://midnight-mainnet.blockfrost.io/api/v0'), indexerWs: t('wss://midnight-mainnet.blockfrost.io/api/v0/ws'), proofServer }; })()
@@ -488,7 +496,7 @@ async function main() {
   const chainForGame = async (gameId, contractAddress) => {
     let api = apis.get(gameId);
     if (!api) {
-      api = await getV3pContractApi({ networkId, walletHandle, endpoints, seedHex });
+      api = await getContractApi({ networkId, walletHandle, endpoints, seedHex });
       if (contractAddress) await api.joinAt(contractAddress);
       apis.set(gameId, api);
     }
@@ -543,7 +551,7 @@ async function main() {
   app = createSponsoredHttpApp({
     pureCircuits, queue, network: networkId, allowedOrigins: allowedOriginsFromEnvironment(),
     walletAddress: walletHandle.address ?? null,
-    readiness,
+    readiness, contractVersion,
     walletExtra: () => ({ dust: dust.balance.toString(), synced: dust.synced, observedAt: dust.at, dustLowSince: dustLowSince?.toISOString() ?? null }),
   });
 

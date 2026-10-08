@@ -21,6 +21,7 @@ import { randomBytes } from 'node:crypto';
 import {
   createV3pReferee, KIND, MAX_ROUNDS, handSize, roundFinished, winThreshold,
 } from '../../contracts/rollup-v3p-referee.js';
+import { createV4Referee } from '../../contracts/rollup-v4-referee.js';
 import { consentKeyPairFromSecret, buildCloseConsent, signCloseConsent, gameIdFromContractAddress } from './rollup-consent.js';
 import { RANKS } from '../../shared/dealing.js';
 import * as scriptedAi from '../../../demoLand/src/game/ai/scripted.js';
@@ -57,11 +58,16 @@ export function handCountsToRanks(handCounts) {
   return ranks;
 }
 
+const REFEREE_FOR_VERSION = { v3p: createV3pReferee, v4: createV4Referee };
+
 /**
- * Create one sponsored game. `pureCircuits` comes from the compiled v3p
- * bindings; `ai` and `random` are injectable for tests.
+ * Create one sponsored game. `pureCircuits` comes from the compiled contract
+ * bindings matching `contractVersion` ('v3p' live contract, 'v4' shared-deck +
+ * empty-hand-win); `ai` and `random` are injectable for tests.
  */
-export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureCircuits, ai = scriptedAi, random = randomBytes }) {
+export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureCircuits, ai = scriptedAi, random = randomBytes, contractVersion = 'v3p' }) {
+  const createReferee = REFEREE_FOR_VERSION[contractVersion];
+  if (!createReferee) throw new GameError(400, `contractVersion must be one of ${Object.keys(REFEREE_FOR_VERSION).join(', ')}`);
   if (!MODES.includes(mode)) throw new GameError(400, 'mode must be 0, 1 or 4');
   if (!DIFFICULTIES.includes(difficulty)) throw new GameError(400, 'difficulty must be easy, medium or hard');
 
@@ -74,7 +80,7 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
   const modeBig = BigInt(mode);
   const freshSalt = () => bytesToField(random(31));
 
-  const referee = createV3pReferee(pureCircuits, { seed, roundSecrets, mode: modeBig });
+  const referee = createReferee(pureCircuits, { seed, roundSecrets, mode: modeBig });
   const size = handSize(modeBig);
 
   let status = GAME_STATUS.PLAYING;
@@ -256,7 +262,7 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
     /**
      * Full disclosure AFTER the game is closed on-chain: every secret, every
      * move with its real cards and salt, both hands per round. Anyone can
-     * re-run rollup-v3p-referee.js on this and recompute the on-chain
+     * re-run the referee mirror (rollup-v3p/v4-referee.js) on this and recompute the on-chain
      * transcriptRoot — the operator's honesty becomes checkable, not assumed.
      * Refused while the game is live (it would reveal hands) or merely ended
      * (receipts not final yet).
@@ -279,7 +285,7 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
           boundaryOut: Object.fromEntries(Object.entries(fin.boundaryOut).map(([k, v]) => [k, typeof v === 'bigint' ? v.toString() : v])),
         })),
         result: (() => { const r = referee.result(); return { p1Score: Number(r.p1Score), p2Score: Number(r.p2Score), winner: winnerName(r.winner), transcriptChain: r.transcriptChain.toString() }; })(),
-        howToVerify: 'Re-run realDeal/contracts/rollup-v3p-referee.js with seed = combineEntropy(entropy) and these roundSecrets/moves; commitTranscript(result.transcriptChain) must equal the contract\'s transcriptRoot.',
+        howToVerify: `Re-run realDeal/contracts/rollup-${contractVersion}-referee.js with seed = combineEntropy(entropy) and these roundSecrets/moves; commitTranscript(result.transcriptChain) must equal the contract's transcriptRoot.`,
       };
     },
 
@@ -288,7 +294,7 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
       const s = live ? referee.state : null;
       const b = referee.boundary;
       return {
-        gameId, status, mode, difficulty,
+        gameId, status, mode, difficulty, contractVersion,
         round: Number(s ? s.round : b.round),
         turn: s ? seatName(s.turn) : null,
         currentRank: s ? Number(s.currentRank) : null,

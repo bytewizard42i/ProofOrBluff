@@ -163,7 +163,7 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
 
   return (
     <>
-      {showTutorial && <Tutorial onClose={dismissTutorial} />}
+      {showTutorial && <Tutorial variant="midnight" contractVersion={state?.contractVersion ?? 'v3p'} onClose={dismissTutorial} />}
       {screen === 'menu' && (
         <>
           <Menu onStart={handleStart} onShowHelp={() => setShowTutorial(true)} />

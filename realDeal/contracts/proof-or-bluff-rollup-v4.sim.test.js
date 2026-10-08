@@ -202,6 +202,80 @@ describe('v4 rollup: the shared deck', () => {
     expect(heldTotal(h1)).toBe(5n);
     for (let r = 0; r < 13; r += 1) expect(h0[r] + h1[r] <= 4n).toBe(true);
   });
+
+  // Security review 2026-10-08 (H-1): the collision fallback must be the TOP of
+  // each draw's range (m_i - 1) — the one value no earlier draw can hold.
+  // Rank packing can hide a repeated index, so these tests look at CARD LEVEL.
+  it('circuit-level: every dealt card index is pairwise distinct (7- and 5-card modes)', () => {
+    for (let v = 1; v <= 60; v += 1) {
+      const s0 = new Uint8Array(32).fill(v);
+      const s1 = new Uint8Array(32).fill(200 - v);
+      const seedV = pureCircuits.combineEntropy(new Uint8Array(32).fill(v), new Uint8Array(32).fill(255 - v));
+      for (const [size, slots] of [[7n, 14], [5n, 10]]) {
+        const idx = pureCircuits.dealPairIndices(s0, s1, seedV, 1n, size).map(Number);
+        const live = idx.slice(0, slots);
+        expect(new Set(live).size).toBe(slots);
+        expect(live.every((c) => c >= 0 && c <= 51)).toBe(true);
+        if (size === 5n) expect(idx.slice(10).every((c) => c === 255)).toBe(true);
+        // Index-level ranks must match what dealPairPacked committed to.
+        const [d0, d1] = pureCircuits.dealPairPacked(s0, s1, seedV, 1n, size);
+        const ranksOf = (list) => list.map((c) => BigInt(Math.floor(c / 4)));
+        expect(packRanks(ranksOf(live.slice(0, Number(size)))).toString()).toBe(d0.toString());
+        expect(packRanks(ranksOf(live.slice(Number(size), slots))).toString()).toBe(d1.toString());
+      }
+    }
+  });
+
+  // JS mirror of the corrected Floyd draw — same math as dealFourteenIdx /
+  // dealTenIdx, swept over enough digests to make a residual collision path
+  // statistically impossible (a ~4%/deal bug shows thousands of hits here).
+  const jsBoundedDraw = (hi, lo, m) => Math.floor(((hi * 256 + lo) * m) / 65536);
+  const jsDealIdx = (b, k, m0) => {
+    const pool = [];
+    for (let i = 0; i < k; i += 1) {
+      const m = m0 + i;
+      let t = jsBoundedDraw(b[2 * i], b[2 * i + 1], m);
+      if (pool.includes(t)) t = m - 1;   // fallback: top of THIS draw's range
+      pool.push(t);
+    }
+    return pool;
+  };
+  // mulberry32 — uniform bytes; a structured counter biases adjacent byte
+  // PAIRS (boundedDraw consumes hi/lo pairs), which fakes a deal bias.
+  const mulberry32 = (a) => () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  it('sweep: 200k digests produce zero duplicate cards and a uniform top card', () => {
+    const freq = new Array(52).fill(0);
+    const N = 200_000;
+    let dupes = 0;
+    for (let d = 0; d < N; d += 1) {
+      const rnd = mulberry32(d);
+      const b = new Uint8Array(32);
+      for (let i = 0; i < 32; i += 1) b[i] = Math.floor(rnd() * 256);
+      const cards = jsDealIdx(b, 14, 39);
+      if (new Set(cards).size !== 14) dupes += 1;
+      for (const c of cards) freq[c] += 1;
+    }
+    expect(dupes).toBe(0);
+    // True Floyd subsets are uniform: each card appears in 14/52 ≈ 26.9% of
+    // deals. A starved card 51 (the H-1 symptom) sat near 1/52 ≈ 2%.
+    expect(freq[51] / N).toBeGreaterThan(0.24);
+    expect(freq[0] / N).toBeGreaterThan(0.24);
+    expect(Math.max(...freq) / N).toBeLessThan(0.30);
+    const fiveN = 100_000; let dupes5 = 0;
+    for (let d = 0; d < fiveN; d += 1) {
+      const rnd = mulberry32(d + 0x9e3779b9);
+      const b = new Uint8Array(32);
+      for (let i = 0; i < 32; i += 1) b[i] = Math.floor(rnd() * 256);
+      const cards = jsDealIdx(b, 10, 43);
+      if (new Set(cards).size !== 10) dupes5 += 1;
+    }
+    expect(dupes5).toBe(0);
+  });
 });
 
 describe('v4 rollup: emptying your hand wins the game', () => {

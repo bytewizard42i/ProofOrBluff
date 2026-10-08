@@ -5,8 +5,9 @@ import React from 'react';
  * demo engine makes the loser draw cards; the Midnight state-only contract
  * scores +3 / −1 instead and discards the pile either way.
  */
-export default function Tutorial({ onClose, variant = 'demo' }) {
+export default function Tutorial({ onClose, variant = 'demo', contractVersion = 'v3p' }) {
   const onChain = variant === 'midnight';
+  const v4Rules = contractVersion === 'v4';
   return (
     <div className="tutorial-overlay">
       <div className="tutorial-card">
@@ -44,7 +45,9 @@ export default function Tutorial({ onClose, variant = 'demo' }) {
           )}
           <li>
             {onChain
-              ? <><strong>First to the score target wins.</strong> When a hand empties, the deal reshuffles privately.</>
+              ? (v4Rules
+                ? <><strong>Empty your hand to win the game.</strong> A caught last-card bluff doesn't count — the round redeals. Score the target first and you win on points; six rounds with no winner is a draw.</>
+                : <><strong>First to the score target wins.</strong> When a hand empties, the deal reshuffles privately.</>)
               : <><strong>Empty your hand to win.</strong> Each player starts with 10 cards.</>}
           </li>
         </ol>

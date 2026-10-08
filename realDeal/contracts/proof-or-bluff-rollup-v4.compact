@@ -68,7 +68,6 @@ struct GameState {
 struct SeedInput { separator: Bytes<32>; p1Entropy: Bytes<32>; p2Entropy: Bytes<32>; }
 struct EntropyCommitInput { separator: Bytes<32>; entropy: Bytes<32>; }
 struct RoundSecretCommitInput { separator: Bytes<32>; secret: Bytes<32>; round: Uint<8>; }
-struct DealInput { separator: Bytes<32>; salt: Bytes<32>; seed: Field; round: Uint<32>; }
 // v4 shared deck: one digest, BOTH seats' round secrets, 2*size distinct cards.
 struct DealPairInput { separator: Bytes<32>; salt0: Bytes<32>; salt1: Bytes<32>; seed: Field; round: Uint<32>; }
 // What both players sign to authorize a close (spec §7). SignedCredential<T>
@@ -163,10 +162,6 @@ circuit packRanks(ranks: Vector<7, Uint<8>>, n: Uint<8>): Field {
   for (const i of 0..7) { assert((i as Uint<8>) >= n || ranks[i] <= (12 as Uint<8>), "rank out of range"); }
   return w0 + w1 + w2 + w3 + w4 + w5 + w6;
 }
-// The dealt hand, packed. dealHandRanks is the UNCHANGED exact Floyd deal.
-export pure circuit dealPacked(salt: Bytes<32>, seed: Field, round: Uint<32>, size: Uint<32>): Field {
-  return packRanks(dealHandRanks(salt, seed, round, size), size as Uint<8>);
-}
 // Weight-sum of the first `count` (<= 4) played cards.
 circuit playSum(cards: Vector<4, Uint<8>>, count: Uint<8>): Field {
   const w0: Field = count >= (1 as Uint<8>) ? rankWeight(cards[0]) : 0;
@@ -176,10 +171,6 @@ circuit playSum(cards: Vector<4, Uint<8>>, count: Uint<8>): Field {
   return w0 + w1 + w2 + w3;
 }
 
-// ---------------------------------------------------------------------------
-// Provably fair deal (v2, shipped Oct 3 2026) — identical to the per-move
-// contract so dealHandRanks conformance tests apply unchanged.
-// ---------------------------------------------------------------------------
 circuit boundedDraw(hi: Uint<8>, lo: Uint<8>, m: Uint<16>): Uint<8> {
   const u = ((hi as Uint<16>) * (256 as Uint<16>) + (lo as Uint<16>)) as Uint<16>;
   const p = ((u as Uint<32>) * (m as Uint<32>)) as Uint<32>;
@@ -192,111 +183,95 @@ circuit cardToRank(c: Uint<8>): Uint<8> {
         + (c >= (28 as Uint<8>) ? 1 : 0) + (c >= (32 as Uint<8>) ? 1 : 0) + (c >= (36 as Uint<8>) ? 1 : 0)
         + (c >= (40 as Uint<8>) ? 1 : 0) + (c >= (44 as Uint<8>) ? 1 : 0) + (c >= (48 as Uint<8>) ? 1 : 0)) as Uint<8>;
 }
-circuit dealSeven(b: Vector<32, Uint<8>>): Vector<7, Uint<8>> {
-  const c0 = boundedDraw(b[0], b[1], 46);
-  const t1 = boundedDraw(b[2], b[3], 47);
-  const c1 = t1 == c0 ? (46 as Uint<8>) : t1;
-  const t2 = boundedDraw(b[4], b[5], 48);
-  const c2 = (t2 == c0 || t2 == c1) ? (47 as Uint<8>) : t2;
-  const t3 = boundedDraw(b[6], b[7], 49);
-  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (48 as Uint<8>) : t3;
-  const t4 = boundedDraw(b[8], b[9], 50);
-  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (49 as Uint<8>) : t4;
-  const t5 = boundedDraw(b[10], b[11], 51);
-  const c5 = (t5 == c0 || t5 == c1 || t5 == c2 || t5 == c3 || t5 == c4) ? (50 as Uint<8>) : t5;
-  const t6 = boundedDraw(b[12], b[13], 52);
-  const c6 = (t6 == c0 || t6 == c1 || t6 == c2 || t6 == c3 || t6 == c4 || t6 == c5) ? (51 as Uint<8>) : t6;
-  return [cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3), cardToRank(c4), cardToRank(c5), cardToRank(c6)];
-}
-circuit dealFive(b: Vector<32, Uint<8>>): Vector<7, Uint<8>> {
-  const c0 = boundedDraw(b[0], b[1], 48);
-  const t1 = boundedDraw(b[2], b[3], 49);
-  const c1 = t1 == c0 ? (48 as Uint<8>) : t1;
-  const t2 = boundedDraw(b[4], b[5], 50);
-  const c2 = (t2 == c0 || t2 == c1) ? (49 as Uint<8>) : t2;
-  const t3 = boundedDraw(b[6], b[7], 51);
-  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (50 as Uint<8>) : t3;
-  const t4 = boundedDraw(b[8], b[9], 52);
-  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (51 as Uint<8>) : t4;
-  return [cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3), cardToRank(c4), 0, 0];
-}
-// Deal digest in the transient domain too (12 of these per closeGame; as
-// SHA-256 they blew key generation past 12 GB — measured Oct 3 2026). The
-// Field→Bytes cast is little-endian; bytes 0..13 are full-entropy bytes.
-export pure circuit dealHandRanks(salt: Bytes<32>, seed: Field, round: Uint<32>, size: Uint<32>): Vector<7, Uint<8>> {
-  const digest = transientHash<DealInput>(DealInput { separator: pad(32, "pob:deal:v3"), salt: salt, seed: seed, round: round });
-  const b = (digest as Bytes<32>) as Vector<32, Uint<8>>;
-  return size == (5 as Uint<32>) ? dealFive(b) : dealSeven(b);
-}
+
 // ---------------------------------------------------------------------------
 // v4 SHARED DECK. One Floyd deal of 2*size distinct card indices from a single
 // 52-card deck — the first `size` go to seat 0, the rest to seat 1, so no card
 // (and therefore no fifth copy of a rank) can appear in both hands. The digest
 // is keyed on BOTH seats' round secrets: a prover holding only one secret still
 // cannot derive either hand. Draw ranges/fallback slots follow the same Floyd
-// scheme as dealSeven/dealFive (m_i = 52-k+1+i, fallback = m_i-1).
+// construction (m_i = 52-k+1+i, collision fallback = m_i-1 — the one value no
+// earlier draw can hold, which is what makes the deal truly without-replacement).
 //   k = 14 draws → digest bytes 0..27   ·   k = 10 draws → bytes 0..19
 // ---------------------------------------------------------------------------
-circuit dealFourteen(b: Vector<32, Uint<8>>): [Vector<7, Uint<8>>, Vector<7, Uint<8>>] {
+circuit dealFourteenIdx(b: Vector<32, Uint<8>>): Vector<14, Uint<8>> {
   const c0 = boundedDraw(b[0], b[1], 39);
   const t1 = boundedDraw(b[2], b[3], 40);
-  const c1 = t1 == c0 ? (38 as Uint<8>) : t1;
+  const c1 = t1 == c0 ? (39 as Uint<8>) : t1;
   const t2 = boundedDraw(b[4], b[5], 41);
-  const c2 = (t2 == c0 || t2 == c1) ? (39 as Uint<8>) : t2;
+  const c2 = (t2 == c0 || t2 == c1) ? (40 as Uint<8>) : t2;
   const t3 = boundedDraw(b[6], b[7], 42);
-  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (40 as Uint<8>) : t3;
+  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (41 as Uint<8>) : t3;
   const t4 = boundedDraw(b[8], b[9], 43);
-  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (41 as Uint<8>) : t4;
+  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (42 as Uint<8>) : t4;
   const t5 = boundedDraw(b[10], b[11], 44);
-  const c5 = (t5 == c0 || t5 == c1 || t5 == c2 || t5 == c3 || t5 == c4) ? (42 as Uint<8>) : t5;
+  const c5 = (t5 == c0 || t5 == c1 || t5 == c2 || t5 == c3 || t5 == c4) ? (43 as Uint<8>) : t5;
   const t6 = boundedDraw(b[12], b[13], 45);
-  const c6 = (t6 == c0 || t6 == c1 || t6 == c2 || t6 == c3 || t6 == c4 || t6 == c5) ? (43 as Uint<8>) : t6;
+  const c6 = (t6 == c0 || t6 == c1 || t6 == c2 || t6 == c3 || t6 == c4 || t6 == c5) ? (44 as Uint<8>) : t6;
   const t7 = boundedDraw(b[14], b[15], 46);
-  const c7 = (t7 == c0 || t7 == c1 || t7 == c2 || t7 == c3 || t7 == c4 || t7 == c5 || t7 == c6) ? (44 as Uint<8>) : t7;
+  const c7 = (t7 == c0 || t7 == c1 || t7 == c2 || t7 == c3 || t7 == c4 || t7 == c5 || t7 == c6) ? (45 as Uint<8>) : t7;
   const t8 = boundedDraw(b[16], b[17], 47);
-  const c8 = (t8 == c0 || t8 == c1 || t8 == c2 || t8 == c3 || t8 == c4 || t8 == c5 || t8 == c6 || t8 == c7) ? (45 as Uint<8>) : t8;
+  const c8 = (t8 == c0 || t8 == c1 || t8 == c2 || t8 == c3 || t8 == c4 || t8 == c5 || t8 == c6 || t8 == c7) ? (46 as Uint<8>) : t8;
   const t9 = boundedDraw(b[18], b[19], 48);
-  const c9 = (t9 == c0 || t9 == c1 || t9 == c2 || t9 == c3 || t9 == c4 || t9 == c5 || t9 == c6 || t9 == c7 || t9 == c8) ? (46 as Uint<8>) : t9;
+  const c9 = (t9 == c0 || t9 == c1 || t9 == c2 || t9 == c3 || t9 == c4 || t9 == c5 || t9 == c6 || t9 == c7 || t9 == c8) ? (47 as Uint<8>) : t9;
   const t10 = boundedDraw(b[20], b[21], 49);
-  const c10 = (t10 == c0 || t10 == c1 || t10 == c2 || t10 == c3 || t10 == c4 || t10 == c5 || t10 == c6 || t10 == c7 || t10 == c8 || t10 == c9) ? (47 as Uint<8>) : t10;
+  const c10 = (t10 == c0 || t10 == c1 || t10 == c2 || t10 == c3 || t10 == c4 || t10 == c5 || t10 == c6 || t10 == c7 || t10 == c8 || t10 == c9) ? (48 as Uint<8>) : t10;
   const t11 = boundedDraw(b[22], b[23], 50);
-  const c11 = (t11 == c0 || t11 == c1 || t11 == c2 || t11 == c3 || t11 == c4 || t11 == c5 || t11 == c6 || t11 == c7 || t11 == c8 || t11 == c9 || t11 == c10) ? (48 as Uint<8>) : t11;
+  const c11 = (t11 == c0 || t11 == c1 || t11 == c2 || t11 == c3 || t11 == c4 || t11 == c5 || t11 == c6 || t11 == c7 || t11 == c8 || t11 == c9 || t11 == c10) ? (49 as Uint<8>) : t11;
   const t12 = boundedDraw(b[24], b[25], 51);
-  const c12 = (t12 == c0 || t12 == c1 || t12 == c2 || t12 == c3 || t12 == c4 || t12 == c5 || t12 == c6 || t12 == c7 || t12 == c8 || t12 == c9 || t12 == c10 || t12 == c11) ? (49 as Uint<8>) : t12;
+  const c12 = (t12 == c0 || t12 == c1 || t12 == c2 || t12 == c3 || t12 == c4 || t12 == c5 || t12 == c6 || t12 == c7 || t12 == c8 || t12 == c9 || t12 == c10 || t12 == c11) ? (50 as Uint<8>) : t12;
   const t13 = boundedDraw(b[26], b[27], 52);
-  const c13 = (t13 == c0 || t13 == c1 || t13 == c2 || t13 == c3 || t13 == c4 || t13 == c5 || t13 == c6 || t13 == c7 || t13 == c8 || t13 == c9 || t13 == c10 || t13 == c11 || t13 == c12) ? (50 as Uint<8>) : t13;
-  return [[cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3), cardToRank(c4), cardToRank(c5), cardToRank(c6)],
-          [cardToRank(c7), cardToRank(c8), cardToRank(c9), cardToRank(c10), cardToRank(c11), cardToRank(c12), cardToRank(c13)]];
+  const c13 = (t13 == c0 || t13 == c1 || t13 == c2 || t13 == c3 || t13 == c4 || t13 == c5 || t13 == c6 || t13 == c7 || t13 == c8 || t13 == c9 || t13 == c10 || t13 == c11 || t13 == c12) ? (51 as Uint<8>) : t13;
+  return [c0, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13];
 }
-circuit dealTen(b: Vector<32, Uint<8>>): [Vector<7, Uint<8>>, Vector<7, Uint<8>>] {
+circuit dealTenIdx(b: Vector<32, Uint<8>>): Vector<10, Uint<8>> {
   const c0 = boundedDraw(b[0], b[1], 43);
   const t1 = boundedDraw(b[2], b[3], 44);
-  const c1 = t1 == c0 ? (42 as Uint<8>) : t1;
+  const c1 = t1 == c0 ? (43 as Uint<8>) : t1;
   const t2 = boundedDraw(b[4], b[5], 45);
-  const c2 = (t2 == c0 || t2 == c1) ? (43 as Uint<8>) : t2;
+  const c2 = (t2 == c0 || t2 == c1) ? (44 as Uint<8>) : t2;
   const t3 = boundedDraw(b[6], b[7], 46);
-  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (44 as Uint<8>) : t3;
+  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (45 as Uint<8>) : t3;
   const t4 = boundedDraw(b[8], b[9], 47);
-  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (45 as Uint<8>) : t4;
+  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (46 as Uint<8>) : t4;
   const t5 = boundedDraw(b[10], b[11], 48);
-  const c5 = (t5 == c0 || t5 == c1 || t5 == c2 || t5 == c3 || t5 == c4) ? (46 as Uint<8>) : t5;
+  const c5 = (t5 == c0 || t5 == c1 || t5 == c2 || t5 == c3 || t5 == c4) ? (47 as Uint<8>) : t5;
   const t6 = boundedDraw(b[12], b[13], 49);
-  const c6 = (t6 == c0 || t6 == c1 || t6 == c2 || t6 == c3 || t6 == c4 || t6 == c5) ? (47 as Uint<8>) : t6;
+  const c6 = (t6 == c0 || t6 == c1 || t6 == c2 || t6 == c3 || t6 == c4 || t6 == c5) ? (48 as Uint<8>) : t6;
   const t7 = boundedDraw(b[14], b[15], 50);
-  const c7 = (t7 == c0 || t7 == c1 || t7 == c2 || t7 == c3 || t7 == c4 || t7 == c5 || t7 == c6) ? (48 as Uint<8>) : t7;
+  const c7 = (t7 == c0 || t7 == c1 || t7 == c2 || t7 == c3 || t7 == c4 || t7 == c5 || t7 == c6) ? (49 as Uint<8>) : t7;
   const t8 = boundedDraw(b[16], b[17], 51);
-  const c8 = (t8 == c0 || t8 == c1 || t8 == c2 || t8 == c3 || t8 == c4 || t8 == c5 || t8 == c6 || t8 == c7) ? (49 as Uint<8>) : t8;
+  const c8 = (t8 == c0 || t8 == c1 || t8 == c2 || t8 == c3 || t8 == c4 || t8 == c5 || t8 == c6 || t8 == c7) ? (50 as Uint<8>) : t8;
   const t9 = boundedDraw(b[18], b[19], 52);
-  const c9 = (t9 == c0 || t9 == c1 || t9 == c2 || t9 == c3 || t9 == c4 || t9 == c5 || t9 == c6 || t9 == c7 || t9 == c8) ? (50 as Uint<8>) : t9;
-  return [[cardToRank(c0), cardToRank(c1), cardToRank(c2), cardToRank(c3), cardToRank(c4), 0, 0],
-          [cardToRank(c5), cardToRank(c6), cardToRank(c7), cardToRank(c8), cardToRank(c9), 0, 0]];
+  const c9 = (t9 == c0 || t9 == c1 || t9 == c2 || t9 == c3 || t9 == c4 || t9 == c5 || t9 == c6 || t9 == c7 || t9 == c8) ? (51 as Uint<8>) : t9;
+  return [c0, c1, c2, c3, c4, c5, c6, c7, c8, c9];
+}
+// Empty slots in a 10-card deal are sentinel 255 — never a real card index.
+circuit padIdx14(d: Vector<10, Uint<8>>): Vector<14, Uint<8>> {
+  return [d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8], d[9], 255, 255, 255, 255];
+}
+circuit dealFourteenRanks(idx: Vector<14, Uint<8>>): [Vector<7, Uint<8>>, Vector<7, Uint<8>>] {
+  return [[cardToRank(idx[0]), cardToRank(idx[1]), cardToRank(idx[2]), cardToRank(idx[3]), cardToRank(idx[4]), cardToRank(idx[5]), cardToRank(idx[6])],
+          [cardToRank(idx[7]), cardToRank(idx[8]), cardToRank(idx[9]), cardToRank(idx[10]), cardToRank(idx[11]), cardToRank(idx[12]), cardToRank(idx[13])]];
+}
+circuit dealTenRanks(idx: Vector<10, Uint<8>>): [Vector<7, Uint<8>>, Vector<7, Uint<8>>] {
+  return [[cardToRank(idx[0]), cardToRank(idx[1]), cardToRank(idx[2]), cardToRank(idx[3]), cardToRank(idx[4]), 0, 0],
+          [cardToRank(idx[5]), cardToRank(idx[6]), cardToRank(idx[7]), cardToRank(idx[8]), cardToRank(idx[9]), 0, 0]];
 }
 // Packed pair of hands from the shared deck. Exported for the referee/clients.
 export pure circuit dealPairPacked(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>, size: Uint<32>): [Field, Field] {
   const digest = transientHash<DealPairInput>(DealPairInput { separator: pad(32, "pob:deal:v4"), salt0: salt0, salt1: salt1, seed: seed, round: round });
   const b = (digest as Bytes<32>) as Vector<32, Uint<8>>;
-  const pair = size == (5 as Uint<32>) ? dealTen(b) : dealFourteen(b);
+  const pair = size == (5 as Uint<32>) ? dealTenRanks(dealTenIdx(b)) : dealFourteenRanks(dealFourteenIdx(b));
   return [packRanks(pair[0], size as Uint<8>), packRanks(pair[1], size as Uint<8>)];
+}
+// AUDIT/TEST HOOK: the shared deal at CARD-INDEX level (255 = empty slot).
+// Rank packing can mask duplicate indices — the 2026-10-08 review caught that
+// class of bug here; index-level tests assert pairwise distinctness directly.
+export pure circuit dealPairIndices(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>, size: Uint<32>): Vector<14, Uint<8>> {
+  const digest = transientHash<DealPairInput>(DealPairInput { separator: pad(32, "pob:deal:v4"), salt0: salt0, salt1: salt1, seed: seed, round: round });
+  const b = (digest as Bytes<32>) as Vector<32, Uint<8>>;
+  return size == (5 as Uint<32>) ? padIdx14(dealTenIdx(b)) : dealFourteenIdx(b);
 }
 
 circuit handSize(mode: Uint<8>): Uint<32> { return mode == (0 as Uint<8>) ? 5 : 7; }
