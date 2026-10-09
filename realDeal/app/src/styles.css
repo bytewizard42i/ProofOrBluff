@@ -2986,27 +2986,36 @@ button.active {
 
 /* ────────── 5 Up 2 Down table ────────── */
 .fiveup-table { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.9rem; min-width: 0; }
-.fiveup-score { display: flex; justify-content: space-between; width: 100%; max-width: 640px; font-size: 1.05rem; color: var(--text-dim); }
-.fiveup-score strong { color: var(--gold); font-size: 1.4rem; margin-left: 0.35rem; }
-.fiveup-round { font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; align-self: center; }
+.fiveup-board-row { display: flex; align-items: center; justify-content: center; gap: 1rem; width: 100%; }
+.fiveup-side { display: flex; flex-direction: column; align-items: center; font-size: 1.05rem; color: var(--text-dim); min-width: 3.2rem; }
+.fiveup-side strong { color: var(--gold); font-size: 1.6rem; }
+.fiveup-round { font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
 .fiveup-dialogue { margin: 0; }
 .fiveup-board { display: flex; gap: 0.6rem; justify-content: center; flex-wrap: wrap; padding: 0.8rem; border-radius: 16px;
   background: radial-gradient(ellipse at center, rgba(157, 78, 221, 0.18), rgba(0,0,0,0) 70%); }
 .fiveup-board .card { cursor: pointer; }
 .fiveup-board .card.disabled { cursor: default; opacity: 1; }
+.fiveup-showdown { display: flex; align-items: center; justify-content: center; gap: 0.7rem; flex-wrap: wrap;
+  color: var(--text); font-size: 0.95rem; padding: 0.5rem 0.9rem; border-radius: 12px;
+  border: 1px solid rgba(157, 78, 221, 0.35); background: rgba(20, 12, 36, 0.55); }
+.fiveup-showdown strong { color: var(--gold); }
+.fiveup-showdown-cards { display: flex; gap: 0.4rem; }
+.fiveup-showdown-cards .card { transform: scale(0.8); margin: -0.6rem 0; }
+.fiveup-reveal { color: var(--text-dim); font-size: 0.85rem; text-align: center; }
 .fiveup-prompt { min-height: 1.6em; color: var(--text); text-align: center; font-size: 1.05rem; }
-.fiveup-actions { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 0.6rem; width: 100%; max-width: 640px; }
+.fiveup-actions { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.9rem; width: 100%; max-width: 720px; }
 .fiveup-actions > .btn-quit { justify-self: start; }
-.fiveup-actions > .primary, .fiveup-actions > .danger { justify-self: center; }
-.fiveup-actions > .primary + .danger { grid-column: 3; justify-self: start; }
-.fiveup-hole { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.4rem; }
+.fiveup-buttons { display: flex; gap: 0.6rem; justify-self: end; align-items: center; }
+.fiveup-hole { display: flex; align-items: center; gap: 0.5rem; justify-self: center; }
 .fiveup-hole .card.disabled { opacity: 1; cursor: default; }
-.fiveup-hint { color: var(--text-dim); font-size: 0.85rem; margin-left: 0.6rem; }
+.fiveup-hint { color: var(--text-dim); font-size: 0.85rem; max-width: 9rem; }
 .fiveup-switch { color: var(--violet); text-decoration: none; align-self: center; font-size: 0.9rem; }
 .fiveup-switch:hover { text-decoration: underline; }
 .fiveup-menu .subtitle { max-width: 36rem; }
 @media (max-width: 640px) {
   .fiveup-actions { grid-template-columns: auto 1fr; }
-  .fiveup-actions > .primary + .danger { grid-column: auto; justify-self: center; }
+  .fiveup-buttons { grid-column: 2; justify-self: end; }
+  .fiveup-hole { grid-column: 1 / -1; grid-row: 2; }
+  .fiveup-hint { max-width: none; }
   .fiveup-board .card, .fiveup-hole .card { transform: scale(0.85); }
 }

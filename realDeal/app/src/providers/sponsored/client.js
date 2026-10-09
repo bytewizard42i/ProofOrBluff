@@ -86,6 +86,10 @@ export function createSponsoredClient({ baseUrl = defaultBaseUrl(), fetchImpl = 
     play: (gameId, { rank, count, cards }) => request('POST', `/games/${requireGameId(gameId)}/play`, { rank, count, cards }),
     /** 5 Up 2 Down: claim `count` matches naming board `ranks`. */
     claim: (gameId, { count, ranks }) => request('POST', `/games/${requireGameId(gameId)}/claim`, { count, ranks }),
+    /** 5 Up 2 Down: claim nothing and take the showdown (the other side draws 2). */
+    pass: (gameId) => request('POST', `/games/${requireGameId(gameId)}/pass`),
+    /** 5 Up 2 Down: deal the next hand once the finished round has been shown. */
+    next: (gameId) => request('POST', `/games/${requireGameId(gameId)}/next`),
     accept: (gameId) => request('POST', `/games/${requireGameId(gameId)}/accept`),
     challenge: (gameId) => request('POST', `/games/${requireGameId(gameId)}/challenge`),
     abandon: (gameId) => request('POST', `/games/${requireGameId(gameId)}/abandon`),

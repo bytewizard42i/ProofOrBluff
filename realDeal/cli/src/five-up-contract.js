@@ -70,7 +70,9 @@ export function zeroWitnessBundle() {
     entropyPair: [new Uint8Array(32), new Uint8Array(32)],
     roundSecrets: [new Uint8Array(32), new Uint8Array(32)],
     roundMoves: Array.from({ length: MOVES_PER_ROUND }, zeroMove),
-    dealtRanks: Array(9).fill(0n),
+    roundDigests: [Array(32).fill(0n), Array(32).fill(0n), Array(32).fill(0n)],
+    dealtCards: Array(13).fill(0n),
+    dealtRanks: Array(13).fill(0n),
     startBoundary: initialBoundary(),
     p1CloseConsent: zeroConsent(), p2CloseConsent: zeroConsent(),
   };
@@ -80,7 +82,9 @@ export function zeroWitnessBundle() {
 export function assertRoundWitnessShape(w) {
   if (!w || typeof w !== 'object') throw new Error('proveRound needs witnesses from five-up-referee finishRound(): { moves, ranks, boundaryIn } plus entropyPair and this round\'s two secrets.');
   if (!Array.isArray(w.moves) || w.moves.length !== MOVES_PER_ROUND) throw new Error(`witnesses.moves must have exactly ${MOVES_PER_ROUND} slots (got ${w.moves?.length}).`);
-  if (!Array.isArray(w.ranks) || w.ranks.length !== 9) throw new Error('witnesses.ranks must be the nine dealt ranks.');
+  if (!Array.isArray(w.digests) || w.digests.length !== 3) throw new Error('witnesses.digests must be the three round digests.');
+  if (!Array.isArray(w.cards) || w.cards.length !== 13) throw new Error('witnesses.cards must be the thirteen dealt card indices.');
+  if (!Array.isArray(w.ranks) || w.ranks.length !== 13) throw new Error('witnesses.ranks must be the thirteen dealt ranks.');
   if (!Array.isArray(w.roundSecrets) || w.roundSecrets.length !== 2) throw new Error('witnesses.roundSecrets must be [p1Secret, p2Secret] for THIS round.');
   if (!Array.isArray(w.entropyPair) || w.entropyPair.length !== 2) throw new Error('witnesses.entropyPair must be [p1Entropy, p2Entropy].');
   if (!w.boundaryIn || typeof w.boundaryIn.round !== 'bigint') throw new Error('witnesses.boundaryIn must be the Boundary the previous proof wrote (initialBoundary() for round 1).');
@@ -194,6 +198,8 @@ export async function getFiveUpContractApi({
     entropyPair(ctx) { return [ctx.privateState, w('entropyPair')]; },
     roundSecrets(ctx) { return [ctx.privateState, w('roundSecrets')]; },
     roundMoves(ctx) { return [ctx.privateState, w('roundMoves')]; },
+    roundDigests(ctx) { return [ctx.privateState, w('roundDigests')]; },
+    dealtCards(ctx) { return [ctx.privateState, w('dealtCards')]; },
     dealtRanks(ctx) { return [ctx.privateState, w('dealtRanks')]; },
     startBoundary(ctx) { return [ctx.privateState, w('startBoundary')]; },
     p1CloseConsent(ctx) { return [ctx.privateState, w('p1CloseConsent')]; },
@@ -272,7 +278,7 @@ export async function getFiveUpContractApi({
       staged = {
         entropyPair: rw.entropyPair.map((v, i) => toBytes32(v, `entropyPair[${i}]`)),
         roundSecrets: rw.roundSecrets.map((v, i) => toBytes32(v, `roundSecrets[${i}]`)),
-        roundMoves: rw.moves, dealtRanks: rw.ranks.map(BigInt), startBoundary: rw.boundaryIn,
+        roundMoves: rw.moves, roundDigests: rw.digests, dealtCards: rw.cards.map(BigInt), dealtRanks: rw.ranks.map(BigInt), startBoundary: rw.boundaryIn,
         p1CloseConsent: zeroConsent(), p2CloseConsent: zeroConsent(),
       };
       try {

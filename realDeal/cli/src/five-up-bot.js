@@ -36,7 +36,7 @@ const PROFILES = {
 };
 
 const CLAIM_LINES = {
-  honest0: ['Nothing for me this time.', 'Board hates me. Zero.', 'I pass on this one.'],
+  honest0: ['Nothing for me — I pass. Showdown!', 'Board hates me. Pass. Draw your two.', 'Passing. Go on, draw against me.'],
   honest1: ['One match. Honest.', 'Got one. Believe me or don\'t.', 'Just the one.'],
   honest2: ['Two matches. Read \'em and weep.', 'Both of mine hit. Both.', 'Two. Challenge if you dare.'],
   bluff:   ['One match... probably.', 'I\'ve got that one. Trust me.', 'Two matches. Definitely two.', 'Would I lie to you?'],
@@ -67,7 +67,8 @@ export function decideClaim({ hole, board, difficulty = 'medium', random = Math.
     return { count: 1, ranks: [real[0]], bluff: false, dialogue: pick(CLAIM_LINES.honest1, random) };
   }
   if (fakes.length && random() < p.bluffFromZero) return { count: 1, ranks: [fakes[0]], bluff: true, dialogue: pick(CLAIM_LINES.bluff, random) };
-  return { count: 0, ranks: [], bluff: false, dialogue: pick(CLAIM_LINES.honest0, random) };
+  // No matches and no nerve: PASS — the human draws the 2-card showdown.
+  return { pass: true, count: 0, ranks: [], bluff: false, dialogue: pick(CLAIM_LINES.honest0, random) };
 }
 
 /**

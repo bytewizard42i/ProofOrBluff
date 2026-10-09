@@ -462,6 +462,13 @@ export function createSponsoredHttpApp({
       }
       if (action === 'accept') { await readJsonBody(request).catch(() => ({})); return sendJson(response, 200, act(entry, (g) => g.humanAccept())); }
       if (action === 'challenge') { await readJsonBody(request).catch(() => ({})); return sendJson(response, 200, act(entry, (g) => g.humanChallenge())); }
+      if (action === 'pass' || action === 'next') {
+        await readJsonBody(request).catch(() => ({}));
+        return sendJson(response, 200, act(entry, (g) => {
+          if (!g.humanPass) throw new GameError(409, 'this table has no pass or next actions');
+          return action === 'pass' ? g.humanPass() : g.nextRound();
+        }));
+      }
       throw new HttpError(404, 'Not found.');
     } catch (error) {
       const status = error instanceof HttpError ? error.statusCode : 500;

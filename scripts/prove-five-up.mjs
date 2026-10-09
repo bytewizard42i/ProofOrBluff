@@ -32,11 +32,13 @@ const secretsFor = (seat) => Array.from({ length: MAX_ROUNDS }, (_, i) => new Ui
 const SECRETS = [secretsFor(0), secretsFor(1)];
 const seed = pureCircuits.combineEntropy(E1, E2);
 
-const witness = { entropy: [E1, E2], roundSecrets: [new Uint8Array(32), new Uint8Array(32)], moves: [], ranks: [], boundary: initialBoundary(), p1: null, p2: null };
+const witness = { entropy: [E1, E2], roundSecrets: [new Uint8Array(32), new Uint8Array(32)], moves: [], cards: [], ranks: [], digests: [], boundary: initialBoundary(), p1: null, p2: null };
 const witnesses = {
   entropyPair: (c) => [c.privateState, witness.entropy],
   roundSecrets: (c) => [c.privateState, witness.roundSecrets],
   roundMoves: (c) => [c.privateState, witness.moves],
+  roundDigests: (c) => [c.privateState, witness.digests],
+  dealtCards: (c) => [c.privateState, witness.cards],
   dealtRanks: (c) => [c.privateState, witness.ranks],
   startBoundary: (c) => [c.privateState, witness.boundary],
   p1CloseConsent: (c) => [c.privateState, witness.p1],
@@ -44,12 +46,15 @@ const witnesses = {
   get_challenge_reduction: (c, f) => challengeReductionWitness(c, f),
 };
 
-/** Honest claims from both seats; the responder challenges every 2-claim. */
+/** Honest claims from both seats — a seat with no match PASSES (showdown);
+ *  the responder challenges every 2-claim. */
+let passes = 0;
 function playRound(ref) {
   ref.startRound();
-  for (let i = 0; i < 2; i += 1) {
+  while (!ref.state.done) {
     const st = ref.state;
     const m = matchesFor(ref.hole(st.actor), st.board);
+    if (m.length === 0) { ref.pass(); passes += 1; continue; }
     ref.claim(BigInt(m.length), m[0] ?? 0n, m[1] ?? 0n);
     if (m.length === 2) ref.challenge(); else ref.accept();
   }
@@ -80,7 +85,7 @@ while (!ref.boundary.ended) {
   const fin = playRound(ref);
   const r = Number(fin.round);
   witness.roundSecrets = [SECRETS[0][r - 1], SECRETS[1][r - 1]];
-  witness.moves = fin.moves; witness.ranks = fin.ranks; witness.boundary = fin.boundaryIn;
+  witness.moves = fin.moves; witness.cards = fin.cards; witness.ranks = fin.ranks; witness.digests = fin.digests; witness.boundary = fin.boundaryIn;
   const sim = contract.circuits.proveRound(context, BigInt(r));
   context = sim.context;
   const unproven = await createUnprovenCallTxFromInitialStates(zkConfigProvider, {
@@ -89,7 +94,8 @@ while (!ref.boundary.ended) {
   const t0 = Date.now();
   const proven = await proofProvider.proveTx(unproven.private.unprovenTx);
   const secs = (Date.now() - t0) / 1000; times.push(secs);
-  console.log(`[round ${r}] score ${fin.boundaryOut.score0}-${fin.boundaryOut.score1} — PROOF ACCEPTED in ${secs.toFixed(1)}s (${(proven.serialize().length / 1024).toFixed(0)} KB)`);
+  const sd = fin.outcomes.filter((o) => o.pass).map((o) => `pass by seat ${o.claimant}: drew ${o.draws.join(',')} → +${o.responderGain}`).join('; ');
+  console.log(`[round ${r}] score ${fin.boundaryOut.score0}-${fin.boundaryOut.score1}${sd ? ` [${sd}]` : ''} — PROOF ACCEPTED in ${secs.toFixed(1)}s (${(proven.serialize().length / 1024).toFixed(0)} KB)`);
   contractState = initial.currentContractState; contractState.data = context.currentQueryContext.state;
   privateState = context.currentPrivateState;
 }
@@ -107,4 +113,4 @@ const unprovenClose = await createUnprovenCallTxFromInitialStates(zkConfigProvid
 const t0 = Date.now();
 await proofProvider.proveTx(unprovenClose.private.unprovenTx);
 console.log(`[close] PROOF ACCEPTED in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-console.log(`\nREAL PROOFS GENERATED: ${times.length} rounds (avg ${(times.reduce((a, b) => a + b, 0) / times.length).toFixed(1)}s) + closeGame. winner=${result.winner}, ${result.p1Score}-${result.p2Score}.`);
+console.log(`\nREAL PROOFS GENERATED: ${times.length} rounds (avg ${(times.reduce((a, b) => a + b, 0) / times.length).toFixed(1)}s) + closeGame, ${passes} pass showdown(s). winner=${result.winner}, ${result.p1Score}-${result.p2Score}.`);

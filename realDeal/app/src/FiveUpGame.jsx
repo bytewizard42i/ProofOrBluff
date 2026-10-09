@@ -26,7 +26,8 @@ function summariseChain(view) {
   const c = view?.chain ?? {};
   const receipts = c.receipts ?? [];
   const roundsProven = receipts.filter((r) => r.step === 'proveRound').length;
-  const roundsPlayed = (view?.round ?? 1) - (view?.status === 'playing' ? 1 : 0);
+  // While a finished round is held (awaitingNext) it counts as played.
+  const roundsPlayed = (view?.round ?? 1) - (view?.status === 'playing' && !view?.awaitingNext ? 1 : 0);
   return {
     network: c.network ?? null, contractAddress: c.contractAddress ?? null, receipts, pending: c.pending ?? [],
     deployed: receipts.some((r) => r.step === 'deploy'), closed: receipts.some((r) => r.step === 'closeGame'),
@@ -45,6 +46,19 @@ export function describeEvents(view, events, humanLine) {
         lines.push(e.count === 0 ? `${LOG.AI_CLAIMED} no matches.` : `${LOG.AI_CLAIMED} ${e.count} match${e.count > 1 ? 'es' : ''}: ${names(e.ranks)}.`);
         break;
       case 'bot-accept': lines.push(`${LOG.AI_ACCEPTED} your claim.`); break;
+      case 'human-pass':
+        lines.push('You pass — showdown: the Ai draws two cards against your hand.');
+        break;
+      case 'bot-pass':
+        lines.push('The Ai passes — showdown: you draw two cards against its hand.');
+        break;
+      case 'showdown': {
+        const drawer = e.passer === 'human' ? 'Ai' : 'You';
+        lines.push(e.wins === 0
+          ? `Showdown — ${drawer} drew ${names(e.draws)}: no wins.`
+          : `Showdown — ${drawer} drew ${names(e.draws)}: ${e.wins} win${e.wins > 1 ? 's' : ''}, +${e.wins}.`);
+        break;
+      }
       case 'bot-challenge':
         lines.push(e.lies === 0
           ? `${LOG.CHALLENGE_FAILED}! Your claim was true — it pays double. ${LOG.AI_LOSES_MARKER_5U2D} for doubting you.`
@@ -82,7 +96,8 @@ function FiveUpTutorial({ onClose }) {
           <li><strong>Claim your matches</strong> — tap the board cards you say you hold (0, 1 or 2). Lie if you dare.</li>
           <li><strong>Accepted:</strong> 1 match = +1 · 2 matches = +3.</li>
           <li><strong>Challenged and true:</strong> +2 · +4. <strong>Challenged with a lie:</strong> you lose 1 per lie, they gain it — and the true card earns nothing.</li>
-          <li><strong>Race to 20</strong> (Casual: 10). Scores never go below 0.</li>
+          <li><strong>Nothing to claim?</strong> Press <strong>Pass</strong>: your opponent draws two cards, each that beats your same-position card scores them +1. You lose nothing.</li>
+          <li><strong>Race to 20</strong> (Casual: 10). Scores never go below 0. The finished hand stays on the table until you press Next hand.</li>
           <li>Your cards never leave the proof. A challenge reveals only how many claims were lies.</li>
         </ol>
         <div className="tutorial-actions"><button className="primary" onClick={onClose}>Deal me in</button></div>
@@ -184,8 +199,13 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
   const myTurn = live && view.turn === 'human';
   const claiming = myTurn && view.step === 'claim';
   const responding = myTurn && view.step === 'respond';
+  const awaitingNext = live && view.awaitingNext;
   const board = view?.board ?? [];
   const hole = view?.hole ?? [];
+  // myMatches is only populated while a round is live; during the round-end
+  // hold the held cards are still shown, so compute it from what we display.
+  const displayMatches = view?.myMatches?.length ? view.myMatches : hole.filter((r) => board.includes(r));
+  const summary = view?.roundSummary;
   const pickedRanks = picked.map((i) => board[i]);
 
   const togglePick = (i) => {
@@ -194,8 +214,10 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
   };
   const submitClaim = () => run(async () => {
     const v = await client.claim(gameIdRef.current, { count: pickedRanks.length, ranks: pickedRanks });
-    absorb(v, pickedRanks.length === 0 ? `${LOG.YOU_CLAIMED} no matches.` : `${LOG.YOU_CLAIMED} ${pickedRanks.length} match${pickedRanks.length > 1 ? 'es' : ''}: ${names(pickedRanks)}.`);
+    absorb(v, `${LOG.YOU_CLAIMED} ${pickedRanks.length} match${pickedRanks.length > 1 ? 'es' : ''}: ${names(pickedRanks)}.`);
   });
+  const pass = () => run(async () => absorb(await client.pass(gameIdRef.current), 'You pass.'));
+  const nextHand = () => run(async () => absorb(await client.next(gameIdRef.current), `Round ${(view?.round ?? 0) + 1}: new board, new cards.`));
   const accept = () => run(async () => absorb(await client.accept(gameIdRef.current), `${LOG.YOU_ACCEPTED} the Ai's claim.`));
   const challenge = () => run(async () => absorb(await client.challenge(gameIdRef.current), 'Proof or Bluff! You challenge the Ai.'));
 
@@ -253,35 +275,53 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
             <GameLogPanel log={log} visibleCount={log.length} narrationMuted={audio.narrationMuted} narrationVolume={audio.narrationVolume}
               onToggleNarration={() => audio.setNarrationMuted((m) => !m)} onNarrationVolume={audio.setNarrationVolume} />
             <div className="fiveup-table">
-              <div className="fiveup-score">
-                <span>You <strong>{view.scores.human}</strong></span>
-                <span className="fiveup-round">Round {view.round} · race to {view.target}</span>
-                <span>Ai <strong>{view.scores.bot}</strong></span>
-              </div>
               {dialogue && <p className="ai-dialogue fiveup-dialogue">"{dialogue}"</p>}
-              <div className="fiveup-board" aria-label="Board">
-                {board.map((r, i) => (
-                  <PlayingCard key={`b${i}`} card={card(r, i, 'board')} selected={picked.includes(i)} disabled={!claiming || busy} onClick={() => togglePick(i)} />
-                ))}
+              <div className="fiveup-board-row">
+                <span className="fiveup-side">Ai <strong>{view.scores.bot}</strong></span>
+                <div className="fiveup-board" aria-label="Board">
+                  {board.map((r, i) => (
+                    <PlayingCard key={`b${i}`} card={card(r, i, 'board')} selected={picked.includes(i)} disabled={!claiming || busy} onClick={() => togglePick(i)} />
+                  ))}
+                </div>
+                <span className="fiveup-side">You <strong>{view.scores.human}</strong></span>
               </div>
+              <div className="fiveup-round">Round {view.round} · race to {view.target}</div>
+              {awaitingNext && summary?.showdowns?.map((sd, i) => (
+                <div key={`sd${i}`} className="fiveup-showdown" aria-label="Showdown result">
+                  <span>{sd.passer === 'human' ? 'You passed — Ai drew' : 'Ai passed — you drew'}</span>
+                  <span className="fiveup-showdown-cards">
+                    {sd.draws.map((r, j) => <PlayingCard key={`sd${i}-${j}`} card={card(r, j, `sd${i}`)} disabled />)}
+                  </span>
+                  <span>against {sd.passer === 'human' ? 'your' : "the Ai's"} {names(sd.passerHole)} — <strong>+{sd.wins}</strong> for {sd.passer === 'human' ? 'Ai' : 'you'}</span>
+                </div>
+              ))}
+              {awaitingNext && summary && (
+                <div className="fiveup-reveal">Showdown over — Ai held {names(summary.botHole)}, you held {names(summary.hole)}.</div>
+              )}
               <div className="fiveup-prompt" aria-live="polite">
                 {!live && 'Game over.'}
-                {claiming && (picked.length === 0 ? 'Tap the board cards you claim to match (0–2), then claim.' : `Claiming ${names(pickedRanks)}.`)}
+                {claiming && (picked.length === 0
+                  ? 'Tap the board cards you claim to match (1–2), then Claim — or Pass for a showdown.'
+                  : `Claiming ${names(pickedRanks)}.`)}
                 {responding && pendingText}
-                {live && !myTurn && 'The Ai is thinking…'}
+                {awaitingNext && 'Round complete — press Next hand to deal.'}
+                {live && !myTurn && !awaitingNext && 'The Ai is thinking…'}
               </div>
               <div className="fiveup-actions">
                 <button type="button" className={`btn-quit${quitArmed ? ' btn-quit--armed' : ''}`} onClick={quit} disabled={busy || !live}>
                   {quitArmed ? <>Sure?<br />Quit</> : <>Safely<br />quit game</>}
                 </button>
-                {claiming && <button className="primary" onClick={submitClaim} disabled={busy}>{picked.length === 0 ? 'Claim nothing' : `Claim ${picked.length}`}</button>}
-                {responding && <button className="primary" onClick={accept} disabled={busy}>Accept</button>}
-                {responding && view.pending.count > 0 && <button className="danger" onClick={challenge} disabled={busy}>Proof or Bluff!</button>}
-                <span className="fiveup-spacer" aria-hidden="true" />
-              </div>
-              <div className="fiveup-hole" aria-label="Your cards">
-                {hole.map((r, i) => <PlayingCard key={`h${i}`} card={card(r, i + 7, 'hole')} disabled pairColor={board.includes(r) ? { color: 'var(--gold)', glow: 'rgba(255,215,0,0.45)' } : null} />)}
-                <span className="fiveup-hint">{view.myMatches.length === 0 ? 'No real matches this round.' : `${view.myMatches.length} real match${view.myMatches.length > 1 ? 'es' : ''} (gold).`}</span>
+                <div className="fiveup-hole" aria-label="Your cards">
+                  {hole.map((r, i) => <PlayingCard key={`h${i}`} card={card(r, i + 7, 'hole')} disabled pairColor={board.includes(r) ? { color: 'var(--gold)', glow: 'rgba(255,215,0,0.45)' } : null} />)}
+                  <span className="fiveup-hint">{displayMatches.length === 0 ? 'No real matches — Claim a bluff or Pass.' : `${displayMatches.length} real match${displayMatches.length > 1 ? 'es' : ''} (gold).`}</span>
+                </div>
+                <div className="fiveup-buttons">
+                  {claiming && <button className="primary" onClick={submitClaim} disabled={busy || picked.length === 0}>{picked.length === 0 ? 'Claim' : `Claim ${picked.length}`}</button>}
+                  {claiming && <button className="secondary" onClick={pass} disabled={busy}>Pass</button>}
+                  {responding && <button className="primary" onClick={accept} disabled={busy}>Accept</button>}
+                  {responding && view.pending.count > 0 && <button className="danger" onClick={challenge} disabled={busy}>Proof or Bluff!</button>}
+                  {awaitingNext && <button className="primary" onClick={nextHand} disabled={busy}>Next hand</button>}
+                </div>
               </div>
             </div>
           </div>

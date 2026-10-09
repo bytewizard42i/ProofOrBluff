@@ -9,7 +9,8 @@
 
 export const MAX_ROUNDS = 10;
 export const MOVES_PER_ROUND = 4;
-export const KIND = Object.freeze({ CLAIM: 1n, ACCEPT: 2n, CHALLENGE: 3n });
+// 0 NOOP (a PASS's response slot) · 1 CLAIM · 2 ACCEPT · 3 CHALLENGE · 4 PASS.
+export const KIND = Object.freeze({ NOOP: 0n, CLAIM: 1n, ACCEPT: 2n, CHALLENGE: 3n, PASS: 4n });
 
 export function targetScore(mode) { return BigInt(mode) === 0n ? 10n : 20n; }
 
@@ -43,13 +44,40 @@ export function shuffleNine(cards, s) {
   }
   return c;
 }
-/** Card indices of the nine dealt cards, in slot order (0-1 P1 hole, 2-3 P2 hole, 4-8 board). */
+/** Card indices of the nine dealt cards (0-1 P1 hole, 2-3 P2 hole, 4-8 board). */
 export function dealNineIndices(pureCircuits, salt0, salt1, seed, round) {
   const drawn = floydNine(bytesOf(pureCircuits.dealDigest(salt0, salt1, seed, BigInt(round))));
   return shuffleNine(drawn, bytesOf(pureCircuits.shuffleDigest(salt0, salt1, seed, BigInt(round))));
 }
-export function dealNineRanks(pureCircuits, salt0, salt1, seed, round) {
-  return dealNineIndices(pureCircuits, salt0, salt1, seed, round).map(cardToRank);
+/** The k-th card (0-based) not in `dealt`: step over each dealt card at or below the running value. */
+export function skipDealt(k, dealt) {
+  let r = k;
+  for (const d of [...dealt].sort((a, b) => a - b)) if (d <= r) r += 1;
+  return r;
+}
+/** Four distinct remaining-deck indices (0..42), mirroring the circuit's showdownIdx. */
+export function showdownIndices(b) {
+  const skipOne = (k, p) => (p <= k ? k + 1 : k);
+  const k0 = boundedDraw(b[0], b[1], 43);
+  const k1 = skipOne(boundedDraw(b[2], b[3], 42), k0);
+  const [lo01, hi01] = k0 < k1 ? [k0, k1] : [k1, k0];
+  const k2 = skipOne(skipOne(boundedDraw(b[4], b[5], 41), lo01), hi01);
+  const [m0, m1, m2] = [k0, k1, k2].sort((a, b) => a - b);
+  const k3 = skipOne(skipOne(skipOne(boundedDraw(b[6], b[7], 40), m0), m1), m2);
+  return [k0, k1, k2, k3];
+}
+/** The four showdown cards, drawn from the 43 the deal left (none among `dealt`). */
+export function showdownCards(dealt, b) {
+  return showdownIndices(b).map((k) => skipDealt(k, dealt));
+}
+/** Card indices of all thirteen cards, in slot order
+ *  (0-1 P1 hole, 2-3 P2 hole, 4-8 board, 9-10 showdown pair A, 11-12 pair B). */
+export function dealThirteenIndices(pureCircuits, salt0, salt1, seed, round) {
+  const nine = dealNineIndices(pureCircuits, salt0, salt1, seed, round);
+  return [...nine, ...showdownCards(nine, bytesOf(pureCircuits.showdownDigest(salt0, salt1, seed, BigInt(round))))];
+}
+export function dealThirteenRanks(pureCircuits, salt0, salt1, seed, round) {
+  return dealThirteenIndices(pureCircuits, salt0, salt1, seed, round).map(cardToRank);
 }
 
 export const initialBoundary = () => ({
@@ -97,6 +125,17 @@ export function resolveClaim(hole, board, claim, response) {
   };
 }
 
+/** Mirror of the circuit's resolvePass: the responder's two showdown draws
+ *  each win +1 by strictly outranking the passer's same-slot hole card. */
+export function resolvePass(hole, draw, pass, response) {
+  if (pass.kind !== KIND.PASS) throw new Error('expected a PASS');
+  if (pass.count !== 0n || pass.rankA !== 0n || pass.rankB !== 0n) throw new Error('pass fields must be zero');
+  if (response.kind !== KIND.NOOP) throw new Error('a pass can only be followed by NOOP');
+  if (response.count !== 0n || response.rankA !== 0n || response.rankB !== 0n) throw new Error('noop fields must be zero');
+  const wins = BigInt(draw[0] > hole[0]) + BigInt(draw[1] > hole[1]);
+  return { claimantGain: 0n, claimantLoss: 0n, responderGain: wins, lies: 0n, trueCount: 0n, pass: true, draws: [draw[0], draw[1]] };
+}
+
 /** The true match count of a hole against a board (bot/UI helper, private). */
 export function matchesFor(hole, board) {
   return hole.filter((r) => board.includes(r));
@@ -104,7 +143,14 @@ export function matchesFor(hole, board) {
 
 export function createFiveUpReferee(pureCircuits, { seed, roundSecrets, mode }) {
   const target = targetScore(mode);
-  const deal = (round) => dealNineRanks(pureCircuits, roundSecrets[0][round - 1], roundSecrets[1][round - 1], seed, round).map(BigInt);
+  const deal = (round) => {
+    const [s0, s1] = [roundSecrets[0][round - 1], roundSecrets[1][round - 1]];
+    const cards = dealThirteenIndices(pureCircuits, s0, s1, seed, round);
+    // The three digests ride along as witnesses (the circuit re-derives and asserts them).
+    const digests = [pureCircuits.dealDigest, pureCircuits.shuffleDigest, pureCircuits.showdownDigest]
+      .map((f) => bytesOf(f(s0, s1, seed, BigInt(round))).map(BigInt));
+    return { cards: cards.map(BigInt), ranks: cards.map(cardToRank).map(BigInt), digests };
+  };
 
   let boundary = initialBoundary();
   let round = null;   // { r, holes: [[..],[..]], board, moves: [], first, chain, scores }
@@ -130,10 +176,12 @@ export function createFiveUpReferee(pureCircuits, { seed, roundSecrets, mode }) 
       if (boundary.ended) throw new Error('game has ended');
       const r = boundary.round + 1n;
       if (r > BigInt(MAX_ROUNDS)) throw new Error('out of rounds');
-      const ranks = deal(Number(r));
+      const { cards, ranks, digests } = deal(Number(r));
       const board = ranks.slice(4, 9);
       round = {
-        r, ranks, holes: [ranks.slice(0, 2), ranks.slice(2, 4)], board, moves: [], first: boundary.turn,
+        r, cards, ranks, digests, holes: [ranks.slice(0, 2), ranks.slice(2, 4)], board,
+        draws: [ranks.slice(9, 11), ranks.slice(11, 13)],   // showdown pair per claim step
+        moves: [], first: boundary.turn,
         chain: pureCircuits.chainBoard(boundary.chain, board), scores: [boundary.score0, boundary.score1],
         outcomes: [],
       };
@@ -145,7 +193,20 @@ export function createFiveUpReferee(pureCircuits, { seed, roundSecrets, mode }) 
       const m = normalizeMove(move);
       const st = api.state;
       if (st.step === 'claim') {
-        if (m.kind !== KIND.CLAIM) throw new Error('expected a CLAIM');
+        if (m.kind === KIND.PASS) {
+          // The claimant claims nothing; the responder draws the exchange's
+          // showdown pair. The transcript link binds the draws + wins.
+          const draw = r.draws[r.moves.length === 0 ? 0 : 1];
+          const out = resolvePass(r.holes[Number(st.claimant)], draw, m, normalizeMove({ kind: KIND.NOOP }));
+          const responder = 1 - Number(st.claimant);
+          r.scores[responder] += out.responderGain;
+          r.moves.push(m, normalizeMove({ kind: KIND.NOOP }));
+          r.outcomes.push({ claimant: st.claimant, claim: m, response: normalizeMove({ kind: KIND.NOOP }), ...out });
+          r.chain = pureCircuits.chainMove(r.chain, KIND.PASS, out.responderGain, draw[0], draw[1], 0n);
+          r.chain = pureCircuits.chainMove(r.chain, KIND.NOOP, 0n, 0n, 0n, 0n);
+          return api.state;
+        }
+        if (m.kind !== KIND.CLAIM) throw new Error('expected a CLAIM or PASS');
         // Legality is fully checked when the response lands (same as the circuit);
         // pre-check the public parts here so a bad claim fails fast.
         if (m.count > 2n) throw new Error('claim count out of range');
@@ -166,6 +227,7 @@ export function createFiveUpReferee(pureCircuits, { seed, roundSecrets, mode }) 
       return api.state;
     },
     claim(count, rankA = 0n, rankB = 0n) { return api.apply({ kind: KIND.CLAIM, count, rankA, rankB }); },
+    pass() { return api.apply({ kind: KIND.PASS }); },
     accept() { return api.apply({ kind: KIND.ACCEPT }); },
     challenge() { return api.apply({ kind: KIND.CHALLENGE }); },
     /** Close the round: advance the boundary and return proveRound's witnesses. */
@@ -177,7 +239,7 @@ export function createFiveUpReferee(pureCircuits, { seed, roundSecrets, mode }) 
       const winner = !ended ? 0n : s0 > s1 ? 1n : s1 > s0 ? 2n : 0n;
       const boundaryIn = boundary;
       const boundaryOut = { turn: 1n - r.first, score0: s0, score1: s1, round: r.r, ended, winner, chain: r.chain };
-      const out = { round: r.r, moves: r.moves, ranks: r.ranks, boundaryIn, boundaryOut, board: r.board, outcomes: r.outcomes };
+      const out = { round: r.r, moves: r.moves, cards: r.cards, ranks: r.ranks, digests: r.digests, boundaryIn, boundaryOut, board: r.board, draws: r.draws, outcomes: r.outcomes };
       boundary = boundaryOut; round = null;
       return out;
     },

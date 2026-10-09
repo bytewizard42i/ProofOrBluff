@@ -24,6 +24,9 @@ Ranks are integers 0..12 indexing `RANKS` in `realDeal/shared/dealing.js` (0 = '
 | POST | `/v1/games/:gameId/play` | `{ rank, count, cards: [rank…] }` (cards.length === count, 1..4, rank === currentRank) | `GameView` (bot has responded: accept / challenge) |
 | POST | `/v1/games/:gameId/accept` | — | `GameView` (bot then plays if its turn) |
 | POST | `/v1/games/:gameId/challenge` | — | `GameView` (bot's cards revealed in `lastEvents`) |
+| POST | `/v1/games/:gameId/claim` | `{ count, ranks: [boardRank…] }` (5U2D, claim step) | `GameView` |
+| POST | `/v1/games/:gameId/pass` | — | `GameView` (5U2D claim step only; resolves a showdown) |
+| POST | `/v1/games/:gameId/next` | — | `GameView` (5U2D; deals the next hand once a round is held) |
 
 Errors: `{ error: string }` with 400 (bad move / bad body), 404 (unknown game),
 409 (not your turn / game over), 429 (too many open games), 503 (service not
@@ -70,6 +73,25 @@ a challenge scores the challenger −1 (floored at 0) if the claim was truthful,
 or +3 if it was a bluff; the responder takes the next turn; the rank advances
 after every resolution; a round ends when a hand empties (or the game does);
 win at 10 / 15 / 20 for mode 0 (Casual) / 1 (Standard) / 4 (Casino); 6 rounds max.
+
+### 5 Up 2 Down view extras (`"gameType": "fiveup"`, modes 0 | 1)
+
+```jsonc
+{
+  "step": "claim" | "respond" | "round-end",
+  "board": [5 ranks], "hole": [2 ranks], "myMatches": [ranks],
+  "pending": null | { "claimer": "human"|"bot", "count": 2, "ranks": […] },
+  "awaitingNext": true,                            // a finished hand is held; POST /next to deal
+  "roundSummary": {                                // while awaitingNext (and after the last round)
+    "round": 3, "board": […], "hole": […], "botHole": […],
+    "showdowns": [{ "passer": "human", "drawer": "bot", "draws": [r, r], "wins": 1, "passerHole": [r, r] }],
+    "scores": { "human": 7, "bot": 5 }
+  }
+}
+```
+
+New `lastEvents` types: `human-pass`, `bot-pass` (dialogue),
+`showdown` (`{ passer, draws, wins }`).
 
 ## Chain lifecycle (server side, invisible to the player)
 

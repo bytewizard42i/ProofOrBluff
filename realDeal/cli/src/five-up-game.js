@@ -53,19 +53,31 @@ export function createFiveUpGame({ gameId, mode, difficulty = 'medium', pureCirc
     };
   }
 
+  let roundSummary = null;   // finished-round display data while awaitingNext
   function settleRoundIfFinished() {
     if (!inRound() || !referee.state.done) return;
     const fin = referee.finishRound();
     const round = Number(fin.round);
     finishedRounds.push(fin);
     push({ type: 'round-end', round, board: nums(fin.board), scores: { human: Number(fin.boundaryOut.score0), bot: Number(fin.boundaryOut.score1) } });
+    // Reveal the completed hand while the round sits on the table: both holes
+    // plus every outcome (claims, lies shown, showdown draws and wins).
+    roundSummary = {
+      round, board: nums(fin.board),
+      hole: nums(fin.ranks.slice(0, 2)), botHole: nums(fin.ranks.slice(2, 4)),
+      showdowns: fin.outcomes.filter((o) => o.pass).map((o) => ({
+        passer: seatName(o.claimant), drawer: seatName(1n - o.claimant),
+        draws: nums(o.draws), wins: Number(o.responderGain), passerHole: nums(fin.ranks.slice(Number(o.claimant) * 2, Number(o.claimant) * 2 + 2)),
+      })),
+      scores: { human: Number(fin.boundaryOut.score0), bot: Number(fin.boundaryOut.score1) },
+    };
     pendingChainSteps.push({
       step: 'proveRound', round,
       witnesses: { ...fin, entropyPair: entropy, roundSecrets: [roundSecrets[0][round - 1], roundSecrets[1][round - 1]] },
     });
     chain.pending.push(`proveRound:${round}`);
 
-    if (!referee.boundary.ended) { referee.startRound(); return; }
+    if (!referee.boundary.ended) return;   // hold on the finished hand until next()
 
     status = GAME_STATUS.ENDED;
     const result = referee.result();
@@ -90,14 +102,22 @@ export function createFiveUpGame({ gameId, mode, difficulty = 'medium', pureCirc
   /** The bot acts (claims and/or responds) until it is the human's move or the round settles. */
   function runBot() {
     for (let guard = 0; guard < 6 && status === GAME_STATUS.PLAYING; guard += 1) {
+      if (!inRound()) return;   // finished round held on the table
       const s = referee.state;
       if (Number(s.actor) !== SEAT.BOT) return;
       const hole = nums(referee.hole(SEAT.BOT));
       const board = nums(s.board);
       if (s.step === 'claim') {
         const d = bot.decideClaim({ hole, board, difficulty, random: rnd });
-        referee.claim(BigInt(d.count), BigInt(d.ranks[0] ?? 0), BigInt(d.ranks[1] ?? 0));
-        push({ type: 'bot-claim', count: d.count, ranks: d.ranks, dialogue: d.dialogue });
+        if (d.pass) {
+          referee.pass();
+          const out = referee.round.outcomes.at(-1);
+          push({ type: 'bot-pass', dialogue: d.dialogue });
+          push({ type: 'showdown', passer: 'bot', draws: nums(out.draws), wins: Number(out.responderGain) });
+        } else {
+          referee.claim(BigInt(d.count), BigInt(d.ranks[0] ?? 0), BigInt(d.ranks[1] ?? 0));
+          push({ type: 'bot-claim', count: d.count, ranks: d.ranks, dialogue: d.dialogue });
+        }
       } else {
         const claim = { count: Number(s.pending.count), ranks: [s.pending.rankA, s.pending.rankB].slice(0, Number(s.pending.count)).map(Number) };
         const d = bot.decideChallenge({ claim, board, hole, difficulty, random: rnd });
@@ -116,6 +136,7 @@ export function createFiveUpGame({ gameId, mode, difficulty = 'medium', pureCirc
 
   function requireHuman(step) {
     if (status !== GAME_STATUS.PLAYING) throw new GameError(409, 'game is over');
+    if (!inRound()) throw new GameError(409, 'round complete — deal the next hand');
     const s = referee.state;
     if (Number(s.actor) !== SEAT.HUMAN) throw new GameError(409, 'not your turn');
     if (s.step !== step) throw new GameError(409, step === 'claim' ? 'respond to the pending claim first' : 'no claim to respond to');
@@ -158,6 +179,26 @@ export function createFiveUpGame({ gameId, mode, difficulty = 'medium', pureCirc
       referee.accept();
       return afterHuman();
     },
+    /** Claim nothing and take the showdown: the Ai draws 2 cards, each that
+     *  outranks the matching hole card scores it +1. You lose nothing. */
+    humanPass() {
+      requireHuman('claim');
+      events = [];
+      referee.pass();
+      const out = referee.round.outcomes.at(-1);
+      push({ type: 'human-pass' });
+      push({ type: 'showdown', passer: 'human', draws: nums(out.draws), wins: Number(out.responderGain) });
+      return afterHuman();
+    },
+    /** Deal the next hand — only while a finished round sits on the table. */
+    nextRound() {
+      if (status !== GAME_STATUS.PLAYING) throw new GameError(409, 'game is over');
+      if (inRound()) throw new GameError(409, 'round still in progress');
+      events = [];
+      referee.startRound();
+      runBot();
+      return game.view();
+    },
     /** As at a real table, a challenged bot shows its cards (the chain only learns the lie count). */
     humanChallenge() {
       const s = requireHuman('respond');
@@ -197,15 +238,18 @@ export function createFiveUpGame({ gameId, mode, difficulty = 'medium', pureCirc
     },
     view() {
       const live = status === GAME_STATUS.PLAYING;
-      const s = live ? referee.state : null;
+      const waiting = live && !inRound();       // finished hand on the table
+      const s = live && !waiting ? referee.state : null;
       const b = referee.boundary;
-      const hole = s ? nums(referee.hole(SEAT.HUMAN)) : [];
-      const board = s ? nums(s.board) : [];
+      const hole = s ? nums(referee.hole(SEAT.HUMAN)) : (roundSummary?.hole ?? []);
+      const board = s ? nums(s.board) : (roundSummary?.board ?? []);
       return {
         gameId, status, gameType: GAME_TYPE, mode, difficulty, target,
         round: Number(s ? s.round : b.round),
         turn: s ? seatName(s.actor) : null,
-        step: s ? s.step : null,
+        step: waiting ? 'round-end' : (s ? s.step : null),
+        awaitingNext: waiting,
+        roundSummary: waiting ? roundSummary : null,
         board, hole,
         myMatches: s ? nums(matchesFor(referee.hole(SEAT.HUMAN), s.board)) : [],
         pending: s?.pending ? { claimer: seatName(s.claimant), count: Number(s.pending.count), ranks: [s.pending.rankA, s.pending.rankB].slice(0, Number(s.pending.count)).map(Number) } : null,

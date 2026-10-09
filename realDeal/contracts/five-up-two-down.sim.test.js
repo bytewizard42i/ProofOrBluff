@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import * as runtime from '@midnight-ntwrk/compact-runtime';
 import {
-  createFiveUpReferee, resolveClaim, matchesFor, KIND, MAX_ROUNDS, MOVES_PER_ROUND, initialBoundary, targetScore,
-  dealNineIndices as dealIdx, dealNineRanks as dealRanks, floydNine, shuffleNine,
+  createFiveUpReferee, resolveClaim, resolvePass, matchesFor, KIND, MAX_ROUNDS, MOVES_PER_ROUND, initialBoundary, targetScore,
+  dealThirteenIndices as dealIdx, dealThirteenRanks as dealRanks, floydNine, shuffleNine, skipDealt, showdownCards,
 } from './five-up-referee.js';
 import {
   consentKeyPairFromSecret, buildCloseConsent, signCloseConsent, challengeReductionWitness, gameIdFromContractAddress,
@@ -10,10 +10,11 @@ import {
 
 const { Contract, pureCircuits, ledger } = await import('./managed/five-up-two-down/contract/index.js');
 
-// 5 Up 2 Down: 2 private hole cards each + 5 public board cards from one
-// shared deck; claim your matches, opponent accepts or challenges. Every test
-// runs the referee's moves through the REAL compiled circuit — a failure here
-// is exactly the assertion that would fail on-chain.
+// 5 Up 2 Down: 2 private hole cards each + 5 public board cards + 2 showdown
+// pairs (drawn when a claim step is a PASS) from one shared deck; claim your
+// matches, opponent accepts or challenges. Every test runs the referee's moves
+// through the REAL compiled circuit — a failure here is exactly the assertion
+// that would fail on-chain.
 
 const SPONSOR = '33'.repeat(32);
 const KP1 = consentKeyPairFromSecret(new Uint8Array(32).fill(0x61));
@@ -32,12 +33,14 @@ function newGame({ mode = STANDARD, secrets = SECRETS, entropy = [E1, E2] } = {}
   const seed = pureCircuits.combineEntropy(e1, e2);
   const witness = {
     entropy: [e1, e2], roundSecrets: [new Uint8Array(32), new Uint8Array(32)],
-    moves: [], ranks: [], boundary: initialBoundary(), p1CloseConsent: null, p2CloseConsent: null,
+    moves: [], cards: [], ranks: [], digests: [], boundary: initialBoundary(), p1CloseConsent: null, p2CloseConsent: null,
   };
   const contract = new Contract({
     entropyPair: (ctx) => [ctx.privateState, witness.entropy],
     roundSecrets: (ctx) => [ctx.privateState, witness.roundSecrets],
     roundMoves: (ctx) => [ctx.privateState, witness.moves],
+    roundDigests: (ctx) => [ctx.privateState, witness.digests],
+    dealtCards: (ctx) => [ctx.privateState, witness.cards],
     dealtRanks: (ctx) => [ctx.privateState, witness.ranks],
     startBoundary: (ctx) => [ctx.privateState, witness.boundary],
     p1CloseConsent: (ctx) => [ctx.privateState, witness.p1CloseConsent],
@@ -64,6 +67,8 @@ function newGame({ mode = STANDARD, secrets = SECRETS, entropy = [E1, E2] } = {}
   const proveRound = (finished, { tamper } = {}) => {
     witness.roundSecrets = [secrets[0][Number(finished.round) - 1], secrets[1][Number(finished.round) - 1]];
     witness.moves = finished.moves.map((m) => ({ ...m }));
+    witness.cards = [...finished.cards];
+    witness.digests = finished.digests;
     witness.ranks = [...finished.ranks];
     witness.boundary = { ...finished.boundaryIn };
     if (tamper) tamper(witness);
@@ -96,12 +101,14 @@ function lyingClaim(ref, seat) {
   if (fake.length === 1) return { count: 1n, rankA: fake[0], rankB: 0n };
   return null; // every board rank is held — cannot lie
 }
-/** Play one round with a policy per seat: 'honest' | 'lie'; responder: 'accept' | 'challenge'. */
+/** Play one round with a policy per seat: 'honest' | 'lie' | 'pass'; responder: 'accept' | 'challenge'. */
 function playRound(ref, { p1 = 'honest', p2 = 'honest', respond = 'accept' } = {}) {
   ref.startRound();
-  for (let i = 0; i < 2; i += 1) {
+  while (!ref.state.done) {
     const st = ref.state;
+    if (st.step !== 'claim') throw new Error('expected a claim step');
     const policy = st.actor === 0n ? p1 : p2;
+    if (policy === 'pass') { ref.pass(); continue; }
     const c = (policy === 'lie' && lyingClaim(ref, st.actor)) || honestClaim(ref, st.actor);
     ref.claim(c.count, c.rankA, c.rankB);
     const r = typeof respond === 'function' ? respond(ref) : respond;
@@ -120,12 +127,12 @@ function playToEnd(g, opts) {
 }
 
 describe('5 Up 2 Down: the deal', () => {
-  it('nine card indices are pairwise distinct across many digests', () => {
+  it('thirteen card indices are pairwise distinct across many digests', () => {
     for (let i = 0; i < 300; i += 1) {
       const s0 = new Uint8Array(32).fill(i & 0xff); s0[1] = i >> 8;
       const s1 = new Uint8Array(32).fill((i * 7) & 0xff); s1[2] = 0x99;
       const idx = dealIdx(pureCircuits, s0, s1, BigInt(i) * 7919n, 1).map(Number);
-      expect(new Set(idx).size).toBe(9);
+      expect(new Set(idx).size).toBe(13);
       for (const c of idx) { expect(c).toBeGreaterThanOrEqual(0); expect(c).toBeLessThan(52); }
     }
   });
@@ -142,23 +149,24 @@ describe('5 Up 2 Down: the deal', () => {
       expect(Math.max(...Object.values(counts))).toBeLessThanOrEqual(4);
     }
   });
-  it('every SLOT is uniform: hole slots see Aces (card >= 48) at ~4/52 — the review-2026-10-08 H-1 regression', () => {
-    // Floyd alone draws slot i from 0..43+i, so slots 0-3 (the hole cards)
-    // could never hold rank 12. The post-Floyd Fisher-Yates must undo that.
+  it('every SLOT is uniform: hole, board and showdown slots all see Aces (card >= 48) — the review-2026-10-08 H-1 regression', () => {
+    // Floyd alone draws slot i from 0..39+i, so slots 0-8 (holes + board)
+    // could never hold rank 12 — and slots 9-12 (the showdown pairs) would
+    // hog them. The post-Floyd sorting-network shuffle must undo that.
     const N = 3000;
-    const aces = [0, 0, 0, 0];
+    const aces = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     let maxSlot0 = 0;
     for (let i = 0; i < N; i += 1) {
       const s0 = new Uint8Array(32); s0[0] = i & 0xff; s0[1] = i >> 8; s0[5] = 0x5a;
       const s1 = new Uint8Array(32); s1[0] = (i * 13) & 0xff; s1[1] = (i * 13) >> 8; s1[7] = 0xa5;
       const idx = dealIdx(pureCircuits, s0, s1, BigInt(i) * 104729n, 1);
-      for (let k = 0; k < 4; k += 1) if (idx[k] >= 48) aces[k] += 1;
+      for (let k = 0; k < 13; k += 1) if (idx[k] >= 48) aces[k] += 1;
       maxSlot0 = Math.max(maxSlot0, idx[0]);
     }
     expect(maxSlot0).toBeGreaterThanOrEqual(48);
     for (const a of aces) {
-      const rate = a / N;                         // expected 4/52 ≈ 0.077; allow ±0.03
-      expect(rate).toBeGreaterThan(0.045); expect(rate).toBeLessThan(0.11);
+      const rate = a / N;                         // expected 4/52 ≈ 0.077; allow ±0.04
+      expect(rate).toBeGreaterThan(0.035); expect(rate).toBeLessThan(0.12);
     }
   });
   it('the sorting network really sorts (so the carried permutation is uniform over distinct keys)', () => {
@@ -169,6 +177,20 @@ describe('5 Up 2 Down: the deal', () => {
       for (let i = 1; i < 9; i += 1) expect(out[i - 1]).toBeLessThanOrEqual(out[i]);
     }
     expect(floydNine(new Array(32).fill(0))).toEqual([0, 44, 45, 46, 47, 48, 49, 50, 51]);  // all-collide path
+  });
+  it('showdown draws come from the 43 remaining cards: never a dealt card, never each other, and k → card is a bijection', () => {
+    const dealt = [3, 7, 12, 20, 21, 33, 40, 50, 51];
+    const seen = new Set();
+    for (let k = 0; k < 43; k += 1) {
+      const c = skipDealt(k, dealt);
+      expect(dealt).not.toContain(c); expect(c).toBeLessThan(52); seen.add(c);
+    }
+    expect(seen.size).toBe(43);                       // every remaining card reachable exactly once
+    for (let t = 0; t < 3000; t += 1) {
+      const b = Array.from({ length: 32 }, () => Math.floor(Math.random() * 256));
+      const sd = showdownCards(dealt, b);
+      expect(new Set([...dealt, ...sd]).size).toBe(13);
+    }
   });
   it('a prover holding only one secret gets a different deal (both secrets key the hash)', () => {
     const a = dealRanks(pureCircuits, SECRETS[0][0], SECRETS[1][0], 1n, 1);
@@ -206,6 +228,22 @@ describe('5 Up 2 Down: scoring (referee mirror of resolveClaim)', () => {
     expect(() => resolveClaim([3n, 7n], board, C(3n, 3n, 9n), ACCEPT)).toThrow(/count out of range/);
     expect(() => resolveClaim([3n, 7n], board, C(1n, 3n, 9n), ACCEPT)).toThrow(/unused claim slot/);
     expect(() => resolveClaim([3n, 7n], board, C(0n), CHALLENGE)).toThrow(/nothing to challenge/);
+  });
+});
+
+describe('5 Up 2 Down: the pass showdown (referee mirror of resolvePass)', () => {
+  const PASS = { kind: KIND.PASS, count: 0n, rankA: 0n, rankB: 0n };
+  const NOOP = { kind: KIND.NOOP, count: 0n, rankA: 0n, rankB: 0n };
+  it('each drawn card strictly outranking the matching hole card scores +1; ties lose', () => {
+    expect(resolvePass([5n, 7n], [6n, 8n], PASS, NOOP).responderGain).toBe(2n);
+    expect(resolvePass([5n, 7n], [6n, 2n], PASS, NOOP).responderGain).toBe(1n);
+    expect(resolvePass([5n, 7n], [4n, 2n], PASS, NOOP).responderGain).toBe(0n);
+    expect(resolvePass([5n, 7n], [5n, 12n], PASS, NOOP).responderGain).toBe(1n);   // tie on card 1 = no win
+    expect(resolvePass([5n, 7n], [6n, 8n], PASS, NOOP)).toMatchObject({ claimantGain: 0n, claimantLoss: 0n, lies: 0n });
+  });
+  it('a non-zero pass or a real response to a pass is rejected', () => {
+    expect(() => resolvePass([5n, 7n], [6n, 8n], { ...PASS, count: 1n }, NOOP)).toThrow(/pass fields/);
+    expect(() => resolvePass([5n, 7n], [6n, 8n], PASS, { kind: KIND.ACCEPT, count: 0n, rankA: 0n, rankB: 0n })).toThrow(/NOOP/);
   });
 });
 
@@ -273,6 +311,33 @@ describe('5 Up 2 Down: the circuit accepts honest referee transcripts', () => {
   });
 });
 
+describe('5 Up 2 Down: pass showdown through the circuit', () => {
+  it('a pass consumes both move slots, the showdown scores, and the round proves', () => {
+    const g = newGame();
+    const fin = playRound(g.referee, { p1: 'pass', p2: 'honest' });
+    expect(fin.moves.map((m) => m.kind)).toEqual([KIND.PASS, KIND.NOOP, KIND.CLAIM, KIND.ACCEPT]);
+    const out = fin.outcomes[0];
+    expect(out.pass).toBe(true);
+    const hole = fin.ranks.slice(0, 2);
+    expect(out.responderGain).toBe(BigInt(Number(out.draws[0] > hole[0]) + Number(out.draws[1] > hole[1])));
+    g.proveRound(fin);
+    expect(g.state().roundsProven).toBe(1n);
+  });
+  it('both seats can pass; the game still ends and closes', () => {
+    const g = newGame({ mode: CASUAL });
+    const rounds = playToEnd(g, { p1: 'pass', p2: 'pass' });
+    expect(rounds.length).toBeLessThanOrEqual(MAX_ROUNDS);
+    for (const fin of rounds) expect(fin.moves.map((m) => m.kind)).toEqual([KIND.PASS, KIND.NOOP, KIND.PASS, KIND.NOOP]);
+    g.closeGame();
+    expect(g.state().closed).toBe(true);
+  });
+  it('a fake showdown result (forged wins) is refused by the circuit', () => {
+    const g = newGame();
+    const fin = playRound(g.referee, { p1: 'pass', p2: 'honest' });
+    expect(() => g.proveRound(fin, { tamper: (w) => { w.cards[9] = (w.cards[9] + 1n) % 52n; } })).toThrow(/showdown mismatch/);
+  });
+});
+
 describe('5 Up 2 Down: attacks the circuit must refuse', () => {
   it('a substituted (legal) move changes the proven chain, so the honest transcript can no longer open stateRoot', () => {
     // Moves are witnesses: the prover can feed any LEGAL round. What stops a
@@ -288,7 +353,9 @@ describe('5 Up 2 Down: attacks the circuit must refuse', () => {
   it('a forged deal (dealtRanks witness ≠ the in-circuit deal) is refused', () => {
     const g = newGame();
     const fin = playRound(g.referee);
-    expect(() => g.proveRound(fin, { tamper: (w) => { w.ranks[0] = (w.ranks[0] + 1n) % 13n; } })).toThrow(/deal mismatch/);
+    expect(() => g.proveRound(fin, { tamper: (w) => { w.cards[0] = (w.cards[0] + 1n) % 52n; } })).toThrow(/deal mismatch/);
+    // ...and a forged rank over honest cards (a hole card "upgraded" to an Ace) is refused too
+    expect(() => g.proveRound(fin, { tamper: (w) => { w.ranks[0] = (w.ranks[0] + 1n) % 13n; } })).toThrow(/rank mismatch/);
   });
   it('an illegal move (count 3) is refused outright', () => {
     const g = newGame();
@@ -339,7 +406,7 @@ describe('5 Up 2 Down: attacks the circuit must refuse', () => {
     const mk = (over) => {
       const w = (ctx) => [ctx.privateState, null];
       const contract = new Contract({
-        entropyPair: w, roundSecrets: w, roundMoves: w, dealtRanks: w, startBoundary: w, p1CloseConsent: w, p2CloseConsent: w,
+        entropyPair: w, roundSecrets: w, roundMoves: w, roundDigests: w, dealtCards: w, dealtRanks: w, startBoundary: w, p1CloseConsent: w, p2CloseConsent: w,
         get_challenge_reduction: (ctx, full) => challengeReductionWitness(ctx, full),
       });
       const commits = (seat) => SECRETS[seat].map((s, i) => pureCircuits.commitRoundSecret(s, BigInt(i + 1)));

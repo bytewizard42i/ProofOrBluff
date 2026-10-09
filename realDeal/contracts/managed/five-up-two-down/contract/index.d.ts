@@ -20,6 +20,10 @@ export type Witnesses<PS> = {
                                                                            rankA: bigint,
                                                                            rankB: bigint
                                                                          }[]];
+  roundDigests(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, [bigint[],
+                                                                            bigint[],
+                                                                            bigint[]]];
+  dealtCards(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, bigint[]];
   dealtRanks(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, bigint[]];
   startBoundary(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, { turn: bigint,
                                                                               score0: bigint,
@@ -88,6 +92,10 @@ export type PureCircuits = {
                 salt1_0: Uint8Array,
                 seed_0: bigint,
                 round_0: bigint): Uint8Array;
+  showdownDigest(salt0_0: Uint8Array,
+                 salt1_0: Uint8Array,
+                 seed_0: bigint,
+                 round_0: bigint): Uint8Array;
   commitBoundary(b_0: { turn: bigint,
                         score0: bigint,
                         score1: bigint,
@@ -143,6 +151,11 @@ export type Circuits<PS> = {
                 salt1_0: Uint8Array,
                 seed_0: bigint,
                 round_0: bigint): __compactRuntime.CircuitResults<PS, Uint8Array>;
+  showdownDigest(context: __compactRuntime.CircuitContext<PS>,
+                 salt0_0: Uint8Array,
+                 salt1_0: Uint8Array,
+                 seed_0: bigint,
+                 round_0: bigint): __compactRuntime.CircuitResults<PS, Uint8Array>;
   commitBoundary(context: __compactRuntime.CircuitContext<PS>,
                  b_0: { turn: bigint,
                         score0: bigint,

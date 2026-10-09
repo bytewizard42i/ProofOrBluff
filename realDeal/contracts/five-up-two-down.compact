@@ -6,16 +6,20 @@ import SignedCredentials;
 // ---------------------------------------------------------------------------
 // 5 UP 2 DOWN — the second Proof or Bluff table (docs/FIVE_UP_TWO_DOWN.md).
 //
-// Each round: 2 private hole cards per player + 5 public board cards, nine
-// distinct cards from ONE shared 52-card deck. Players claim how many of
+// Each round: 2 private hole cards per player + 5 public board cards + 2
+// private 2-card showdown draws — thirteen distinct cards from ONE shared
+// 52-card deck. Players claim how many of
 // their hole cards match a board rank (naming the ranks); the opponent
 // accepts or challenges. The proof checks each claimed rank against the real
 // hole cards and discloses exactly one number: how many claims were lies.
 //
-// Scoring (John, 2026-10-08):
+// Scoring (John, 2026-10-08; PASS showdown added 2026-10-09):
 //   accepted      1 card +1 · 2 cards +3
 //   challenged    all true: 1 card +2 · 2 cards +4
 //                 any lie:  claimant -lies (floor 0), challenger +lies
+//   PASS          claimant claims nothing; the opponent draws 2 fresh cards
+//                 from the same deck and each drawn card that outranks the
+//                 passer's matching hole card scores the drawer +1 (0-2).
 // Race to the mode's target (Casual 10 · Standard 20), checked at round end,
 // higher score wins. Hard cap MAX_ROUNDS = 10 — higher score wins, tie = draw.
 //
@@ -25,8 +29,9 @@ import SignedCredentials;
 // and close semantics are byte-compatible with v4 (same "pob:pk:v1").
 // ---------------------------------------------------------------------------
 
-// kind: 1 CLAIM · 2 ACCEPT · 3 CHALLENGE. count 0..2; rankA/rankB are the
-// claimed board ranks (0 when unused). Responses carry zeros.
+// kind: 0 NOOP · 1 CLAIM · 2 ACCEPT · 3 CHALLENGE · 4 PASS. count 0..2;
+// rankA/rankB are the claimed board ranks (0 when unused). Responses and
+// NOOP carry zeros. A PASS's response slot is always NOOP.
 struct Move {
   kind: Uint<8>;
   count: Uint<8>;
@@ -91,9 +96,11 @@ export pure circuit closeConsentK(sk: Field, consent: CloseConsent): Field {
 
 // ---------------------------------------------------------------------------
 // The deal: nine distinct cards by Floyd's algorithm (m_i = 44+i, collision
-// fallback m_i-1 — the one value no earlier draw can hold). Slots 0-1 → P1
-// hole, 2-3 → P2 hole, 4-8 → board. Keyed on BOTH round secrets: a prover
-// holding only one secret cannot derive anything.
+// fallback m_i-1 — the one value no earlier draw can hold), shuffled; then
+// four showdown cards drawn from the 43 that remain (see showdownCards).
+// Slots 0-1 → P1 hole, 2-3 → P2 hole, 4-8 → board, 9-10 → showdown draw for
+// the FIRST claimant's pass, 11-12 → the second claimant's. Keyed on BOTH
+// round secrets: a prover holding only one secret cannot derive anything.
 // ---------------------------------------------------------------------------
 circuit boundedDraw(hi: Uint<8>, lo: Uint<8>, m: Uint<16>): Uint<8> {
   const u = ((hi as Uint<16>) * (256 as Uint<16>) + (lo as Uint<16>)) as Uint<16>;
@@ -224,13 +231,8 @@ circuit shuffle9(v: Vector<9, Uint<8>>, s: Vector<32, Uint<8>>): Vector<9, Uint<
   const kb25 = lt25 ? kb21 : ka23; const cb25 = lt25 ? cb21 : ca23;
   return [ca17, ca21, ca25, cb25, cb23, ca24, cb24, cb19, cb13];
 }
-circuit dealDigestBytes(sep: Bytes<32>, salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Vector<32, Uint<8>> {
-  const digest = transientHash<DealInput>(DealInput { separator: sep, salt0: salt0, salt1: salt1, seed: seed, round: round });
-  return (digest as Bytes<32>) as Vector<32, Uint<8>>;
-}
-circuit dealNineShuffled(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Vector<9, Uint<8>> {
-  const drawn = dealNineIdx(dealDigestBytes(pad(32, "pob:5u2d:deal:v1"), salt0, salt1, seed, round));
-  return shuffle9(drawn, dealDigestBytes(pad(32, "pob:5u2d:shuffle:v1"), salt0, salt1, seed, round));
+circuit dealNineShuffled(dealB: Vector<32, Uint<8>>, shuffleB: Vector<32, Uint<8>>): Vector<9, Uint<8>> {
+  return shuffle9(dealNineIdx(dealB), shuffleB);
 }
 // Exported for the referee: the two digests. The referee mirrors Floyd + the
 // sorting network in JS (five-up-referee.js dealNine) — exporting the whole
@@ -241,10 +243,84 @@ export pure circuit dealDigest(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, 
 export pure circuit shuffleDigest(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Bytes<32> {
   return transientHash<DealInput>(DealInput { separator: pad(32, "pob:5u2d:shuffle:v1"), salt0: salt0, salt1: salt1, seed: seed, round: round }) as Bytes<32>;
 }
-circuit dealNineRanks(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Vector<9, Uint<8>> {
-  const idx = dealNineShuffled(salt0, salt1, seed, round);
-  return [cardToRank(idx[0]), cardToRank(idx[1]), cardToRank(idx[2]), cardToRank(idx[3]), cardToRank(idx[4]),
-          cardToRank(idx[5]), cardToRank(idx[6]), cardToRank(idx[7]), cardToRank(idx[8])];
+// ---------------------------------------------------------------------------
+// Showdown draws: four more cards from the SAME deck, drawn from the 43 the
+// deal left behind — without growing the deal itself (the 13-card Floyd +
+// sort version needed >17 GB to compile; this is a handful of compare-adds).
+//
+// `k`, uniform in 0..42, indexes the remaining cards in ascending order. The
+// k-th remaining card is found by walking the nine dealt cards in ascending
+// order and stepping over each one at or below the running value. Every
+// card drawn this way is uniform over the remainder, so no slot bias.
+// Later draws also step over the earlier draws (in the remaining-index space,
+// Floyd-style), so the four are pairwise distinct too.
+// ---------------------------------------------------------------------------
+circuit minU8(a: Uint<8>, b: Uint<8>): Uint<8> { return a < b ? a : b; }
+circuit maxU8(a: Uint<8>, b: Uint<8>): Uint<8> { return a < b ? b : a; }
+/** Knuth's 25-comparator network for n=9, values only. */
+circuit sort9(v: Vector<9, Uint<8>>): Vector<9, Uint<8>> {
+  const a1 = minU8(v[0], v[1]); const b1 = maxU8(v[0], v[1]);
+  const a2 = minU8(v[3], v[4]); const b2 = maxU8(v[3], v[4]);
+  const a3 = minU8(v[6], v[7]); const b3 = maxU8(v[6], v[7]);
+  const a4 = minU8(b1, v[2]); const b4 = maxU8(b1, v[2]);
+  const a5 = minU8(b2, v[5]); const b5 = maxU8(b2, v[5]);
+  const a6 = minU8(b3, v[8]); const b6 = maxU8(b3, v[8]);
+  const a7 = minU8(a1, a4); const b7 = maxU8(a1, a4);
+  const a8 = minU8(a2, a5); const b8 = maxU8(a2, a5);
+  const a9 = minU8(a3, a6); const b9 = maxU8(a3, a6);
+  const a10 = minU8(b4, b5); const b10 = maxU8(b4, b5);
+  const a11 = minU8(a7, a8); const b11 = maxU8(a7, a8);
+  const a12 = minU8(b7, b8); const b12 = maxU8(b7, b8);
+  const a13 = minU8(b10, b6); const b13 = maxU8(b10, b6);
+  const a14 = minU8(b11, a9); const b14 = maxU8(b11, a9);
+  const a15 = minU8(b12, b9); const b15 = maxU8(b12, b9);
+  const a16 = minU8(a10, a13); const b16 = maxU8(a10, a13);
+  const a17 = minU8(a11, a14); const b17 = maxU8(a11, a14);
+  const a18 = minU8(a12, a15); const b18 = maxU8(a12, a15);
+  const a19 = minU8(b16, b15); const b19 = maxU8(b16, b15);
+  const a20 = minU8(a16, b14); const b20 = maxU8(a16, b14);
+  const a21 = minU8(a18, b17); const b21 = maxU8(a18, b17);
+  const a22 = minU8(b18, b20); const b22 = maxU8(b18, b20);
+  const a23 = minU8(a20, a22); const b23 = maxU8(a20, a22);
+  const a24 = minU8(a19, b22); const b24 = maxU8(a19, b22);
+  const a25 = minU8(a23, b21); const b25 = maxU8(a23, b21);
+  return [a17, a21, a25, b25, b23, a24, b24, b19, b13];
+}
+/** The k-th card (0-based) NOT among the nine dealt, `s` = dealt cards ascending. */
+circuit skipDealt(k: Uint<8>, s: Vector<9, Uint<8>>): Uint<8> {
+  const r0 = s[0] <= k ? ((k + 1) as Uint<8>) : k;
+  const r1 = s[1] <= r0 ? ((r0 + 1) as Uint<8>) : r0;
+  const r2 = s[2] <= r1 ? ((r1 + 1) as Uint<8>) : r1;
+  const r3 = s[3] <= r2 ? ((r2 + 1) as Uint<8>) : r2;
+  const r4 = s[4] <= r3 ? ((r3 + 1) as Uint<8>) : r3;
+  const r5 = s[5] <= r4 ? ((r4 + 1) as Uint<8>) : r4;
+  const r6 = s[6] <= r5 ? ((r5 + 1) as Uint<8>) : r5;
+  const r7 = s[7] <= r6 ? ((r6 + 1) as Uint<8>) : r6;
+  return s[8] <= r7 ? ((r7 + 1) as Uint<8>) : r7;
+}
+/** Step `k` over one earlier pick `p` (same index space). */
+circuit skipOne(k: Uint<8>, p: Uint<8>): Uint<8> { return p <= k ? ((k + 1) as Uint<8>) : k; }
+/** Four distinct remaining-deck indices (0..42) from the showdown digest. */
+circuit showdownIdx(b: Vector<32, Uint<8>>): Vector<4, Uint<8>> {
+  const k0 = boundedDraw(b[0], b[1], 43);
+  const k1 = skipOne(boundedDraw(b[2], b[3], 42), k0);
+  // k2 avoids {k0, k1}: step over them in ascending order.
+  const lo01 = minU8(k0, k1); const hi01 = maxU8(k0, k1);
+  const k2 = skipOne(skipOne(boundedDraw(b[4], b[5], 41), lo01), hi01);
+  // k3 avoids {k0, k1, k2}: sort the three, then step over each.
+  const m0 = minU8(lo01, k2); const m2 = maxU8(hi01, k2);
+  const m1 = maxU8(lo01, minU8(hi01, k2));
+  const k3 = skipOne(skipOne(skipOne(boundedDraw(b[6], b[7], 40), m0), m1), m2);
+  return [k0, k1, k2, k3];
+}
+/** The four showdown cards (indices 0..51), none of them among `dealt`. */
+circuit showdownCards(dealt: Vector<9, Uint<8>>, b: Vector<32, Uint<8>>): Vector<4, Uint<8>> {
+  const s = sort9(dealt);
+  const k = showdownIdx(b);
+  return [skipDealt(k[0], s), skipDealt(k[1], s), skipDealt(k[2], s), skipDealt(k[3], s)];
+}
+export pure circuit showdownDigest(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Bytes<32> {
+  return transientHash<DealInput>(DealInput { separator: pad(32, "pob:5u2d:showdown:v1"), salt0: salt0, salt1: salt1, seed: seed, round: round }) as Bytes<32>;
 }
 
 circuit targetScore(mode: Uint<8>): Uint<8> { return mode == (0 as Uint<8>) ? 10 : 20; }
@@ -258,6 +334,20 @@ circuit subFloor(score: Uint<8>, d: Uint<8>): Uint<8> { return score <= d ? 0 : 
 // ever discloses, and only on a CHALLENGE (0 after an ACCEPT, whatever the truth).
 // ---------------------------------------------------------------------------
 struct Outcome { claimantGain: Uint<8>; claimantLoss: Uint<8>; responderGain: Uint<8>; lies: Uint<8>; }
+// A PASS by the claimant: no claim, nothing to respond to. The responder
+// draws the exchange's two showdown cards; each drawn rank that strictly
+// outranks the passer's same-slot hole card scores the drawer +1.
+circuit resolvePass(hole: Vector<2, Uint<8>>, draw: Vector<2, Uint<8>>, pass: Move, response: Move): Outcome {
+  assert(pass.kind == (4 as Uint<8>), "expected a PASS");
+  assert(pass.count == (0 as Uint<8>) && pass.rankA == (0 as Uint<8>) && pass.rankB == (0 as Uint<8>), "pass fields must be zero");
+  assert(response.kind == (0 as Uint<8>), "a pass can only be followed by NOOP");
+  assert(response.count == (0 as Uint<8>) && response.rankA == (0 as Uint<8>) && response.rankB == (0 as Uint<8>), "noop fields must be zero");
+  const wins: Uint<8> = ((draw[0] > hole[0] ? 1 : 0) + (draw[1] > hole[1] ? 1 : 0)) as Uint<8>;
+  return Outcome { claimantGain: 0, claimantLoss: 0, responderGain: wins, lies: 0 };
+}
+circuit resolveExchange(hole: Vector<2, Uint<8>>, draw: Vector<2, Uint<8>>, board: Vector<5, Uint<8>>, claim: Move, response: Move): Outcome {
+  return claim.kind == (4 as Uint<8>) ? resolvePass(hole, draw, claim, response) : resolveClaim(hole, board, claim, response);
+}
 circuit resolveClaim(hole: Vector<2, Uint<8>>, board: Vector<5, Uint<8>>, claim: Move, response: Move): Outcome {
   assert(claim.kind == (1 as Uint<8>), "expected a CLAIM");
   assert(claim.count <= (2 as Uint<8>), "claim count out of range");
@@ -314,10 +404,15 @@ export pure circuit commitTranscript(chain: Field): Bytes<32> {
 witness entropyPair(): [Bytes<32>, Bytes<32>];
 witness roundSecrets(): [Bytes<32>, Bytes<32>];
 witness roundMoves(): Vector<4, Move>;                  // CLAIM, RESPONSE, CLAIM, RESPONSE
-// The nine dealt ranks, asserted equal to the in-circuit deal. Purely a
-// compile-time device: it lets the deal's (large) expression be consumed once
-// instead of being inlined into every comparison that uses a card.
-witness dealtRanks(): Vector<9, Uint<8>>;
+// The thirteen dealt card indices and their ranks, each asserted equal to
+// the in-circuit computation. Purely compile-time devices: they let the large
+// deal / showdown expressions be consumed once instead of being inlined into
+// every comparison that uses a card.
+// The three round digests as byte vectors, asserted equal to the hashes:
+// again a compile-time device so each hash is computed once, not once per byte.
+witness roundDigests(): [Vector<32, Uint<8>>, Vector<32, Uint<8>>, Vector<32, Uint<8>>];
+witness dealtCards(): Vector<13, Uint<8>>;
+witness dealtRanks(): Vector<13, Uint<8>>;
 witness startBoundary(): Boundary;
 witness p1CloseConsent(): SignedCredential<CloseConsent>;
 witness p2CloseConsent(): SignedCredential<CloseConsent>;
@@ -395,19 +490,30 @@ export circuit proveRound(round: Uint<8>): [] {
   assert(b0.round == ((r - 1) as Uint<8>), "boundary round mismatch");
 
   // Deal. Hole cards stay inside the proof; the board is bound into the chain.
-  const computed = dealNineRanks(secrets[0], secrets[1], seed, r as Uint<32>);
+  const dg = roundDigests();
+  assert((dg[0] as Bytes<32>) == dealDigest(secrets[0], secrets[1], seed, r as Uint<32>), "deal digest mismatch");
+  assert((dg[1] as Bytes<32>) == shuffleDigest(secrets[0], secrets[1], seed, r as Uint<32>), "shuffle digest mismatch");
+  assert((dg[2] as Bytes<32>) == showdownDigest(secrets[0], secrets[1], seed, r as Uint<32>), "showdown digest mismatch");
+  const cards = dealtCards();
+  const nine = dealNineShuffled(dg[0], dg[1]);
+  for (const i of 0..9) { assert(cards[i] == nine[i], "deal mismatch"); }
+  const dealt9: Vector<9, Uint<8>> = [cards[0], cards[1], cards[2], cards[3], cards[4], cards[5], cards[6], cards[7], cards[8]];
+  const sd = showdownCards(dealt9, dg[2]);
+  assert(cards[9] == sd[0] && cards[10] == sd[1] && cards[11] == sd[2] && cards[12] == sd[3], "showdown mismatch");
   const ranks = dealtRanks();
-  for (const i of 0..9) { assert(ranks[i] == computed[i], "deal mismatch"); }
+  for (const i of 0..13) { assert(ranks[i] == cardToRank(cards[i]), "rank mismatch"); }
   const hole0: Vector<2, Uint<8>> = [ranks[0], ranks[1]];
   const hole1: Vector<2, Uint<8>> = [ranks[2], ranks[3]];
   const board: Vector<5, Uint<8>> = [ranks[4], ranks[5], ranks[6], ranks[7], ranks[8]];
+  const drawA: Vector<2, Uint<8>> = [ranks[9], ranks[10]];
+  const drawB: Vector<2, Uint<8>> = [ranks[11], ranks[12]];
   const chain1 = chainBoard(b0.chain, board);
 
   // Four moves: first claimant = b0.turn, then the other seat.
   const moves = roundMoves();
   const firstIs0 = b0.turn == (0 as Uint<8>);
-  const resA = resolveClaim(firstIs0 ? hole0 : hole1, board, moves[0], moves[1]);
-  const resB = resolveClaim(firstIs0 ? hole1 : hole0, board, moves[2], moves[3]);
+  const resA = resolveExchange(firstIs0 ? hole0 : hole1, drawA, board, moves[0], moves[1]);
+  const resB = resolveExchange(firstIs0 ? hole1 : hole0, drawB, board, moves[2], moves[3]);
 
   // Scores after claim A (claimant = first seat), then claim B (the other).
   // Only one of gain/loss is ever non-zero, so gain-then-floor-subtract is exact.
@@ -416,9 +522,13 @@ export circuit proveRound(round: Uint<8>): [] {
   const s0: Uint<8> = firstIs0 ? ((a0 + resB.responderGain) as Uint<8>) : subFloor(((a0 + resB.claimantGain) as Uint<8>), resB.claimantLoss);
   const s1: Uint<8> = firstIs0 ? subFloor(((a1 + resB.claimantGain) as Uint<8>), resB.claimantLoss) : ((a1 + resB.responderGain) as Uint<8>);
 
-  const chain2 = chainMove(chain1, moves[0].kind, moves[0].count, moves[0].rankA, moves[0].rankB, 0);
+  // Transcript links: a PASS binds its showdown (drawn ranks + wins) instead
+  // of its zeroed claim fields, so a verifier can re-check the whole game.
+  const passA = moves[0].kind == (4 as Uint<8>);
+  const passB = moves[2].kind == (4 as Uint<8>);
+  const chain2 = chainMove(chain1, moves[0].kind, passA ? resA.responderGain : moves[0].count, passA ? drawA[0] : moves[0].rankA, passA ? drawA[1] : moves[0].rankB, 0);
   const chain3 = chainMove(chain2, moves[1].kind, 0, 0, 0, resA.lies);
-  const chain4 = chainMove(chain3, moves[2].kind, moves[2].count, moves[2].rankA, moves[2].rankB, 0);
+  const chain4 = chainMove(chain3, moves[2].kind, passB ? resB.responderGain : moves[2].count, passB ? drawB[0] : moves[2].rankA, passB ? drawB[1] : moves[2].rankB, 0);
   const chain5 = chainMove(chain4, moves[3].kind, 0, 0, 0, resB.lies);
 
   // Round end: race to target, or the round cap. Higher score wins, tie = draw.

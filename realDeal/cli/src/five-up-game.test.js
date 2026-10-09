@@ -15,11 +15,13 @@ const { pureCircuits: v3pPure } = await import('../../contracts/managed/proof-or
 
 /** A sim-ledger "chain" that executes each step with the compiled circuit. */
 function circuitChain() {
-  const witness = { entropy: null, roundSecrets: null, moves: [], ranks: [], boundary: null, p1: null, p2: null };
+  const witness = { entropy: null, roundSecrets: null, moves: [], cards: [], ranks: [], digests: [], boundary: null, p1: null, p2: null };
   const contract = new Contract({
     entropyPair: (c) => [c.privateState, witness.entropy],
     roundSecrets: (c) => [c.privateState, witness.roundSecrets],
     roundMoves: (c) => [c.privateState, witness.moves],
+    roundDigests: (c) => [c.privateState, witness.digests],
+    dealtCards: (c) => [c.privateState, witness.cards],
     dealtRanks: (c) => [c.privateState, witness.ranks],
     startBoundary: (c) => [c.privateState, witness.boundary],
     p1CloseConsent: (c) => [c.privateState, witness.p1],
@@ -38,7 +40,7 @@ function circuitChain() {
       return { contractAddress: address, txHash: 'sim-deploy', blockHeight: 1 };
     },
     async proveRound({ round, witnesses: w }) {
-      witness.entropy = w.entropyPair; witness.roundSecrets = w.roundSecrets; witness.moves = w.moves; witness.ranks = w.ranks; witness.boundary = w.boundaryIn;
+      witness.entropy = w.entropyPair; witness.roundSecrets = w.roundSecrets; witness.moves = w.moves; witness.cards = w.cards; witness.ranks = w.ranks; witness.digests = w.digests; witness.boundary = w.boundaryIn;
       call('proveRound', BigInt(round));
       return { txHash: `sim-r${round}`, blockHeight: 1 + round };
     },
@@ -51,15 +53,17 @@ function circuitChain() {
   };
 }
 
-/** Scripted human: honest claims; challenge 2-claims, accept 1-claims. */
-function playOut(game) {
+/** Scripted human: honest claims (or pass when `passOnEmpty` and no match);
+ *  challenge 2-claims, accept 1-claims; press next when a round is held. */
+function playOut(game, { passOnEmpty = false } = {}) {
   let guard = 0;
   let v = game.view();
   while (v.status === 'playing') {
     if (guard++ > 200) throw new Error('did not finish');
+    if (v.awaitingNext) { v = game.nextRound(); continue; }
     if (v.step === 'claim') {
       const m = v.myMatches;
-      v = game.humanClaim({ count: m.length, ranks: m });
+      v = passOnEmpty && m.length === 0 ? game.humanPass() : game.humanClaim({ count: m.length, ranks: m });
     } else {
       v = v.pending.count === 2 ? game.humanChallenge() : game.humanAccept();
     }
@@ -80,7 +84,7 @@ describe('5 Up 2 Down sponsored game', () => {
   it.each([0, 1])('whole game (mode %i): every emitted chain step is accepted by the compiled circuit', async (mode) => {
     for (let n = 0; n < 2; n += 1) {
       const game = createFiveUpGame({ gameId: 'g'.repeat(64), mode, pureCircuits });
-      const view = playOut(game);
+      const view = playOut(game, { passOnEmpty: n === 1 });
       expect(view.status).toBe('ended');
       expect(['human', 'bot', 'draw']).toContain(view.winner);
       const chain = circuitChain();
@@ -125,6 +129,38 @@ describe('5 Up 2 Down sponsored game', () => {
     expect(() => game.humanAccept()).toThrow(/no claim to respond to/);
     expect(() => createFiveUpGame({ gameId: 'j'.repeat(64), mode: 4, pureCircuits })).toThrow(/mode must be/);
     expect(FIVE_UP_MODES).toEqual([0, 1]);
+  });
+  it('pass: claim-turn only, holds the round for Next, showdown is in the view', () => {
+    const game = createFiveUpGame({ gameId: 'p'.repeat(64), mode: 0, pureCircuits });
+    const v = game.view();
+    expect(v.step).toBe('claim');
+    expect(() => game.nextRound()).toThrow(/in progress/);           // next is not for live rounds
+    const after = game.humanPass();                                   // human passes: bot draws
+    const sd = after.lastEvents.find((e) => e.type === 'showdown');
+    expect(sd.passer).toBe('human'); expect(sd.draws).toHaveLength(2);
+    expect([0, 1, 2]).toContain(sd.wins);
+    // Passing consumed the whole exchange — next is either the bot's claim
+    // (human now responds), the human's own claim, or the round is held.
+    expect(['claim', 'respond', 'round-end']).toContain(after.step);
+    if (after.step === 'respond') {
+      expect(() => game.humanPass()).toThrow(/claim|turn|deal the next/i);   // pass is claim-step only
+    } else {
+      expect(() => game.humanAccept()).toThrow(/claim|deal the next|turn/i);
+    }
+    // Round the game out; the held-round summary must expose the showdown.
+    let cur = after;
+    while (cur.status === 'playing' && !(cur.awaitingNext && cur.roundSummary?.showdowns?.length)) {
+      if (cur.awaitingNext) cur = game.nextRound();
+      else if (cur.step === 'claim') cur = cur.myMatches.length === 0 ? game.humanPass() : game.humanClaim({ count: cur.myMatches.length, ranks: cur.myMatches });
+      else cur = game.humanAccept();
+    }
+    if (cur.awaitingNext) {
+      expect(cur.step).toBe('round-end');
+      expect(() => game.humanClaim({ count: 0, ranks: [] })).toThrow(/deal the next/);
+      const nxt = game.nextRound();
+      expect(nxt.awaitingNext).toBeFalsy();
+      expect(nxt.board).toHaveLength(5); expect(nxt.hole).toHaveLength(2);
+    }
   });
   it('abandon drops pending chain work and the transcript stays sealed until closed', () => {
     const game = createFiveUpGame({ gameId: 'k'.repeat(64), mode: 1, pureCircuits });
@@ -178,9 +214,13 @@ describe('5 Up 2 Down over HTTP (fake chain)', () => {
       expect(status).toBe(201); expect(v.gameType).toBe('fiveup'); expect(v.board).toHaveLength(5);
       const id = v.gameId;
       expect((await call('POST', `/v1/games/${id}/play`, { rank: 0, count: 1, cards: [0] })).status).toBe(409);
+      // Round 1 opens on the human's claim step: /pass is legal and resolves a showdown.
+      ({ body: v } = await call('POST', `/v1/games/${id}/pass`));
+      expect(v.lastEvents.some((e) => e.type === 'showdown' && e.passer === 'human')).toBe(true);
       let guard = 0;
       while (v.status === 'playing' && guard++ < 200) {
-        if (v.step === 'claim') ({ body: v } = await call('POST', `/v1/games/${id}/claim`, { count: v.myMatches.length, ranks: v.myMatches }));
+        if (v.awaitingNext) ({ body: v } = await call('POST', `/v1/games/${id}/next`));
+        else if (v.step === 'claim') ({ body: v } = await call('POST', `/v1/games/${id}/claim`, { count: v.myMatches.length, ranks: v.myMatches }));
         else ({ body: v } = await call('POST', `/v1/games/${id}/${v.pending.count === 2 ? 'challenge' : 'accept'}`));
       }
       expect(v.status).toBe('ended');

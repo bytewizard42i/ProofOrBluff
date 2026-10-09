@@ -168,23 +168,25 @@
         <p>The second table. Faster, and every number on it is public except your two cards.</p>
         <h3>Setup</h3>
         <ol>
-          <li>Each round, <strong>two private cards</strong> are dealt to each player and <strong>five cards face up</strong> to the board — all nine from one shared 52-card deck, inside the proof. No card can appear twice.</li>
+          <li>Each round, <strong>two private cards</strong> are dealt to each player and <strong>five cards face up</strong> to the board — plus four more held face-down for showdowns — all thirteen from one shared 52-card deck, inside the proof. No card can appear twice.</li>
           <li>A <strong>match</strong> is one of your cards sharing a rank with a board card. Two Kings in hand against one King on the board is two matches. Suits are decorative.</li>
         </ol>
         <h3>The round</h3>
         <ol>
-          <li>The first player names their matches: <em>none</em>, <em>one</em> or <em>two</em>, naming the board ranks ("I match the King and the Seven"). Lying is legal.</li>
-          <li>The opponent <strong>accepts</strong> or calls <strong>"Proof or Bluff!"</strong>. A claim of none cannot be challenged.</li>
-          <li>Then the other player claims and the first responds. Who claims first alternates each round.</li>
+          <li>The first player names their matches: <em>one</em> or <em>two</em>, naming the board ranks ("I match the King and the Seven") — or <strong>passes</strong>. Lying is legal.</li>
+          <li>The opponent <strong>accepts</strong> or calls <strong>"Proof or Bluff!"</strong>.</li>
+          <li>Then the other player claims (or passes) and the first responds. Who claims first alternates each round.</li>
         </ol>
+        <h3>Passing — the showdown</h3>
+        <p>Passing is the honest way out of a matchless hand: you claim nothing, and your opponent draws two cards from the deck for a <strong>showdown</strong>. Each drawn card that beats your card in the same position scores the drawer <strong>+1</strong> — so two wins is +2, one win +1, none zero. Ties don't count, and the passer never loses points.</p>
         <h3>Scoring</h3>
         <div class="table-wrap">
           <table>
             <thead><tr><th scope="col">Claim</th><th scope="col">Accepted</th><th scope="col">Challenged — all true</th><th scope="col">Challenged — any lie</th></tr></thead>
             <tbody>
-              <tr><td>None</td><td class="no">0</td><td>—</td><td>—</td></tr>
               <tr><td>One match</td><td class="yes">+1</td><td class="yes">+2</td><td class="partial">liar −1, challenger +1</td></tr>
               <tr><td>Two matches</td><td class="yes">+3</td><td class="yes">+4</td><td class="partial">one lie: liar −1, challenger +1 · two lies: liar −2, challenger +2</td></tr>
+              <tr><td>Pass</td><td colspan="3" class="partial">opponent draws 2 showdown cards — +1 to them per card that outranks yours</td></tr>
             </tbody>
           </table>
         </div>
@@ -195,7 +197,7 @@
         <h2 id="edition">Launch edition notes</h2>
         <ul>
           <li>Every match is played against the house bot — there is no player-versus-player matchmaking in the launch edition.</li>
-          <li>There is no "pass" action in the launch edition: on your turn you play, and when a claim is on the table you accept or challenge.</li>
+          <li>In Original there is no "pass" action: on your turn you play, and when a claim is on the table you accept or challenge. (5 Up 2 Down has a pass — it triggers the showdown described above.)</li>
           <li>There are no wagers, stakes, or payouts. The house sponsors every game — all network fees are covered; you need no wallet and no crypto to play.</li>
           <li>The original design document, including roadmap mechanics not yet built, lives in the project repository: <a href="https://github.com/bytewizard42i/ProofOrBluff/blob/main/docs/RULES.md" rel="noopener">docs/RULES.md</a>.</li>
         </ul>
