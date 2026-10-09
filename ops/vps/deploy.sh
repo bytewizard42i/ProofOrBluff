@@ -35,9 +35,11 @@ SRC_PATHS=(
   realDeal/shared
   realDeal/contracts/rollup-v3p-referee.js
   realDeal/contracts/rollup-v4-referee.js
+  realDeal/contracts/five-up-referee.js
   realDeal/contracts/rollup-referee.js
   realDeal/contracts/managed/proof-or-bluff-rollup-v3p
   realDeal/contracts/managed/proof-or-bluff-rollup-v4
+  realDeal/contracts/managed/five-up-two-down
   realDeal/contracts/managed/proof-or-bluff-rollup/contract
   demoLand/src/game
 )
@@ -55,6 +57,8 @@ case "${1:-up}" in
       || { echo "v3p prover key missing — restore from Terry's build before deploying" >&2; exit 1; }
     [[ -s "$REPO/realDeal/contracts/managed/proof-or-bluff-rollup-v4/keys/proveRound.prover" ]] \
       || { echo "v4 prover key missing — restore from Terry's build before deploying" >&2; exit 1; }
+    [[ -s "$REPO/realDeal/contracts/managed/five-up-two-down/keys/proveRound.prover" && -s "$REPO/realDeal/contracts/managed/five-up-two-down/zkir/proveRound.bzkir" ]] \
+      || { echo "5U2D keys/bzkir missing — install from the full build before deploying" >&2; exit 1; }
 
     echo "→ syncing compose.yaml, Caddyfile, Dockerfile to $VPS_HOST:$VPS_DIR"
     ssh_vps "mkdir -p $VPS_DIR/src"

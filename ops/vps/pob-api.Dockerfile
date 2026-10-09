@@ -79,13 +79,15 @@ COPY realDeal/cli/package.json realDeal/cli/
 COPY realDeal/cli/src ./realDeal/cli/src
 COPY realDeal/shared ./realDeal/shared
 # Referee (off-chain rule engine that mirrors the circuit).
-COPY realDeal/contracts/rollup-*-referee.js ./realDeal/contracts/
+COPY realDeal/contracts/rollup-*-referee.js realDeal/contracts/five-up-referee.js ./realDeal/contracts/
 # Compiled v3p contract: generated JS bindings (committed) + keys/ + zkir/
 # (gitignored, see the big note at the top). compiler/contract-info.json is
 # tiny and useful for `docker exec` debugging of which compiler built the keys.
 COPY realDeal/contracts/managed/proof-or-bluff-rollup-v3p ./realDeal/contracts/managed/proof-or-bluff-rollup-v3p
 # v4 (shared-deck, empty-hand-wins) — staged alongside v3p; POB_CONTRACT_VERSION picks.
 COPY realDeal/contracts/managed/proof-or-bluff-rollup-v4 ./realDeal/contracts/managed/proof-or-bluff-rollup-v4
+# 5 Up 2 Down — enabled automatically when its keys are present.
+COPY realDeal/contracts/managed/five-up-two-down ./realDeal/contracts/managed/five-up-two-down
 # rollup-v3p-contract.js reuses guards/bridges from rollup-contract.js (v2),
 # which statically imports the v2 generated bindings. Only the committed JS is
 # needed — v2 is never proven here, so its keys/zkir are not copied.
