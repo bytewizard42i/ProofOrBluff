@@ -326,3 +326,11 @@ tbody tr:nth-child(even) td { background: rgba(26, 21, 48, 0.35); }
   .btn-primary:hover { transform: none; }
   .btn-neon::before { background: #ffd60a; opacity: 0.6; }
 }
+
+
+/* ---------- Two tables ---------- */
+.table-card { display: flex; flex-direction: column; gap: 0.6rem; }
+.table-card h3 { font-size: 1.6rem; margin: 0; }
+.table-card .btn { align-self: flex-start; margin-top: auto; }
+.table-kicker { margin: 0; font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold, #ffd60a); opacity: 0.85; }
+.table-meta { margin: 0; font-size: 0.85rem; color: var(--text-dim, #a9a3cc); }

@@ -48,20 +48,50 @@
       <div class="wrap">
         <div>
           <p class="hero-tagline">Bluff in public. Prove in private.</p>
-          <h1>A card game where every round is proven fair.</h1>
+          <h1>Card games where every round is proven fair.</h1>
           <p class="lede">
-            Proof or Bluff is a two-player bluffing card game, based on the classic "Cheat", rebuilt for the Midnight Network.
-            You and a talkative computer opponent each hold a private hand, take turns playing cards face down, and make public claims about what you played — truthful or not.
+            Proof or Bluff is a pair of bluffing card games rebuilt for the Midnight Network.
+            You and a talkative computer opponent hold private cards and make public claims about them — truthful or not.
             When someone calls "Proof or Bluff!", a zero-knowledge proof settles it on-chain, revealing only whether the claim was true.
           </p>
           <div class="hero-actions">
-            <a class="btn btn-primary btn-lg btn-neon" href="https://prooforbluff.app">Play Proof or Bluff</a>
+            <a class="btn btn-primary btn-lg btn-neon" href="https://prooforbluff.app">Play Original</a>
+            <a class="btn btn-primary btn-lg btn-neon" href="https://prooforbluff.app/fiveup">Play 5 Up 2 Down</a>
             <a class="btn btn-secondary" href="rules.html">Read the rules</a>
           </div>
           <p class="hero-fineprint">Free to play, right now — live on Midnight Mainnet. The house sponsors every game: no wallet, no tokens, no cost to you.</p>
         </div>
         <div class="hero-art">
           <img src="assets/pob-banner.webp" alt="Proof or Bluff banner art: playing cards on a dark purple table." width="1536" height="1024">
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="tables" aria-labelledby="tables-heading">
+      <div class="wrap">
+        <h2 id="tables-heading">Two tables, one promise</h2>
+        <p class="section-intro">Pick your game. Both are free, wallet-free, and proven on Midnight Mainnet round by round.</p>
+        <div class="grid grid-2">
+          <article class="card table-card">
+            <p class="table-kicker">The classic</p>
+            <h3>Original</h3>
+            <p>
+              Based on "Cheat": seven private cards each from one shared deck, play face down, claim the required rank, and bluff your way out.
+              Empty your hand to win — unless you're caught at the door. Catch bluffs for +3, race to 15.
+            </p>
+            <p class="table-meta">7 cards · empty-hand or points win · 3–10 min</p>
+            <a class="btn btn-primary btn-neon" href="https://prooforbluff.app">Play Original</a>
+          </article>
+          <article class="card table-card">
+            <p class="table-kicker">New · quick-fire</p>
+            <h3>5 Up 2 Down</h3>
+            <p>
+              Two cards down for you, five face up for everyone. Claim how many of yours match the board — the house accepts or calls "Proof or Bluff!".
+              Honest claims pay; proven claims pay double; every lie costs you a point and hands it over. Race to 20.
+            </p>
+            <p class="table-meta">2 + 5 cards · race to 20 · 2–5 min</p>
+            <a class="btn btn-primary btn-neon" href="https://prooforbluff.app/fiveup">Play 5 Up 2 Down</a>
+          </article>
         </div>
       </div>
     </section>
@@ -94,7 +124,7 @@
             <span class="num" aria-hidden="true">3</span>
             <h3>The chain only learns true or false</h3>
             <p>
-              When a claim is challenged, the contract checks the hidden cards against the public claim and discloses exactly one bit: the claim was honest, or it was a bluff.
+              When a claim is challenged, the contract checks the hidden cards against the public claim and discloses exactly one thing: whether it was honest — or, in 5 Up 2 Down, how many of the claimed cards were lies.
               It does not reveal what the cards were, and it reveals nothing about the rest of either hand.
             </p>
           </article>
@@ -113,14 +143,14 @@
 
     <section class="section" aria-labelledby="loop-heading">
       <div class="wrap">
-        <h2 id="loop-heading">A round in thirty seconds</h2>
+        <h2 id="loop-heading">A round in thirty seconds (Original)</h2>
         <ol class="steps">
           <li><strong>Deal.</strong> Both sides commit random entropy, the shared seed is revealed, and each hand is dealt from it inside the proof. Nobody chose the cards.</li>
           <li><strong>Play and claim.</strong> On your turn, play one to four cards face down and declare the current required rank — "Two Kings". The cards can be anything.</li>
           <li><strong>Accept or challenge.</strong> Your opponent either accepts (the pile grows, the rank advances) or calls "Proof or Bluff!".</li>
           <li><strong>Resolve.</strong> A zero-knowledge proof reveals whether the claim was true. The pile is discarded and points are awarded. First to the mode's target score wins.</li>
         </ol>
-        <p class="mt-md"><a href="rules.html">Full rules, modes, and scoring</a></p>
+        <p class="mt-md"><a href="rules.html">Full rules, modes, and scoring</a> · <a href="rules.html#fiveup">5 Up 2 Down rules</a></p>
       </div>
     </section>
 
@@ -141,7 +171,10 @@
         <div class="cta-band">
           <h2>Ready to call a bluff?</h2>
           <p>Sit down with the computer opponent and feel selective privacy for yourself.</p>
-          <a class="btn btn-primary btn-lg btn-neon" href="https://prooforbluff.app">Play Proof or Bluff</a>
+          <div class="hero-actions" style="justify-content:center">
+            <a class="btn btn-primary btn-lg btn-neon" href="https://prooforbluff.app">Play Original</a>
+            <a class="btn btn-primary btn-lg btn-neon" href="https://prooforbluff.app/fiveup">Play 5 Up 2 Down</a>
+          </div>
         </div>
       </div>
     </section>

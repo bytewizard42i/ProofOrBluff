@@ -59,6 +59,7 @@
           <li><a href="#scoring">Scoring</a></li>
           <li><a href="#example">Example round</a></li>
           <li><a href="#edition">Launch edition notes</a></li>
+          <li><a href="#fiveup">5 Up 2 Down</a></li>
         </ul>
       </header>
 
@@ -162,6 +163,34 @@
           <li><strong>You challenge.</strong> "Proof or Bluff!" The computer must submit its proof. The chain reports: <strong>false</strong> — the claim was a bluff.</li>
           <li><strong>Resolution.</strong> The 5-card pile is discarded. You gain +3 (3 to 0). The rank advances to <em>9</em> and, as the challenger, you take the next turn. Nobody learns what the three cards were.</li>
         </ol>
+
+        <h2 id="fiveup">5 Up 2 Down</h2>
+        <p>The second table. Faster, and every number on it is public except your two cards.</p>
+        <h3>Setup</h3>
+        <ol>
+          <li>Each round, <strong>two private cards</strong> are dealt to each player and <strong>five cards face up</strong> to the board — all nine from one shared 52-card deck, inside the proof. No card can appear twice.</li>
+          <li>A <strong>match</strong> is one of your cards sharing a rank with a board card. Two Kings in hand against one King on the board is two matches. Suits are decorative.</li>
+        </ol>
+        <h3>The round</h3>
+        <ol>
+          <li>The first player names their matches: <em>none</em>, <em>one</em> or <em>two</em>, naming the board ranks ("I match the King and the Seven"). Lying is legal.</li>
+          <li>The opponent <strong>accepts</strong> or calls <strong>"Proof or Bluff!"</strong>. A claim of none cannot be challenged.</li>
+          <li>Then the other player claims and the first responds. Who claims first alternates each round.</li>
+        </ol>
+        <h3>Scoring</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th scope="col">Claim</th><th scope="col">Accepted</th><th scope="col">Challenged — all true</th><th scope="col">Challenged — any lie</th></tr></thead>
+            <tbody>
+              <tr><td>None</td><td class="no">0</td><td>—</td><td>—</td></tr>
+              <tr><td>One match</td><td class="yes">+1</td><td class="yes">+2</td><td class="partial">liar −1, challenger +1</td></tr>
+              <tr><td>Two matches</td><td class="yes">+3</td><td class="yes">+4</td><td class="partial">one lie: liar −1, challenger +1 · two lies: liar −2, challenger +2</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>A claim with any lie in it is void — the true card earns nothing. Scores never go below zero. The proof discloses exactly one number on a challenge: how many of the claimed cards were lies. Accepted claims disclose nothing, so a successful bluff stays secret forever.</p>
+        <h3>Winning</h3>
+        <p><strong>Race to 20</strong> (Casual: 10), checked at the end of each round; the higher score wins. After ten rounds the higher score wins regardless, and a tie is a draw.</p>
 
         <h2 id="edition">Launch edition notes</h2>
         <ul>
