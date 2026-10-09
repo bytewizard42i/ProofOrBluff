@@ -23,6 +23,12 @@ import { mkdir, readFile, readdir, rename, writeFile, unlink } from 'node:fs/pro
 import { fileURLToPath } from 'node:url';
 
 import { createSponsoredGame, GAME_STATUS, GameError, MODES, DIFFICULTIES } from './sponsored-game.js';
+import { createFiveUpGame, FIVE_UP_MODES, GAME_TYPE as FIVE_UP } from './five-up-game.js';
+
+// The two tables. `original` = the Cheat-style rollup (v3p/v4, picked by
+// POB_CONTRACT_VERSION); `fiveup` = 5 Up 2 Down. Each game remembers its type
+// so the chain queue asks for the right contract binding.
+export const GAME_TYPES = Object.freeze(['original', FIVE_UP]);
 
 // Bind address. Loopback by default (local dev, or a bare-metal box where Caddy
 // runs on the same host). Inside the Docker stack (ops/vps/compose.yaml) Caddy
@@ -155,7 +161,7 @@ export function installConsoleRedaction(secret, target = console) {
  * @param {object} options.chain          { deployGame(args) → {contractAddress,txHash,blockHeight},
  *                                          proveRound({round,witnesses}) → {txHash,blockHeight},
  *                                          closeGame(args) → {txHash,blockHeight} }
- *                                        One per game; obtained via options.chainForGame(gameId, contractAddress|null).
+ *                                        One per game; obtained via options.chainForGame(gameId, contractAddress|null, gameType).
  * @param {string} [options.stateDir]     where pending/done step files live (null = memory only)
  * @param {function} options.onReceipt    (gameId, receipt) → void
  * @param {function} [options.beforeStep]   async (gameId, step) → void, awaited inside the
@@ -217,7 +223,7 @@ export function createChainQueue({ chainForGame, stateDir = null, onReceipt, onE
         // beforeStep runs inside try: a throw must fail THIS step only — a
         // rejection outside try would reject `tail` and skip every later step.
         await beforeStep(gameId, step);
-        const api = await chainForGame(gameId, contractAddressRef.current);
+        const api = await chainForGame(gameId, contractAddressRef.current, contractAddressRef.gameType ?? 'original');
         let receipt;
         if (step.step === 'deploy') {
           const r = await api.deployGame(step.args);
@@ -294,7 +300,7 @@ function defaultSerializeStep(step) { return toJsonSafe({ ...step, witnesses: st
  * @param {function} [options.now]
  */
 export function createSponsoredHttpApp({
-  pureCircuits, queue, readiness = () => ({ ok: true }), allowedOrigins = new Set(DEFAULT_ALLOWED_ORIGINS), now = Date.now, ai, random,
+  pureCircuits, fiveUpPureCircuits = null, queue, readiness = () => ({ ok: true }), allowedOrigins = new Set(DEFAULT_ALLOWED_ORIGINS), now = Date.now, ai, random,
   network = process.env.POB_NETWORK_ID || 'undeployed', walletAddress = null, walletExtra = () => ({}),
   contractVersion = process.env.POB_CONTRACT_VERSION || 'v3p',
 }) {
@@ -359,13 +365,22 @@ export function createSponsoredHttpApp({
     if (!ready.ok) throw new HttpError(503, ready.reason || 'Service not ready.');
     sweep();
     if (games.size >= MAX_OPEN_GAMES) throw new HttpError(429, 'Too many open games right now; try again in a minute.');
+    const gameType = body.game ?? 'original';
+    if (!GAME_TYPES.includes(gameType)) throw new HttpError(400, `game must be one of ${GAME_TYPES.join(', ')}.`);
     const mode = body.mode ?? 1;
     const difficulty = body.difficulty ?? 'medium';
-    if (!MODES.includes(mode)) throw new HttpError(400, 'mode must be 0, 1 or 4.');
     if (!DIFFICULTIES.includes(difficulty)) throw new HttpError(400, 'difficulty must be easy, medium or hard.');
     const gameId = randomBytes(32).toString('hex');
-    const game = createSponsoredGame({ gameId, mode, difficulty, pureCircuits, ai, random, contractVersion });
-    const entry = { game, contractAddressRef: { current: null }, touchedAt: now() };
+    let game;
+    if (gameType === FIVE_UP) {
+      if (!fiveUpPureCircuits) throw new HttpError(503, '5 Up 2 Down is not enabled on this server yet.');
+      if (!FIVE_UP_MODES.includes(mode)) throw new HttpError(400, 'mode must be 0 (Casual) or 1 (Standard) for 5 Up 2 Down.');
+      game = createFiveUpGame({ gameId, mode, difficulty, pureCircuits: fiveUpPureCircuits, random });
+    } else {
+      if (!MODES.includes(mode)) throw new HttpError(400, 'mode must be 0, 1 or 4.');
+      game = createSponsoredGame({ gameId, mode, difficulty, pureCircuits, ai, random, contractVersion });
+    }
+    const entry = { game, contractAddressRef: { current: null, gameType }, touchedAt: now() };
     games.set(gameId, entry);
     totals.created += 1;
     queue.enqueue(gameId, { step: 'deploy', args: game.constructorArgs() }, { contractAddressRef: entry.contractAddressRef });
@@ -433,7 +448,17 @@ export function createSponsoredHttpApp({
       const action = parts[3];
       if (action === 'play') {
         const body = await readJsonBody(request);
-        return sendJson(response, 200, act(entry, (g) => g.humanPlay({ rank: body.rank, count: body.count, cards: body.cards })));
+        return sendJson(response, 200, act(entry, (g) => {
+          if (!g.humanPlay) throw new GameError(409, 'this table takes claims, not plays — POST /claim');
+          return g.humanPlay({ rank: body.rank, count: body.count, cards: body.cards });
+        }));
+      }
+      if (action === 'claim') {
+        const body = await readJsonBody(request);
+        return sendJson(response, 200, act(entry, (g) => {
+          if (!g.humanClaim) throw new GameError(409, 'this table takes plays, not claims — POST /play');
+          return g.humanClaim({ count: body.count, ranks: body.ranks });
+        }));
       }
       if (action === 'accept') { await readJsonBody(request).catch(() => ({})); return sendJson(response, 200, act(entry, (g) => g.humanAccept())); }
       if (action === 'challenge') { await readJsonBody(request).catch(() => ({})); return sendJson(response, 200, act(entry, (g) => g.humanChallenge())); }
@@ -480,6 +505,14 @@ async function main() {
   const getContractApi = contractVersion === 'v4' ? contractApi.getV4ContractApi : contractApi.getV3pContractApi;
   const managedDir = contractVersion === 'v4' ? contractApi.DEFAULT_V4_MANAGED_DIR : contractApi.DEFAULT_V3P_MANAGED_DIR;
   const { pureCircuits } = await import(path.join(managedDir, 'contract', 'index.js'));
+  // 5 Up 2 Down rides alongside whichever Original contract is active. It is
+  // enabled when its bindings + keys are present (POB_FIVE_UP=off disables).
+  const fiveUp = await import('./five-up-contract.js');
+  let fiveUpPureCircuits = null;
+  if (process.env.POB_FIVE_UP !== 'off' && await fiveUp.hasKeys()) {
+    ({ pureCircuits: fiveUpPureCircuits } = await import(path.join(fiveUp.DEFAULT_FIVE_UP_MANAGED_DIR, 'contract', 'index.js')));
+  }
+  log(`5 Up 2 Down: ${fiveUpPureCircuits ? 'enabled' : 'disabled (no keys)'}`);
 
   const endpoints = networkId === 'mainnet'
     ? (() => { const t = (u) => `${u}?project_id=${encodeURIComponent(process.env.BLOCKFROST_PROJECT_ID.trim())}`; return { node: t('https://rpc.midnight-mainnet.blockfrost.io'), indexer: t('https://midnight-mainnet.blockfrost.io/api/v0'), indexerWs: t('wss://midnight-mainnet.blockfrost.io/api/v0/ws'), proofServer }; })()
@@ -493,10 +526,11 @@ async function main() {
 
   // One contract API instance per game (each binds to one contract address).
   const apis = new Map();
-  const chainForGame = async (gameId, contractAddress) => {
+  const chainForGame = async (gameId, contractAddress, gameType = 'original') => {
     let api = apis.get(gameId);
     if (!api) {
-      api = await getContractApi({ networkId, walletHandle, endpoints, seedHex });
+      const factory = gameType === 'fiveup' ? fiveUp.getFiveUpContractApi : getContractApi;
+      api = await factory({ networkId, walletHandle, endpoints, seedHex });
       if (contractAddress) await api.joinAt(contractAddress);
       apis.set(gameId, api);
     }
@@ -549,7 +583,7 @@ async function main() {
   let app;
   const queue = createChainQueue({ chainForGame, stateDir, onReceipt: (gameId, r) => app.receipt(gameId, r), beforeStep: waitDustReady });
   app = createSponsoredHttpApp({
-    pureCircuits, queue, network: networkId, allowedOrigins: allowedOriginsFromEnvironment(),
+    pureCircuits, fiveUpPureCircuits, queue, network: networkId, allowedOrigins: allowedOriginsFromEnvironment(),
     walletAddress: walletHandle.address ?? null,
     readiness, contractVersion,
     walletExtra: () => ({ dust: dust.balance.toString(), synced: dust.synced, observedAt: dust.at, dustLowSince: dustLowSince?.toISOString() ?? null }),
