@@ -332,5 +332,26 @@ tbody tr:nth-child(even) td { background: rgba(26, 21, 48, 0.35); }
 .table-card { display: flex; flex-direction: column; gap: 0.6rem; }
 .table-card h3 { font-size: 1.6rem; margin: 0; }
 .table-card .btn { align-self: flex-start; margin-top: auto; }
+.table-card-art { width: 100%; border-radius: 10px; display: block; }
+
+/* ---------- Play picker (play.html) ---------- */
+.play-picker h1 { margin: 0.2rem 0 0.6rem; }
+.play-grid { margin-top: 2rem; }
+.play-choice {
+  display: flex; flex-direction: column; text-decoration: none; color: inherit;
+  background: var(--panel, rgba(255,255,255,0.04)); border: 1px solid var(--line, rgba(255,255,255,0.1));
+  border-radius: 16px; overflow: hidden;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.play-choice:hover, .play-choice:focus-visible {
+  transform: translateY(-4px); border-color: var(--gold, #ffd60a);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,214,10,0.35);
+  outline: none;
+}
+.play-choice img { width: 100%; height: auto; max-height: 320px; aspect-ratio: 16 / 9; object-fit: cover; display: block; }
+.play-choice-body { display: flex; flex-direction: column; gap: 0.6rem; padding: 1.25rem 1.4rem 1.5rem; flex: 1; }
+.play-choice-body h2 { margin: 0; font-size: 1.8rem; }
+.play-choice-body p { margin: 0; }
+.play-choice-body .btn { align-self: flex-start; margin-top: auto; }
 .table-kicker { margin: 0; font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold, #ffd60a); opacity: 0.85; }
 .table-meta { margin: 0; font-size: 0.85rem; color: var(--text-dim, #a9a3cc); }
