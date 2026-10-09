@@ -127,17 +127,122 @@ circuit dealNineIdx(b: Vector<32, Uint<8>>): Vector<9, Uint<8>> {
   const c8 = (t8 == c0 || t8 == c1 || t8 == c2 || t8 == c3 || t8 == c4 || t8 == c5 || t8 == c6 || t8 == c7) ? (51 as Uint<8>) : t8;
   return [c0, c1, c2, c3, c4, c5, c6, c7, c8];
 }
-circuit dealDigestBytes(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Vector<32, Uint<8>> {
-  const digest = transientHash<DealInput>(DealInput { separator: pad(32, "pob:5u2d:deal:v1"), salt0: salt0, salt1: salt1, seed: seed, round: round });
+// Floyd gives a uniform SET, not uniform SLOTS: slot i is always drawn from
+// 0..43+i, so without a shuffle no hole card could ever be an Ace (review
+// 2026-10-08, H-1). A uniformly random permutation of the nine slots, keyed on
+// a second digest, makes every slot uniform and the board order meaningless.
+// A 25-comparator sorting network (Knuth, n=9) on nine random 16-bit keys
+// CARRIES the cards along: the output is the drawn set in uniformly random
+// order. Every comparator is a 2-way select, which is what keeps compile
+// memory sane — a permutation-then-pick formulation and a chained-swap
+// formulation both blew past 10 GB (non-constant-index pathology, AGENTS.md).
+// Key ties (~0.05%) fall back to the network's fixed order — negligible bias.
+circuit shuffle9(v: Vector<9, Uint<8>>, s: Vector<32, Uint<8>>): Vector<9, Uint<8>> {
+  const k0 = ((s[0] as Uint<16>) * (256 as Uint<16>) + (s[1] as Uint<16>)) as Uint<16>;
+  const k1 = ((s[2] as Uint<16>) * (256 as Uint<16>) + (s[3] as Uint<16>)) as Uint<16>;
+  const k2 = ((s[4] as Uint<16>) * (256 as Uint<16>) + (s[5] as Uint<16>)) as Uint<16>;
+  const k3 = ((s[6] as Uint<16>) * (256 as Uint<16>) + (s[7] as Uint<16>)) as Uint<16>;
+  const k4 = ((s[8] as Uint<16>) * (256 as Uint<16>) + (s[9] as Uint<16>)) as Uint<16>;
+  const k5 = ((s[10] as Uint<16>) * (256 as Uint<16>) + (s[11] as Uint<16>)) as Uint<16>;
+  const k6 = ((s[12] as Uint<16>) * (256 as Uint<16>) + (s[13] as Uint<16>)) as Uint<16>;
+  const k7 = ((s[14] as Uint<16>) * (256 as Uint<16>) + (s[15] as Uint<16>)) as Uint<16>;
+  const k8 = ((s[16] as Uint<16>) * (256 as Uint<16>) + (s[17] as Uint<16>)) as Uint<16>;
+  const lt1 = k0 < k1;
+  const ka1 = lt1 ? k0 : k1; const ca1 = lt1 ? v[0] : v[1];
+  const kb1 = lt1 ? k1 : k0; const cb1 = lt1 ? v[1] : v[0];
+  const lt2 = k3 < k4;
+  const ka2 = lt2 ? k3 : k4; const ca2 = lt2 ? v[3] : v[4];
+  const kb2 = lt2 ? k4 : k3; const cb2 = lt2 ? v[4] : v[3];
+  const lt3 = k6 < k7;
+  const ka3 = lt3 ? k6 : k7; const ca3 = lt3 ? v[6] : v[7];
+  const kb3 = lt3 ? k7 : k6; const cb3 = lt3 ? v[7] : v[6];
+  const lt4 = kb1 < k2;
+  const ka4 = lt4 ? kb1 : k2; const ca4 = lt4 ? cb1 : v[2];
+  const kb4 = lt4 ? k2 : kb1; const cb4 = lt4 ? v[2] : cb1;
+  const lt5 = kb2 < k5;
+  const ka5 = lt5 ? kb2 : k5; const ca5 = lt5 ? cb2 : v[5];
+  const kb5 = lt5 ? k5 : kb2; const cb5 = lt5 ? v[5] : cb2;
+  const lt6 = kb3 < k8;
+  const ka6 = lt6 ? kb3 : k8; const ca6 = lt6 ? cb3 : v[8];
+  const kb6 = lt6 ? k8 : kb3; const cb6 = lt6 ? v[8] : cb3;
+  const lt7 = ka1 < ka4;
+  const ka7 = lt7 ? ka1 : ka4; const ca7 = lt7 ? ca1 : ca4;
+  const kb7 = lt7 ? ka4 : ka1; const cb7 = lt7 ? ca4 : ca1;
+  const lt8 = ka2 < ka5;
+  const ka8 = lt8 ? ka2 : ka5; const ca8 = lt8 ? ca2 : ca5;
+  const kb8 = lt8 ? ka5 : ka2; const cb8 = lt8 ? ca5 : ca2;
+  const lt9 = ka3 < ka6;
+  const ka9 = lt9 ? ka3 : ka6; const ca9 = lt9 ? ca3 : ca6;
+  const kb9 = lt9 ? ka6 : ka3; const cb9 = lt9 ? ca6 : ca3;
+  const lt10 = kb4 < kb5;
+  const ka10 = lt10 ? kb4 : kb5; const ca10 = lt10 ? cb4 : cb5;
+  const kb10 = lt10 ? kb5 : kb4; const cb10 = lt10 ? cb5 : cb4;
+  const lt11 = ka7 < ka8;
+  const ka11 = lt11 ? ka7 : ka8; const ca11 = lt11 ? ca7 : ca8;
+  const kb11 = lt11 ? ka8 : ka7; const cb11 = lt11 ? ca8 : ca7;
+  const lt12 = kb7 < kb8;
+  const ka12 = lt12 ? kb7 : kb8; const ca12 = lt12 ? cb7 : cb8;
+  const kb12 = lt12 ? kb8 : kb7; const cb12 = lt12 ? cb8 : cb7;
+  const lt13 = kb10 < kb6;
+  const ka13 = lt13 ? kb10 : kb6; const ca13 = lt13 ? cb10 : cb6;
+  const kb13 = lt13 ? kb6 : kb10; const cb13 = lt13 ? cb6 : cb10;
+  const lt14 = kb11 < ka9;
+  const ka14 = lt14 ? kb11 : ka9; const ca14 = lt14 ? cb11 : ca9;
+  const kb14 = lt14 ? ka9 : kb11; const cb14 = lt14 ? ca9 : cb11;
+  const lt15 = kb12 < kb9;
+  const ka15 = lt15 ? kb12 : kb9; const ca15 = lt15 ? cb12 : cb9;
+  const kb15 = lt15 ? kb9 : kb12; const cb15 = lt15 ? cb9 : cb12;
+  const lt16 = ka10 < ka13;
+  const ka16 = lt16 ? ka10 : ka13; const ca16 = lt16 ? ca10 : ca13;
+  const kb16 = lt16 ? ka13 : ka10; const cb16 = lt16 ? ca13 : ca10;
+  const lt17 = ka11 < ka14;
+  const ka17 = lt17 ? ka11 : ka14; const ca17 = lt17 ? ca11 : ca14;
+  const kb17 = lt17 ? ka14 : ka11; const cb17 = lt17 ? ca14 : ca11;
+  const lt18 = ka12 < ka15;
+  const ka18 = lt18 ? ka12 : ka15; const ca18 = lt18 ? ca12 : ca15;
+  const kb18 = lt18 ? ka15 : ka12; const cb18 = lt18 ? ca15 : ca12;
+  const lt19 = kb16 < kb15;
+  const ka19 = lt19 ? kb16 : kb15; const ca19 = lt19 ? cb16 : cb15;
+  const kb19 = lt19 ? kb15 : kb16; const cb19 = lt19 ? cb15 : cb16;
+  const lt20 = ka16 < kb14;
+  const ka20 = lt20 ? ka16 : kb14; const ca20 = lt20 ? ca16 : cb14;
+  const kb20 = lt20 ? kb14 : ka16; const cb20 = lt20 ? cb14 : ca16;
+  const lt21 = ka18 < kb17;
+  const ka21 = lt21 ? ka18 : kb17; const ca21 = lt21 ? ca18 : cb17;
+  const kb21 = lt21 ? kb17 : ka18; const cb21 = lt21 ? cb17 : ca18;
+  const lt22 = kb18 < kb20;
+  const ka22 = lt22 ? kb18 : kb20; const ca22 = lt22 ? cb18 : cb20;
+  const kb22 = lt22 ? kb20 : kb18; const cb22 = lt22 ? cb20 : cb18;
+  const lt23 = ka20 < ka22;
+  const ka23 = lt23 ? ka20 : ka22; const ca23 = lt23 ? ca20 : ca22;
+  const kb23 = lt23 ? ka22 : ka20; const cb23 = lt23 ? ca22 : ca20;
+  const lt24 = ka19 < kb22;
+  const ka24 = lt24 ? ka19 : kb22; const ca24 = lt24 ? ca19 : cb22;
+  const kb24 = lt24 ? kb22 : ka19; const cb24 = lt24 ? cb22 : ca19;
+  const lt25 = ka23 < kb21;
+  const ka25 = lt25 ? ka23 : kb21; const ca25 = lt25 ? ca23 : cb21;
+  const kb25 = lt25 ? kb21 : ka23; const cb25 = lt25 ? cb21 : ca23;
+  return [ca17, ca21, ca25, cb25, cb23, ca24, cb24, cb19, cb13];
+}
+circuit dealDigestBytes(sep: Bytes<32>, salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Vector<32, Uint<8>> {
+  const digest = transientHash<DealInput>(DealInput { separator: sep, salt0: salt0, salt1: salt1, seed: seed, round: round });
   return (digest as Bytes<32>) as Vector<32, Uint<8>>;
 }
-// AUDIT/TEST HOOK: raw card indices (pairwise distinct by construction).
-export pure circuit dealNineIndices(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Vector<9, Uint<8>> {
-  return dealNineIdx(dealDigestBytes(salt0, salt1, seed, round));
+circuit dealNineShuffled(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Vector<9, Uint<8>> {
+  const drawn = dealNineIdx(dealDigestBytes(pad(32, "pob:5u2d:deal:v1"), salt0, salt1, seed, round));
+  return shuffle9(drawn, dealDigestBytes(pad(32, "pob:5u2d:shuffle:v1"), salt0, salt1, seed, round));
 }
-// Ranks of the nine cards in deal order. Exported for the referee/clients.
-export pure circuit dealNineRanks(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Vector<9, Uint<8>> {
-  const idx = dealNineIdx(dealDigestBytes(salt0, salt1, seed, round));
+// Exported for the referee: the two digests. The referee mirrors Floyd + the
+// sorting network in JS (five-up-referee.js dealNine) — exporting the whole
+// deal as a pure circuit would compile it twice over (5 GB a copy).
+export pure circuit dealDigest(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Bytes<32> {
+  return transientHash<DealInput>(DealInput { separator: pad(32, "pob:5u2d:deal:v1"), salt0: salt0, salt1: salt1, seed: seed, round: round }) as Bytes<32>;
+}
+export pure circuit shuffleDigest(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Bytes<32> {
+  return transientHash<DealInput>(DealInput { separator: pad(32, "pob:5u2d:shuffle:v1"), salt0: salt0, salt1: salt1, seed: seed, round: round }) as Bytes<32>;
+}
+circuit dealNineRanks(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Vector<9, Uint<8>> {
+  const idx = dealNineShuffled(salt0, salt1, seed, round);
   return [cardToRank(idx[0]), cardToRank(idx[1]), cardToRank(idx[2]), cardToRank(idx[3]), cardToRank(idx[4]),
           cardToRank(idx[5]), cardToRank(idx[6]), cardToRank(idx[7]), cardToRank(idx[8])];
 }
@@ -209,6 +314,10 @@ export pure circuit commitTranscript(chain: Field): Bytes<32> {
 witness entropyPair(): [Bytes<32>, Bytes<32>];
 witness roundSecrets(): [Bytes<32>, Bytes<32>];
 witness roundMoves(): Vector<4, Move>;                  // CLAIM, RESPONSE, CLAIM, RESPONSE
+// The nine dealt ranks, asserted equal to the in-circuit deal. Purely a
+// compile-time device: it lets the deal's (large) expression be consumed once
+// instead of being inlined into every comparison that uses a card.
+witness dealtRanks(): Vector<9, Uint<8>>;
 witness startBoundary(): Boundary;
 witness p1CloseConsent(): SignedCredential<CloseConsent>;
 witness p2CloseConsent(): SignedCredential<CloseConsent>;
@@ -286,7 +395,9 @@ export circuit proveRound(round: Uint<8>): [] {
   assert(b0.round == ((r - 1) as Uint<8>), "boundary round mismatch");
 
   // Deal. Hole cards stay inside the proof; the board is bound into the chain.
-  const ranks = dealNineRanks(secrets[0], secrets[1], seed, r as Uint<32>);
+  const computed = dealNineRanks(secrets[0], secrets[1], seed, r as Uint<32>);
+  const ranks = dealtRanks();
+  for (const i of 0..9) { assert(ranks[i] == computed[i], "deal mismatch"); }
   const hole0: Vector<2, Uint<8>> = [ranks[0], ranks[1]];
   const hole1: Vector<2, Uint<8>> = [ranks[2], ranks[3]];
   const board: Vector<5, Uint<8>> = [ranks[4], ranks[5], ranks[6], ranks[7], ranks[8]];

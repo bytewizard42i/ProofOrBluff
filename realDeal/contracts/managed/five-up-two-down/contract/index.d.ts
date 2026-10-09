@@ -20,6 +20,7 @@ export type Witnesses<PS> = {
                                                                            rankA: bigint,
                                                                            rankB: bigint
                                                                          }[]];
+  dealtRanks(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, bigint[]];
   startBoundary(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, { turn: bigint,
                                                                               score0: bigint,
                                                                               score1: bigint,
@@ -79,14 +80,14 @@ export type PureCircuits = {
                         pk_0: __compactRuntime.JubjubPoint,
                         consent_0: CloseConsent): bigint;
   closeConsentK(sk_0: bigint, consent_0: CloseConsent): bigint;
-  dealNineIndices(salt0_0: Uint8Array,
-                  salt1_0: Uint8Array,
-                  seed_0: bigint,
-                  round_0: bigint): bigint[];
-  dealNineRanks(salt0_0: Uint8Array,
+  dealDigest(salt0_0: Uint8Array,
+             salt1_0: Uint8Array,
+             seed_0: bigint,
+             round_0: bigint): Uint8Array;
+  shuffleDigest(salt0_0: Uint8Array,
                 salt1_0: Uint8Array,
                 seed_0: bigint,
-                round_0: bigint): bigint[];
+                round_0: bigint): Uint8Array;
   commitBoundary(b_0: { turn: bigint,
                         score0: bigint,
                         score1: bigint,
@@ -132,16 +133,16 @@ export type Circuits<PS> = {
   closeConsentK(context: __compactRuntime.CircuitContext<PS>,
                 sk_0: bigint,
                 consent_0: CloseConsent): __compactRuntime.CircuitResults<PS, bigint>;
-  dealNineIndices(context: __compactRuntime.CircuitContext<PS>,
-                  salt0_0: Uint8Array,
-                  salt1_0: Uint8Array,
-                  seed_0: bigint,
-                  round_0: bigint): __compactRuntime.CircuitResults<PS, bigint[]>;
-  dealNineRanks(context: __compactRuntime.CircuitContext<PS>,
+  dealDigest(context: __compactRuntime.CircuitContext<PS>,
+             salt0_0: Uint8Array,
+             salt1_0: Uint8Array,
+             seed_0: bigint,
+             round_0: bigint): __compactRuntime.CircuitResults<PS, Uint8Array>;
+  shuffleDigest(context: __compactRuntime.CircuitContext<PS>,
                 salt0_0: Uint8Array,
                 salt1_0: Uint8Array,
                 seed_0: bigint,
-                round_0: bigint): __compactRuntime.CircuitResults<PS, bigint[]>;
+                round_0: bigint): __compactRuntime.CircuitResults<PS, Uint8Array>;
   commitBoundary(context: __compactRuntime.CircuitContext<PS>,
                  b_0: { turn: bigint,
                         score0: bigint,

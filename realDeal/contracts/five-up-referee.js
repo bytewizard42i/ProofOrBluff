@@ -13,6 +13,45 @@ export const KIND = Object.freeze({ CLAIM: 1n, ACCEPT: 2n, CHALLENGE: 3n });
 
 export function targetScore(mode) { return BigInt(mode) === 0n ? 10n : 20n; }
 
+// --- the deal, mirrored from the circuit --------------------------------
+// The circuit exports only the two digests (compiling the deal as a pure
+// circuit too would double its 5 GB compile cost). Floyd's draw and the
+// sorting-network shuffle are reproduced here byte for byte; every full-game
+// test proves the mirror matches, since a divergent deal breaks the chain.
+const bytesOf = (digest) => Array.from(digest, Number);
+/** boundedDraw: floor(((hi*256+lo) * m) / 65536) — byte 2 of the 24-bit product. */
+export const boundedDraw = (hi, lo, m) => Math.floor(((hi * 256 + lo) * m) / 65536);
+export const cardToRank = (c) => Math.floor(c / 4);
+/** Floyd's algorithm: 9 distinct cards from 52 (m_i = 44+i, fallback m_i-1). */
+export function floydNine(b) {
+  const out = [];
+  for (let i = 0; i < 9; i += 1) {
+    const t = boundedDraw(b[2 * i], b[2 * i + 1], 44 + i);
+    out.push(out.includes(t) ? 43 + i : t);
+  }
+  return out;
+}
+// Knuth's 25-comparator network for n = 9, as compare-exchange pairs in order.
+const SORT9 = [[0,1],[3,4],[6,7],[1,2],[4,5],[7,8],[0,1],[3,4],[6,7],[2,5],[0,3],[1,4],[5,8],[3,6],[4,7],[2,5],[0,3],[1,4],[5,7],[2,6],[1,3],[4,6],[2,4],[5,6],[2,3]];
+/** Sort nine 16-bit keys with the network, carrying the cards along. */
+export function shuffleNine(cards, s) {
+  const k = Array.from({ length: 9 }, (_, i) => s[2 * i] * 256 + s[2 * i + 1]);
+  const c = [...cards];
+  for (const [i, j] of SORT9) {
+    const lt = k[i] < k[j];
+    if (!lt) { [k[i], k[j]] = [k[j], k[i]]; [c[i], c[j]] = [c[j], c[i]]; }
+  }
+  return c;
+}
+/** Card indices of the nine dealt cards, in slot order (0-1 P1 hole, 2-3 P2 hole, 4-8 board). */
+export function dealNineIndices(pureCircuits, salt0, salt1, seed, round) {
+  const drawn = floydNine(bytesOf(pureCircuits.dealDigest(salt0, salt1, seed, BigInt(round))));
+  return shuffleNine(drawn, bytesOf(pureCircuits.shuffleDigest(salt0, salt1, seed, BigInt(round))));
+}
+export function dealNineRanks(pureCircuits, salt0, salt1, seed, round) {
+  return dealNineIndices(pureCircuits, salt0, salt1, seed, round).map(cardToRank);
+}
+
 export const initialBoundary = () => ({
   turn: 0n, score0: 0n, score1: 0n, round: 0n, ended: false, winner: 0n, chain: 0n,
 });
@@ -65,9 +104,7 @@ export function matchesFor(hole, board) {
 
 export function createFiveUpReferee(pureCircuits, { seed, roundSecrets, mode }) {
   const target = targetScore(mode);
-  const deal = (round) => pureCircuits.dealNineRanks(
-    roundSecrets[0][round - 1], roundSecrets[1][round - 1], seed, BigInt(round),
-  ).map(BigInt);
+  const deal = (round) => dealNineRanks(pureCircuits, roundSecrets[0][round - 1], roundSecrets[1][round - 1], seed, round).map(BigInt);
 
   let boundary = initialBoundary();
   let round = null;   // { r, holes: [[..],[..]], board, moves: [], first, chain, scores }
@@ -96,7 +133,7 @@ export function createFiveUpReferee(pureCircuits, { seed, roundSecrets, mode }) 
       const ranks = deal(Number(r));
       const board = ranks.slice(4, 9);
       round = {
-        r, holes: [ranks.slice(0, 2), ranks.slice(2, 4)], board, moves: [], first: boundary.turn,
+        r, ranks, holes: [ranks.slice(0, 2), ranks.slice(2, 4)], board, moves: [], first: boundary.turn,
         chain: pureCircuits.chainBoard(boundary.chain, board), scores: [boundary.score0, boundary.score1],
         outcomes: [],
       };
@@ -140,7 +177,7 @@ export function createFiveUpReferee(pureCircuits, { seed, roundSecrets, mode }) 
       const winner = !ended ? 0n : s0 > s1 ? 1n : s1 > s0 ? 2n : 0n;
       const boundaryIn = boundary;
       const boundaryOut = { turn: 1n - r.first, score0: s0, score1: s1, round: r.r, ended, winner, chain: r.chain };
-      const out = { round: r.r, moves: r.moves, boundaryIn, boundaryOut, board: r.board, outcomes: r.outcomes };
+      const out = { round: r.r, moves: r.moves, ranks: r.ranks, boundaryIn, boundaryOut, board: r.board, outcomes: r.outcomes };
       boundary = boundaryOut; round = null;
       return out;
     },
