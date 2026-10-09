@@ -20,13 +20,18 @@ export const LOG = Object.freeze({
   // Turn prefixes
   YOU_PLAYED: 'You played',
   AI_PLAYED: 'AI played',
+  // 5 Up 2 Down vocabulary (same classification, different verbs).
+  YOU_CLAIMED: 'You claimed',
+  AI_CLAIMED: 'AI claimed',
+  AI_LOSES_MARKER_5U2D: 'Ai pays',
+  PLAYER_LOSES_MARKER_5U2D: 'you pay',
   YOU_ACCEPTED: 'You accepted',
   AI_ACCEPTED: 'AI accepted',
   WARN: '⚠️',
 });
 
 export function logSaysPlayerLost(text) {
-  return text.includes(LOG.PLAYER_LOSES_MARKER);
+  return text.includes(LOG.PLAYER_LOSES_MARKER) || text.includes(LOG.PLAYER_LOSES_MARKER_5U2D);
 }
 
 /**
@@ -75,6 +80,12 @@ export function classifyLog(text) {
     return make('player', 'play', '🎴', 'You', text.replace(/^You\s+/, ''));
   }
   if (text.startsWith(LOG.AI_PLAYED)) {
+    return make('ai', 'play', '🃏', 'Ai', text.replace(/^AI\s+/, ''));
+  }
+  if (text.startsWith(LOG.YOU_CLAIMED)) {
+    return make('player', 'play', '🎴', 'You', text.replace(/^You\s+/, ''));
+  }
+  if (text.startsWith(LOG.AI_CLAIMED)) {
     return make('ai', 'play', '🃏', 'Ai', text.replace(/^AI\s+/, ''));
   }
   if (text.startsWith(LOG.YOU_ACCEPTED)) {

@@ -13,7 +13,7 @@ export function saveHandle(handle) {
   try { window.localStorage.setItem(HANDLE_KEY, handle); } catch { /* noop */ }
 }
 
-export default function Menu({ onStart, onShowHelp }) {
+export default function Menu({ onStart, onShowHelp, switchGame = null }) {
   const [mode, setMode] = useState('home');
   const [difficulty, setDifficulty] = useState('medium');
   const [handle, setHandle] = useState(loadHandle);
@@ -106,6 +106,7 @@ export default function Menu({ onStart, onShowHelp }) {
           Deal me in
         </button>
         <button onClick={onShowHelp}>How to Play</button>
+        {switchGame && <a className="fiveup-switch" href={switchGame.href}>{switchGame.label}</a>}
       </div>
 
       <p className="subtitle" style={{ fontSize: '0.85rem', maxWidth: 540 }}>

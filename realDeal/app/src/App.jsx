@@ -8,10 +8,14 @@ import TestWiredPanel from './TestWiredPanel.jsx';
 import ProTeaser from './ProTeaser.jsx';
 import DemoGame from './DemoGame.jsx';
 import SponsoredGame from './SponsoredGame.jsx';
+import FiveUpGame from './FiveUpGame.jsx';
 import { useAudioSettings } from './components/table/useAudioSettings.js';
 import { NETWORK_ID, SPONSORED_MODE } from './midnight/config.js';
 
 const APP_MODE = import.meta.env.VITE_POB_MODE || 'testwired';
+// Two sponsored tables share one build: `/` is Original (the Cheat-style
+// rollup), `/fiveup` is 5 Up 2 Down. Vercel rewrites every path to index.html.
+const FIVE_UP_ROUTE = typeof window !== 'undefined' && /^\/fiveup\/?$/.test(window.location.pathname);
 
 /**
  * Top-right music controls shared by both surfaces.
@@ -83,7 +87,7 @@ export default function App() {
   // rounds are proven on Midnight by the house — still no wallet.
   const DEMO_MODE = APP_MODE === 'demo' || APP_MODE === 'sponsored';
   const SPONSORED = APP_MODE === 'sponsored' && SPONSORED_MODE;
-  const Table = SPONSORED ? SponsoredGame : DemoGame;
+  const Table = SPONSORED ? (FIVE_UP_ROUTE ? FiveUpGame : SponsoredGame) : DemoGame;
   return (
     <div className="app">
       {!DEMO_MODE && <RealDealHeader />}
@@ -94,7 +98,7 @@ export default function App() {
       <header className="header">
         <div>
           <h1>
-            Proof or Bluff <span className="badge">{SPONSORED ? `on Midnight ${NETWORK_ID}` : 'on Midnight'}</span>
+            Proof or Bluff <span className="badge">{SPONSORED ? `${FIVE_UP_ROUTE ? '5 Up 2 Down · ' : ''}on Midnight ${NETWORK_ID}` : 'on Midnight'}</span>
           </h1>
           <div className="tagline">Bluff in public. Prove in private.</div>
         </div>

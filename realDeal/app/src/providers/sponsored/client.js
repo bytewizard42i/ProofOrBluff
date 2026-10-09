@@ -81,9 +81,11 @@ export function createSponsoredClient({ baseUrl = defaultBaseUrl(), fetchImpl = 
   return {
     apiRoot,
     health: () => request('GET', '/health'),
-    createGame: ({ mode = 1, difficulty = 'medium' } = {}) => request('POST', '/games', { mode, difficulty }),
+    createGame: ({ mode = 1, difficulty = 'medium', game = 'original' } = {}) => request('POST', '/games', { mode, difficulty, game }),
     getGame: (gameId) => request('GET', `/games/${requireGameId(gameId)}`),
     play: (gameId, { rank, count, cards }) => request('POST', `/games/${requireGameId(gameId)}/play`, { rank, count, cards }),
+    /** 5 Up 2 Down: claim `count` matches naming board `ranks`. */
+    claim: (gameId, { count, ranks }) => request('POST', `/games/${requireGameId(gameId)}/claim`, { count, ranks }),
     accept: (gameId) => request('POST', `/games/${requireGameId(gameId)}/accept`),
     challenge: (gameId) => request('POST', `/games/${requireGameId(gameId)}/challenge`),
     abandon: (gameId) => request('POST', `/games/${requireGameId(gameId)}/abandon`),

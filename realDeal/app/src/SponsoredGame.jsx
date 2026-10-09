@@ -166,7 +166,7 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
       {showTutorial && <Tutorial variant="midnight" contractVersion={state?.contractVersion ?? 'v3p'} onClose={dismissTutorial} />}
       {screen === 'menu' && (
         <>
-          <Menu onStart={handleStart} onShowHelp={() => setShowTutorial(true)} />
+          <Menu onStart={handleStart} onShowHelp={() => setShowTutorial(true)} switchGame={{ href: '/fiveup', label: 'Try 5 Up 2 Down →' }} />
           {serviceError && <p className="service-error" role="alert">{serviceError}</p>}
           {busy && <p className="service-busy">Dealing you in on Midnight…</p>}
         </>
