@@ -1,0 +1,350 @@
+pragma language_version >= 0.16 && <= 0.23;
+include "signed_credential";
+import CompactStandardLibrary;
+import SignedCredentials;
+
+// ---------------------------------------------------------------------------
+// 5 UP 2 DOWN — the second Proof or Bluff table (docs/FIVE_UP_TWO_DOWN.md).
+//
+// Each round: 2 private hole cards per player + 5 public board cards, nine
+// distinct cards from ONE shared 52-card deck. Players claim how many of
+// their hole cards match a board rank (naming the ranks); the opponent
+// accepts or challenges. The proof checks each claimed rank against the real
+// hole cards and discloses exactly one number: how many claims were lies.
+//
+// Scoring (John, 2026-10-08):
+//   accepted      1 card +1 · 2 cards +3
+//   challenged    all true: 1 card +2 · 2 cards +4
+//                 any lie:  claimant -lies (floor 0), challenger +lies
+// Race to the mode's target (Casual 10 · Standard 20), checked at round end,
+// higher score wins. Hard cap MAX_ROUNDS = 10 — higher score wins, tie = draw.
+//
+// Shape vs the v4 rollup: NO hand state machine, NO packing/conservation —
+// a round is exactly four moves (CLAIM, RESPONSE, CLAIM, RESPONSE) over cards
+// that never change, so proveRound is straight-line code. Identity, consent
+// and close semantics are byte-compatible with v4 (same "pob:pk:v1").
+// ---------------------------------------------------------------------------
+
+// kind: 1 CLAIM · 2 ACCEPT · 3 CHALLENGE. count 0..2; rankA/rankB are the
+// claimed board ranks (0 when unused). Responses carry zeros.
+struct Move {
+  kind: Uint<8>;
+  count: Uint<8>;
+  rankA: Uint<8>;
+  rankB: Uint<8>;
+}
+
+struct SeedInput { separator: Bytes<32>; p1Entropy: Bytes<32>; p2Entropy: Bytes<32>; }
+struct EntropyCommitInput { separator: Bytes<32>; entropy: Bytes<32>; }
+struct RoundSecretCommitInput { separator: Bytes<32>; secret: Bytes<32>; round: Uint<8>; }
+struct DealInput { separator: Bytes<32>; salt0: Bytes<32>; salt1: Bytes<32>; seed: Field; round: Uint<32>; }
+export struct CloseConsent {
+  sep: Bytes<32>;
+  gameId: Bytes<32>;
+  transcriptRoot: Field;
+  p1Score: Uint<8>;
+  p2Score: Uint<8>;
+  winner: Uint<8>;
+}
+struct PlayerIdPreimage { separator: Bytes<32>; x: Field; y: Field; }
+
+// ---------------------------------------------------------------------------
+// Commitments. Entropy/round-secret/pk separators are shared with Original so
+// one player identity and one client code path serve both tables.
+// ---------------------------------------------------------------------------
+export pure circuit commitEntropy(entropy: Bytes<32>): Bytes<32> {
+  return persistentHash<EntropyCommitInput>(EntropyCommitInput { separator: pad(32, "pob:entropy:v1"), entropy: entropy });
+}
+export pure circuit combineEntropy(p1Entropy: Bytes<32>, p2Entropy: Bytes<32>): Field {
+  return transientHash<SeedInput>(SeedInput { separator: pad(32, "pob:seed:v2"), p1Entropy: p1Entropy, p2Entropy: p2Entropy });
+}
+export pure circuit commitRoundSecret(secret: Bytes<32>, round: Uint<8>): Bytes<32> {
+  return persistentHash<RoundSecretCommitInput>(RoundSecretCommitInput { separator: pad(32, "pob:round-secret:v3"), secret: secret, round: round });
+}
+// Transcript links. The board goes in once per round; every move goes in with
+// its outcome (`lies` is 0 for everything but a CHALLENGE).
+export pure circuit chainBoard(prev: Field, board: Vector<5, Uint<8>>): Field {
+  return transientHash<[Field, Vector<5, Uint<8>>]>([prev, board]);
+}
+export pure circuit chainMove(prev: Field, kind: Uint<8>, count: Uint<8>, rankA: Uint<8>, rankB: Uint<8>, lies: Uint<8>): Field {
+  return transientHash<[Field, Uint<8>, Uint<8>, Uint<8>, Uint<8>, Uint<8>]>([prev, kind, count, rankA, rankB, lies]);
+}
+export pure circuit playerIdFromPk(pk: JubjubPoint): Bytes<32> {
+  return persistentHash<PlayerIdPreimage>(PlayerIdPreimage {
+    separator: pad(32, "pob:pk:v1"), x: jubjubPointX(pk), y: jubjubPointY(pk)
+  });
+}
+export pure circuit closeConsentFor(
+  gameId: Bytes<32>, transcriptRoot: Field, p1Score: Uint<8>, p2Score: Uint<8>, winner: Uint<8>
+): CloseConsent {
+  return CloseConsent {
+    sep: pad(32, "pob:5u2d:close:v1"), gameId: gameId, transcriptRoot: transcriptRoot,
+    p1Score: p1Score, p2Score: p2Score, winner: winner
+  };
+}
+export pure circuit closeConsentChallenge(r: JubjubPoint, pk: JubjubPoint, consent: CloseConsent): Field {
+  return compute_challenge<CloseConsent>(r, pk, consent);
+}
+export pure circuit closeConsentK(sk: Field, consent: CloseConsent): Field {
+  return deterministic_k<CloseConsent>(Nonce<CloseConsent> { sk: sk, credential: consent });
+}
+
+// ---------------------------------------------------------------------------
+// The deal: nine distinct cards by Floyd's algorithm (m_i = 44+i, collision
+// fallback m_i-1 — the one value no earlier draw can hold). Slots 0-1 → P1
+// hole, 2-3 → P2 hole, 4-8 → board. Keyed on BOTH round secrets: a prover
+// holding only one secret cannot derive anything.
+// ---------------------------------------------------------------------------
+circuit boundedDraw(hi: Uint<8>, lo: Uint<8>, m: Uint<16>): Uint<8> {
+  const u = ((hi as Uint<16>) * (256 as Uint<16>) + (lo as Uint<16>)) as Uint<16>;
+  const p = ((u as Uint<32>) * (m as Uint<32>)) as Uint<32>;
+  const pb = (p as Bytes<3>) as Vector<3, Uint<8>>;
+  return pb[2];
+}
+circuit cardToRank(c: Uint<8>): Uint<8> {
+  return ((c >= (4 as Uint<8>) ? 1 : 0) + (c >= (8 as Uint<8>) ? 1 : 0) + (c >= (12 as Uint<8>) ? 1 : 0)
+        + (c >= (16 as Uint<8>) ? 1 : 0) + (c >= (20 as Uint<8>) ? 1 : 0) + (c >= (24 as Uint<8>) ? 1 : 0)
+        + (c >= (28 as Uint<8>) ? 1 : 0) + (c >= (32 as Uint<8>) ? 1 : 0) + (c >= (36 as Uint<8>) ? 1 : 0)
+        + (c >= (40 as Uint<8>) ? 1 : 0) + (c >= (44 as Uint<8>) ? 1 : 0) + (c >= (48 as Uint<8>) ? 1 : 0)) as Uint<8>;
+}
+circuit dealNineIdx(b: Vector<32, Uint<8>>): Vector<9, Uint<8>> {
+  const c0 = boundedDraw(b[0], b[1], 44);
+  const t1 = boundedDraw(b[2], b[3], 45);
+  const c1 = t1 == c0 ? (44 as Uint<8>) : t1;
+  const t2 = boundedDraw(b[4], b[5], 46);
+  const c2 = (t2 == c0 || t2 == c1) ? (45 as Uint<8>) : t2;
+  const t3 = boundedDraw(b[6], b[7], 47);
+  const c3 = (t3 == c0 || t3 == c1 || t3 == c2) ? (46 as Uint<8>) : t3;
+  const t4 = boundedDraw(b[8], b[9], 48);
+  const c4 = (t4 == c0 || t4 == c1 || t4 == c2 || t4 == c3) ? (47 as Uint<8>) : t4;
+  const t5 = boundedDraw(b[10], b[11], 49);
+  const c5 = (t5 == c0 || t5 == c1 || t5 == c2 || t5 == c3 || t5 == c4) ? (48 as Uint<8>) : t5;
+  const t6 = boundedDraw(b[12], b[13], 50);
+  const c6 = (t6 == c0 || t6 == c1 || t6 == c2 || t6 == c3 || t6 == c4 || t6 == c5) ? (49 as Uint<8>) : t6;
+  const t7 = boundedDraw(b[14], b[15], 51);
+  const c7 = (t7 == c0 || t7 == c1 || t7 == c2 || t7 == c3 || t7 == c4 || t7 == c5 || t7 == c6) ? (50 as Uint<8>) : t7;
+  const t8 = boundedDraw(b[16], b[17], 52);
+  const c8 = (t8 == c0 || t8 == c1 || t8 == c2 || t8 == c3 || t8 == c4 || t8 == c5 || t8 == c6 || t8 == c7) ? (51 as Uint<8>) : t8;
+  return [c0, c1, c2, c3, c4, c5, c6, c7, c8];
+}
+circuit dealDigestBytes(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Vector<32, Uint<8>> {
+  const digest = transientHash<DealInput>(DealInput { separator: pad(32, "pob:5u2d:deal:v1"), salt0: salt0, salt1: salt1, seed: seed, round: round });
+  return (digest as Bytes<32>) as Vector<32, Uint<8>>;
+}
+// AUDIT/TEST HOOK: raw card indices (pairwise distinct by construction).
+export pure circuit dealNineIndices(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Vector<9, Uint<8>> {
+  return dealNineIdx(dealDigestBytes(salt0, salt1, seed, round));
+}
+// Ranks of the nine cards in deal order. Exported for the referee/clients.
+export pure circuit dealNineRanks(salt0: Bytes<32>, salt1: Bytes<32>, seed: Field, round: Uint<32>): Vector<9, Uint<8>> {
+  const idx = dealNineIdx(dealDigestBytes(salt0, salt1, seed, round));
+  return [cardToRank(idx[0]), cardToRank(idx[1]), cardToRank(idx[2]), cardToRank(idx[3]), cardToRank(idx[4]),
+          cardToRank(idx[5]), cardToRank(idx[6]), cardToRank(idx[7]), cardToRank(idx[8])];
+}
+
+circuit targetScore(mode: Uint<8>): Uint<8> { return mode == (0 as Uint<8>) ? 10 : 20; }
+circuit onBoard(r: Uint<8>, board: Vector<5, Uint<8>>): Boolean {
+  return r == board[0] || r == board[1] || r == board[2] || r == board[3] || r == board[4];
+}
+circuit subFloor(score: Uint<8>, d: Uint<8>): Uint<8> { return score <= d ? 0 : (score - d) as Uint<8>; }
+
+// ---------------------------------------------------------------------------
+// One claim + its response. `lies` is the ONLY fact about hidden cards a round
+// ever discloses, and only on a CHALLENGE (0 after an ACCEPT, whatever the truth).
+// ---------------------------------------------------------------------------
+struct Outcome { claimantGain: Uint<8>; claimantLoss: Uint<8>; responderGain: Uint<8>; lies: Uint<8>; }
+circuit resolveClaim(hole: Vector<2, Uint<8>>, board: Vector<5, Uint<8>>, claim: Move, response: Move): Outcome {
+  assert(claim.kind == (1 as Uint<8>), "expected a CLAIM");
+  assert(claim.count <= (2 as Uint<8>), "claim count out of range");
+  // Legality (public): named ranks must be on the board; unused slots zero.
+  assert(claim.count < (1 as Uint<8>) || onBoard(claim.rankA, board), "claimed rank not on board");
+  assert(claim.count < (2 as Uint<8>) || onBoard(claim.rankB, board), "claimed rank not on board");
+  assert(claim.count >= (1 as Uint<8>) || claim.rankA == (0 as Uint<8>), "unused claim slot must be zero");
+  assert(claim.count >= (2 as Uint<8>) || claim.rankB == (0 as Uint<8>), "unused claim slot must be zero");
+  const isAccept = response.kind == (2 as Uint<8>);
+  const isChallenge = response.kind == (3 as Uint<8>);
+  assert(isAccept || isChallenge, "expected a response");
+  assert(response.count == (0 as Uint<8>) && response.rankA == (0 as Uint<8>) && response.rankB == (0 as Uint<8>), "response fields must be zero");
+  assert(!isChallenge || claim.count >= (1 as Uint<8>), "nothing to challenge");
+
+  // Truth (private): how many claimed ranks are covered by DISTINCT hole cards.
+  const aHit = hole[0] == claim.rankA || hole[1] == claim.rankA;
+  const bHit = hole[0] == claim.rankB || hole[1] == claim.rankB;
+  const pairHit = (hole[0] == claim.rankA && hole[1] == claim.rankB) || (hole[0] == claim.rankB && hole[1] == claim.rankA);
+  const trueCount: Uint<8> = claim.count == (0 as Uint<8>) ? 0
+    : claim.count == (1 as Uint<8>) ? (aHit ? 1 : 0)
+    : pairHit ? 2 : ((aHit || bHit) ? 1 : 0);
+  const lies: Uint<8> = (claim.count - trueCount) as Uint<8>;
+
+  const acceptGain: Uint<8> = claim.count == (0 as Uint<8>) ? 0 : claim.count == (1 as Uint<8>) ? 1 : 3;
+  const provenGain: Uint<8> = claim.count == (1 as Uint<8>) ? 2 : 4;
+  const shown: Uint<8> = isChallenge ? lies : 0;
+  return Outcome {
+    claimantGain: isAccept ? acceptGain : (lies == (0 as Uint<8>) ? provenGain : 0),
+    claimantLoss: shown, responderGain: shown, lies: shown
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Boundary between rounds (no cards — the next proof deals afresh).
+// ---------------------------------------------------------------------------
+struct Boundary {
+  turn: Uint<8>;         // first claimant of the NEXT round
+  score0: Uint<8>;
+  score1: Uint<8>;
+  round: Uint<8>;        // rounds COMPLETED (0 before any)
+  ended: Boolean;
+  winner: Uint<8>;       // 0 draw/undecided · 1 · 2
+  chain: Field;
+}
+struct BoundaryCommitInput { separator: Bytes<32>; b: Boundary; }
+export pure circuit commitBoundary(b: Boundary): Bytes<32> {
+  return persistentHash<BoundaryCommitInput>(BoundaryCommitInput { separator: pad(32, "pob:5u2d:boundary:v1"), b: b });
+}
+struct ResultCommitInput { separator: Bytes<32>; chain: Field; }
+export pure circuit commitTranscript(chain: Field): Bytes<32> {
+  return persistentHash<ResultCommitInput>(ResultCommitInput { separator: pad(32, "pob:5u2d:transcript:v1"), chain: chain });
+}
+
+witness entropyPair(): [Bytes<32>, Bytes<32>];
+witness roundSecrets(): [Bytes<32>, Bytes<32>];
+witness roundMoves(): Vector<4, Move>;                  // CLAIM, RESPONSE, CLAIM, RESPONSE
+witness startBoundary(): Boundary;
+witness p1CloseConsent(): SignedCredential<CloseConsent>;
+witness p2CloseConsent(): SignedCredential<CloseConsent>;
+
+// ---------------------------------------------------------------------------
+// Ledger — one game.
+// ---------------------------------------------------------------------------
+export ledger playerOne: Bytes<32>;
+export ledger playerTwo: Bytes<32>;
+export ledger mode: Uint<8>;
+export ledger p1EntropyCommit: Bytes<32>;
+export ledger p2EntropyCommit: Bytes<32>;
+export ledger p1RoundCommits: Vector<10, Bytes<32>>;
+export ledger p2RoundCommits: Vector<10, Bytes<32>>;
+export ledger roundsProven: Uint<8>;
+export ledger stateRoot: Bytes<32>;
+export ledger ended: Boolean;
+export ledger closed: Boolean;
+export ledger transcriptRoot: Bytes<32>;
+export ledger p1Score: Uint<8>;
+export ledger p2Score: Uint<8>;
+export ledger winner: Uint<8>;
+
+constructor(
+  playerOneId: Bytes<32>, playerTwoId: Bytes<32>, gameMode: Uint<8>,
+  p1Entropy: Bytes<32>, p2Entropy: Bytes<32>,
+  p1Rounds: Vector<10, Bytes<32>>, p2Rounds: Vector<10, Bytes<32>>
+) {
+  const m = disclose(gameMode);
+  assert(m == (0 as Uint<8>) || m == (1 as Uint<8>), "mode must be CASUAL (0) or STANDARD (1)");
+  const p1 = disclose(playerOneId); const p2 = disclose(playerTwoId);
+  assert(p1 != p2, "Players must differ");
+  playerOne = p1; playerTwo = p2; mode = m;
+  const e1 = disclose(p1Entropy); const e2 = disclose(p2Entropy);
+  assert(e1 != e2, "Entropy commitments must differ");
+  const r1 = disclose(p1Rounds); const r2 = disclose(p2Rounds);
+  for (const i of 0..10) { assert(r1[i] != r2[i], "Round-secret commitments must differ"); }
+  p1EntropyCommit = e1; p2EntropyCommit = e2;
+  p1RoundCommits = r1; p2RoundCommits = r2;
+  roundsProven = 0; ended = false; closed = false;
+  stateRoot = commitBoundary(Boundary { turn: 0, score0: 0, score1: 0, round: 0, ended: false, winner: 0, chain: 0 });
+  transcriptRoot = default<Bytes<32>>; p1Score = 0; p2Score = 0; winner = 0;
+}
+
+circuit selectCommit(commits: Vector<10, Bytes<32>>, round: Uint<8>): Bytes<32> {
+  return round == (1 as Uint<8>) ? commits[0] : round == (2 as Uint<8>) ? commits[1] : round == (3 as Uint<8>) ? commits[2]
+       : round == (4 as Uint<8>) ? commits[3] : round == (5 as Uint<8>) ? commits[4] : round == (6 as Uint<8>) ? commits[5]
+       : round == (7 as Uint<8>) ? commits[6] : round == (8 as Uint<8>) ? commits[7] : round == (9 as Uint<8>) ? commits[8]
+       : commits[9];
+}
+
+// ---------------------------------------------------------------------------
+// proveRound: deal round r, replay its four moves, write the new boundary.
+// ---------------------------------------------------------------------------
+export circuit proveRound(round: Uint<8>): [] {
+  assert(!closed, "Game already closed");
+  assert(!ended, "Proven history already reached game end");
+  const r = disclose(round);
+  assert(r >= (1 as Uint<8>) && r <= (10 as Uint<8>), "bad round");
+  assert(r == ((roundsProven + 1) as Uint<8>), "rounds must be proven in order");
+
+  const e = entropyPair();
+  assert(commitEntropy(e[0]) == p1EntropyCommit, "P1 entropy mismatch");
+  assert(commitEntropy(e[1]) == p2EntropyCommit, "P2 entropy mismatch");
+  const secrets = roundSecrets();
+  assert(commitRoundSecret(secrets[0], r) == selectCommit(p1RoundCommits, r), "P1 round secret mismatch");
+  assert(commitRoundSecret(secrets[1], r) == selectCommit(p2RoundCommits, r), "P2 round secret mismatch");
+  const seed = combineEntropy(e[0], e[1]);
+
+  const prev = startBoundary();
+  const b0 = r == (1 as Uint<8>)
+    ? Boundary { turn: 0, score0: 0, score1: 0, round: 0, ended: false, winner: 0, chain: 0 }
+    : prev;
+  assert(commitBoundary(b0) == stateRoot, "boundary does not open stateRoot");
+  assert(b0.round == ((r - 1) as Uint<8>), "boundary round mismatch");
+
+  // Deal. Hole cards stay inside the proof; the board is bound into the chain.
+  const ranks = dealNineRanks(secrets[0], secrets[1], seed, r as Uint<32>);
+  const hole0: Vector<2, Uint<8>> = [ranks[0], ranks[1]];
+  const hole1: Vector<2, Uint<8>> = [ranks[2], ranks[3]];
+  const board: Vector<5, Uint<8>> = [ranks[4], ranks[5], ranks[6], ranks[7], ranks[8]];
+  const chain1 = chainBoard(b0.chain, board);
+
+  // Four moves: first claimant = b0.turn, then the other seat.
+  const moves = roundMoves();
+  const firstIs0 = b0.turn == (0 as Uint<8>);
+  const resA = resolveClaim(firstIs0 ? hole0 : hole1, board, moves[0], moves[1]);
+  const resB = resolveClaim(firstIs0 ? hole1 : hole0, board, moves[2], moves[3]);
+
+  // Scores after claim A (claimant = first seat), then claim B (the other).
+  // Only one of gain/loss is ever non-zero, so gain-then-floor-subtract is exact.
+  const a0: Uint<8> = firstIs0 ? subFloor(((b0.score0 + resA.claimantGain) as Uint<8>), resA.claimantLoss) : ((b0.score0 + resA.responderGain) as Uint<8>);
+  const a1: Uint<8> = firstIs0 ? ((b0.score1 + resA.responderGain) as Uint<8>) : subFloor(((b0.score1 + resA.claimantGain) as Uint<8>), resA.claimantLoss);
+  const s0: Uint<8> = firstIs0 ? ((a0 + resB.responderGain) as Uint<8>) : subFloor(((a0 + resB.claimantGain) as Uint<8>), resB.claimantLoss);
+  const s1: Uint<8> = firstIs0 ? subFloor(((a1 + resB.claimantGain) as Uint<8>), resB.claimantLoss) : ((a1 + resB.responderGain) as Uint<8>);
+
+  const chain2 = chainMove(chain1, moves[0].kind, moves[0].count, moves[0].rankA, moves[0].rankB, 0);
+  const chain3 = chainMove(chain2, moves[1].kind, 0, 0, 0, resA.lies);
+  const chain4 = chainMove(chain3, moves[2].kind, moves[2].count, moves[2].rankA, moves[2].rankB, 0);
+  const chain5 = chainMove(chain4, moves[3].kind, 0, 0, 0, resB.lies);
+
+  // Round end: race to target, or the round cap. Higher score wins, tie = draw.
+  const target = targetScore(mode);
+  const gameEnded = s0 >= target || s1 >= target || r == (10 as Uint<8>);
+  const w: Uint<8> = !gameEnded ? 0 : s0 > s1 ? 1 : s1 > s0 ? 2 : 0;
+
+  const b1 = Boundary { turn: firstIs0 ? 1 : 0, score0: s0, score1: s1, round: r, ended: gameEnded, winner: w, chain: chain5 };
+  stateRoot = disclose(commitBoundary(b1));
+  roundsProven = r;
+  ended = disclose(gameEnded);
+}
+
+// ---------------------------------------------------------------------------
+// closeGame: open the final boundary, bind result + both signatures.
+// ---------------------------------------------------------------------------
+export circuit closeGame(finalP1Score: Uint<8>, finalP2Score: Uint<8>, finalWinner: Uint<8>): [] {
+  assert(!closed, "Game already closed");
+  assert(ended, "Proven history has not reached game end");
+  const b = startBoundary();
+  assert(commitBoundary(b) == stateRoot, "boundary does not open stateRoot");
+  assert(b.round == roundsProven, "boundary round mismatch");
+  const w: Uint<8> = b.winner;
+  assert(disclose(finalP1Score) == b.score0 && disclose(finalP2Score) == b.score1, "final score mismatch");
+  assert(disclose(finalWinner) == w, "winner mismatch");
+
+  const consent1 = p1CloseConsent();
+  const consent2 = p2CloseConsent();
+  const expected = closeConsentFor(kernel.self().bytes, b.chain, b.score0, b.score1, w);
+  assert(playerIdFromPk(consent1.pk) == playerOne, "P1 signer is not player one");
+  assert(playerIdFromPk(consent2.pk) == playerTwo, "P2 signer is not player two");
+  assert(consent1.credential == expected, "P1 signed a different result");
+  assert(consent2.credential == expected, "P2 signed a different result");
+  assert_signed_by<CloseConsent>(consent1, consent1.pk);
+  assert_signed_by<CloseConsent>(consent2, consent2.pk);
+
+  transcriptRoot = disclose(commitTranscript(b.chain));
+  p1Score = disclose(b.score0); p2Score = disclose(b.score1); winner = disclose(w);
+  closed = true;
+}

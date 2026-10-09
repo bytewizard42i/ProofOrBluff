@@ -38,4 +38,7 @@ realDeal/app/.env
 /realDeal/contracts/managed/proof-or-bluff-rollup-v4/keys/
 /realDeal/contracts/managed/proof-or-bluff-rollup-v4/zkir/
 /realDeal/contracts/managed/proof-or-bluff-rollup-v4/compiler/
+/realDeal/contracts/managed/five-up-two-down/keys/
+/realDeal/contracts/managed/five-up-two-down/zkir/
+/realDeal/contracts/managed/five-up-two-down/compiler/
 media/social/originals/
