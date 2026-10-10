@@ -89,16 +89,17 @@ function FiveUpTutorial({ onClose }) {
     <div className="tutorial-overlay" role="dialog" aria-modal="true">
       <div className="tutorial-card">
         <h2>5 Up 2 Down — how to play</h2>
-        <p className="subtitle">Two down. Five up. Prove it.</p>
+        <p className="subtitle">Two cards down for you. Five cards up for everyone. Bluff in public — prove in private.</p>
         <ol>
-          <li><strong>Two cards for you, five on the board.</strong> All nine come from one shared 52-card deck, dealt inside a zero-knowledge proof.</li>
-          <li><strong>A match</strong> is one of your cards sharing a rank with a board card. Two Kings in hand against one on the board = two matches.</li>
-          <li><strong>Claim your matches</strong> — tap the board cards you say you hold (0, 1 or 2). Lie if you dare.</li>
-          <li><strong>Accepted:</strong> 1 match = +1 · 2 matches = +3.</li>
-          <li><strong>Challenged and true:</strong> +2 · +4. <strong>Challenged with a lie:</strong> you lose 1 per lie, they gain it — and the true card earns nothing.</li>
-          <li><strong>Nothing to claim?</strong> Press <strong>Pass</strong>: your opponent draws two cards, each that beats your same-position card scores them +1. You lose nothing.</li>
-          <li><strong>Race to 20</strong> (Casual: 10). Scores never go below 0. The finished hand stays on the table until you press Next hand.</li>
-          <li>Your cards never leave the proof. A challenge reveals only how many claims were lies.</li>
+          <li><strong>The deal.</strong> You receive two private cards only you ever see; five cards land face-up on the board. All of them come from one shared 52-card deck, dealt inside a zero-knowledge proof — nobody can rig the hand. Aces are high.</li>
+          <li><strong>A match</strong> is a board card whose rank you actually hold. Your real matches glow gold. Each card you claim needs its own card in your hand — claiming two board cards of the same rank means both your hole cards must be that rank.</li>
+          <li><strong>On your turn, Claim or Pass.</strong> Tap the board cards you say you match (one or two), then press Claim. You may lie — but the other player may call <strong>Proof or Bluff!</strong></li>
+          <li><strong>If your claim is accepted</strong> you score 1 point for a one-card claim, or 3 points for a two-card claim.</li>
+          <li><strong>If you are challenged and told the truth</strong> you score 2 points for a one-card claim, or 4 points for two — honesty pays double. <strong>If you are caught lying</strong> you score nothing for that claim, lose 1 point for every card you lied about, and your opponent gains those points. A challenge never reveals which cards were lies — only how many.</li>
+          <li><strong>Pass is the honest fold.</strong> Instead of claiming, press Pass and your opponent draws two fresh cards from the same deck. The first draw is compared to your first hole card, the second draw to your second: every drawn card that is strictly higher scores your opponent 1 point. Equal ranks win nothing, and you never lose points for passing.</li>
+          <li><strong>Both players act every round.</strong> Each of you gets one turn to claim or pass, and whoever claims first alternates each round. When the Ai claims, you choose to Accept or call Proof or Bluff! — the same scoring rules apply to it.</li>
+          <li><strong>Winning.</strong> First to the target wins — 10 points in Casual, 20 in Standard. If nobody reaches it within 10 rounds, the higher score wins and a tie is a draw. Scores can never drop below zero, and a finished round stays on the table until you press Next hand.</li>
+          <li><strong>The privacy part.</strong> Your hole cards never leave the proof: the chain sees only the public board, the scores, and a sealed transcript of the game.</li>
         </ol>
         <div className="tutorial-actions"><button className="primary" onClick={onClose}>Deal me in</button></div>
       </div>
@@ -275,17 +276,23 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
             <GameLogPanel log={log} visibleCount={log.length} narrationMuted={audio.narrationMuted} narrationVolume={audio.narrationVolume}
               onToggleNarration={() => audio.setNarrationMuted((m) => !m)} onNarrationVolume={audio.setNarrationVolume} />
             <div className="fiveup-table">
-              {dialogue && <p className="ai-dialogue fiveup-dialogue">"{dialogue}"</p>}
-              <div className="fiveup-board-row">
-                <span className="fiveup-side">Ai <strong>{view.scores.bot}</strong></span>
+              <aside className="fiveup-gutter" aria-label="Your score">
+                <div className="score-cell you">
+                  <div className="score-label">You</div>
+                  <div className="score-number">{view.scores.human}</div>
+                </div>
+                <button type="button" className={`btn-quit${quitArmed ? ' btn-quit--armed' : ''}`} onClick={quit} disabled={busy || !live}>
+                  {quitArmed ? <>Sure?<br />Quit</> : <>Safely<br />quit game</>}
+                </button>
+              </aside>
+              <div className="fiveup-main">
+                <div className="fiveup-round">Round {view.round} · race to {view.target}</div>
+                {dialogue && <p className="ai-dialogue fiveup-dialogue">"{dialogue}"</p>}
                 <div className="fiveup-board" aria-label="Board">
                   {board.map((r, i) => (
                     <PlayingCard key={`b${i}`} card={card(r, i, 'board')} selected={picked.includes(i)} disabled={!claiming || busy} onClick={() => togglePick(i)} />
                   ))}
                 </div>
-                <span className="fiveup-side">You <strong>{view.scores.human}</strong></span>
-              </div>
-              <div className="fiveup-round">Round {view.round} · race to {view.target}</div>
               {awaitingNext && summary?.showdowns?.map((sd, i) => (
                 <div key={`sd${i}`} className="fiveup-showdown" aria-label="Showdown result">
                   <span>{sd.passer === 'human' ? 'You passed — Ai drew' : 'Ai passed — you drew'}</span>
@@ -301,16 +308,13 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
               <div className="fiveup-prompt" aria-live="polite">
                 {!live && 'Game over.'}
                 {claiming && (picked.length === 0
-                  ? 'Tap the board cards you claim to match (1–2), then Claim — or Pass for a showdown.'
+                  ? 'Tap the board cards you claim to match (one or two), then Claim — or Pass for a showdown.'
                   : `Claiming ${names(pickedRanks)}.`)}
                 {responding && pendingText}
                 {awaitingNext && 'Round complete — press Next hand to deal.'}
                 {live && !myTurn && !awaitingNext && 'The Ai is thinking…'}
               </div>
               <div className="fiveup-actions">
-                <button type="button" className={`btn-quit${quitArmed ? ' btn-quit--armed' : ''}`} onClick={quit} disabled={busy || !live}>
-                  {quitArmed ? <>Sure?<br />Quit</> : <>Safely<br />quit game</>}
-                </button>
                 <div className="fiveup-hole" aria-label="Your cards">
                   {hole.map((r, i) => <PlayingCard key={`h${i}`} card={card(r, i + 7, 'hole')} disabled pairColor={board.includes(r) ? { color: 'var(--gold)', glow: 'rgba(255,215,0,0.45)' } : null} />)}
                   <span className="fiveup-hint">{displayMatches.length === 0 ? 'No real matches — Claim a bluff or Pass.' : `${displayMatches.length} real match${displayMatches.length > 1 ? 'es' : ''} (gold).`}</span>
@@ -323,6 +327,18 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
                   {awaitingNext && <button className="primary" onClick={nextHand} disabled={busy}>Next hand</button>}
                 </div>
               </div>
+              </div>
+              <aside className="fiveup-statbar" aria-label="Table stats">
+                <div className="score-stats fiveup-stats">
+                  <div className="stat"><span className="stat-label">Round</span><span className="stat-value">{view.round}</span></div>
+                  <div className="stat"><span className="stat-label">Race to</span><span className="stat-value">{view.target}</span></div>
+                  <div className="stat"><span className="stat-label">Proven</span><span className="stat-value">{chain.roundsProven}/{Math.max(chain.roundsPlayed, chain.roundsProven)}</span></div>
+                </div>
+                <div className="score-cell ai">
+                  <div className="score-label">Ai</div>
+                  <div className="score-number">{view.scores.bot}</div>
+                </div>
+              </aside>
             </div>
           </div>
           {view.status !== 'playing' && view.status !== 'abandoned' && (

@@ -2985,10 +2985,23 @@ button.active {
 
 
 /* ────────── 5 Up 2 Down table ────────── */
-.fiveup-table { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.9rem; min-width: 0; }
-.fiveup-board-row { display: flex; align-items: center; justify-content: center; gap: 1rem; width: 100%; }
-.fiveup-side { display: flex; flex-direction: column; align-items: center; font-size: 1.05rem; color: var(--text-dim); min-width: 3.2rem; }
-.fiveup-side strong { color: var(--gold); font-size: 1.6rem; }
+/* Three columns: left gutter (You score over Quit, bottom-anchored), the
+ * main table stack, and the right-hand stat bar (scoreboard column). */
+.fiveup-table {
+  flex: 1; display: grid; min-width: 0; width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "you main stats";
+  gap: 1rem; align-items: end;
+}
+.fiveup-gutter { grid-area: you; display: flex; flex-direction: column; align-items: flex-start; gap: 0.6rem; }
+.fiveup-main { grid-area: main; display: flex; flex-direction: column; align-items: center; gap: 0.9rem; min-width: 0; }
+.fiveup-statbar {
+  grid-area: stats; display: flex; flex-direction: column; gap: 0.6rem; min-width: 9.5rem;
+  padding: 0.75rem; border: 1px solid var(--border); border-radius: 16px;
+  background: linear-gradient(180deg, rgba(157, 78, 221, 0.18) 0%, rgba(10, 10, 20, 0.6) 50%, rgba(255, 214, 10, 0.12) 100%);
+  box-shadow: inset 0 0 40px var(--felt-shadow);
+}
+.fiveup-stats { border: 0; padding: 0 0.25rem; }
 .fiveup-round { font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
 .fiveup-dialogue { margin: 0; }
 .fiveup-board { display: flex; gap: 0.6rem; justify-content: center; flex-wrap: wrap; padding: 0.8rem; border-radius: 16px;
@@ -3003,19 +3016,21 @@ button.active {
 .fiveup-showdown-cards .card { transform: scale(0.8); margin: -0.6rem 0; }
 .fiveup-reveal { color: var(--text-dim); font-size: 0.85rem; text-align: center; }
 .fiveup-prompt { min-height: 1.6em; color: var(--text); text-align: center; font-size: 1.05rem; }
-.fiveup-actions { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.9rem; width: 100%; max-width: 720px; }
-.fiveup-actions > .btn-quit { justify-self: start; }
-.fiveup-buttons { display: flex; gap: 0.6rem; justify-self: end; align-items: center; }
-.fiveup-hole { display: flex; align-items: center; gap: 0.5rem; justify-self: center; }
+.fiveup-actions { display: flex; align-items: center; gap: 0.9rem; width: 100%; }
+.fiveup-buttons { display: flex; gap: 0.6rem; margin-left: auto; align-items: center; }
+.fiveup-hole { display: flex; align-items: center; gap: 0.5rem; margin-inline: auto; }
 .fiveup-hole .card.disabled { opacity: 1; cursor: default; }
 .fiveup-hint { color: var(--text-dim); font-size: 0.85rem; max-width: 9rem; }
 .fiveup-switch { color: var(--violet); text-decoration: none; align-self: center; font-size: 0.9rem; }
 .fiveup-switch:hover { text-decoration: underline; }
 .fiveup-menu .subtitle { max-width: 36rem; }
 @media (max-width: 640px) {
-  .fiveup-actions { grid-template-columns: auto 1fr; }
-  .fiveup-buttons { grid-column: 2; justify-self: end; }
-  .fiveup-hole { grid-column: 1 / -1; grid-row: 2; }
+  .fiveup-table { grid-template-columns: 1fr; grid-template-areas: "stats" "main" "you"; }
+  .fiveup-statbar { flex-direction: row; align-items: center; min-width: 0; }
+  .fiveup-stats { flex-direction: row; flex-wrap: wrap; gap: 0.3rem 0.9rem; }
+  .fiveup-gutter { flex-direction: row; align-items: center; justify-content: space-between; }
+  .fiveup-actions { flex-wrap: wrap; justify-content: center; }
+  .fiveup-buttons { margin-left: 0; }
   .fiveup-hint { max-width: none; }
   .fiveup-board .card, .fiveup-hole .card { transform: scale(0.85); }
 }
