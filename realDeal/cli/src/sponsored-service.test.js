@@ -4,11 +4,45 @@
 // covered in sponsored-game.test.js.
 
 import http from 'node:http';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createChainQueue, createSponsoredHttpApp, toJsonSafe, allowedOriginsFromEnvironment, installConsoleRedaction, originAllowed } from './sponsored-service.js';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { createChainQueue, createSponsoredHttpApp, toJsonSafe, allowedOriginsFromEnvironment, installConsoleRedaction, originAllowed, walletObservation, walletIsCurrent, checkIndexerAvailability } from './sponsored-service.js';
 
 const { pureCircuits } = await import('../../contracts/managed/proof-or-bluff-rollup-v3p/contract/index.js');
 const ORIGIN = 'https://prooforbluff.app';
+
+describe('wallet readiness after a sync failure', () => {
+  it.each([402, 429])('stops before wallet sync when the provider returns HTTP %i', async (status) => {
+    const request = vi.fn(async () => ({ ok: false, status }));
+    await expect(checkIndexerAvailability('https://indexer.example', request)).rejects.toThrow(/access paused/);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires an actual indexed block, not merely HTTP 200', async () => {
+    await expect(checkIndexerAvailability('https://indexer.example', async () => ({
+      ok: true, json: async () => ({ errors: [{ message: 'unavailable' }] }),
+    }))).rejects.toThrow(/valid block/);
+    await expect(checkIndexerAvailability('https://indexer.example', async () => ({
+      ok: true, json: async () => ({ data: { block: { height: 42, protocolVersion: 2001100 } } }),
+    }))).resolves.toBeUndefined();
+  });
+
+  it('rejects an unsynced wallet even when its cached balance is positive', () => {
+    const now = Date.now();
+    const state = { isSynced: true, dust: { balance: () => 10_000n } };
+    expect(walletIsCurrent(walletObservation(state, now), now)).toBe(true);
+    const failed = walletObservation({ ...state, isSynced: false }, now);
+    expect(failed.balance).toBe(10_000n);
+    expect(walletIsCurrent(failed, now)).toBe(false);
+  });
+
+  it('expires a silent stream and accepts a fresh sync observation', () => {
+    const now = Date.now();
+    const state = { isSynced: true };
+    expect(walletIsCurrent(walletObservation(state, now), now + 300_000)).toBe(false);
+    expect(walletIsCurrent(walletObservation(state, now + 300_000), now + 300_000)).toBe(true);
+    expect(walletIsCurrent({ synced: true, at: 'invalid' }, now)).toBe(false);
+  });
+});
 
 function fakeChain() {
   const calls = [];

@@ -1,5 +1,5 @@
 import * as __compactRuntime from '@midnight-ntwrk/compact-runtime';
-__compactRuntime.checkRuntimeVersion('0.16.0');
+__compactRuntime.checkRuntimeVersion('0.21.0');
 
 const _descriptor_0 = __compactRuntime.CompactTypeBoolean;
 
@@ -236,6 +236,8 @@ class _tuple_2 {
 
 const _descriptor_27 = new _tuple_2();
 
+const _descriptor_28 = __compactRuntime.CompactTypeJubjubScalar;
+
 class _ResultCommitInput_0 {
   alignment() {
     return _descriptor_2.alignment().concat(_descriptor_5.alignment());
@@ -251,7 +253,7 @@ class _ResultCommitInput_0 {
   }
 }
 
-const _descriptor_28 = new _ResultCommitInput_0();
+const _descriptor_29 = new _ResultCommitInput_0();
 
 class _PlayerIdPreimage_0 {
   alignment() {
@@ -269,7 +271,7 @@ class _PlayerIdPreimage_0 {
   }
 }
 
-const _descriptor_29 = new _PlayerIdPreimage_0();
+const _descriptor_30 = new _PlayerIdPreimage_0();
 
 class _BoundaryCommitInput_0 {
   alignment() {
@@ -286,7 +288,7 @@ class _BoundaryCommitInput_0 {
   }
 }
 
-const _descriptor_30 = new _BoundaryCommitInput_0();
+const _descriptor_31 = new _BoundaryCommitInput_0();
 
 class _EntropyCommitInput_0 {
   alignment() {
@@ -303,7 +305,7 @@ class _EntropyCommitInput_0 {
   }
 }
 
-const _descriptor_31 = new _EntropyCommitInput_0();
+const _descriptor_32 = new _EntropyCommitInput_0();
 
 class _RoundSecretCommitInput_0 {
   alignment() {
@@ -321,25 +323,27 @@ class _RoundSecretCommitInput_0 {
   }
 }
 
-const _descriptor_32 = new _RoundSecretCommitInput_0();
+const _descriptor_33 = new _RoundSecretCommitInput_0();
 
 class _Challenge_0 {
   alignment() {
-    return _descriptor_7.alignment().concat(_descriptor_7.alignment().concat(_descriptor_5.alignment()));
+    return _descriptor_5.alignment().concat(_descriptor_5.alignment().concat(_descriptor_5.alignment().concat(_descriptor_5.alignment().concat(_descriptor_5.alignment()))));
   }
   fromValue(value_0) {
     return {
-      r: _descriptor_7.fromValue(value_0),
-      pk: _descriptor_7.fromValue(value_0),
+      rx: _descriptor_5.fromValue(value_0),
+      ry: _descriptor_5.fromValue(value_0),
+      pkx: _descriptor_5.fromValue(value_0),
+      pky: _descriptor_5.fromValue(value_0),
       ch: _descriptor_5.fromValue(value_0)
     }
   }
   toValue(value_0) {
-    return _descriptor_7.toValue(value_0.r).concat(_descriptor_7.toValue(value_0.pk).concat(_descriptor_5.toValue(value_0.ch)));
+    return _descriptor_5.toValue(value_0.rx).concat(_descriptor_5.toValue(value_0.ry).concat(_descriptor_5.toValue(value_0.pkx).concat(_descriptor_5.toValue(value_0.pky).concat(_descriptor_5.toValue(value_0.ch)))));
   }
 }
 
-const _descriptor_33 = new _Challenge_0();
+const _descriptor_34 = new _Challenge_0();
 
 class _DealInput_0 {
   alignment() {
@@ -359,7 +363,7 @@ class _DealInput_0 {
   }
 }
 
-const _descriptor_34 = new _DealInput_0();
+const _descriptor_35 = new _DealInput_0();
 
 class _tuple_3 {
   alignment() {
@@ -376,7 +380,7 @@ class _tuple_3 {
   }
 }
 
-const _descriptor_35 = new _tuple_3();
+const _descriptor_36 = new _tuple_3();
 
 class _tuple_4 {
   alignment() {
@@ -397,7 +401,7 @@ class _tuple_4 {
   }
 }
 
-const _descriptor_36 = new _tuple_4();
+const _descriptor_37 = new _tuple_4();
 
 class _SeedInput_0 {
   alignment() {
@@ -415,9 +419,9 @@ class _SeedInput_0 {
   }
 }
 
-const _descriptor_37 = new _SeedInput_0();
+const _descriptor_38 = new _SeedInput_0();
 
-const _descriptor_38 = new __compactRuntime.CompactTypeUnsignedInteger(18446744073709551615n, 8);
+const _descriptor_39 = new __compactRuntime.CompactTypeUnsignedInteger(18446744073709551615n, 8);
 
 class _Either_0 {
   alignment() {
@@ -435,9 +439,60 @@ class _Either_0 {
   }
 }
 
-const _descriptor_39 = new _Either_0();
+const _descriptor_40 = new _Either_0();
 
-const _descriptor_40 = new __compactRuntime.CompactTypeUnsignedInteger(340282366920938463463374607431768211455n, 16);
+const _descriptor_41 = new __compactRuntime.CompactTypeUnsignedInteger(340282366920938463463374607431768211455n, 16);
+
+class _UserAddress_0 {
+  alignment() {
+    return _descriptor_2.alignment();
+  }
+  fromValue(value_0) {
+    return {
+      bytes: _descriptor_2.fromValue(value_0)
+    }
+  }
+  toValue(value_0) {
+    return _descriptor_2.toValue(value_0.bytes);
+  }
+}
+
+const _descriptor_42 = new _UserAddress_0();
+
+class _Either_1 {
+  alignment() {
+    return _descriptor_0.alignment().concat(_descriptor_4.alignment().concat(_descriptor_42.alignment()));
+  }
+  fromValue(value_0) {
+    return {
+      is_left: _descriptor_0.fromValue(value_0),
+      left: _descriptor_4.fromValue(value_0),
+      right: _descriptor_42.fromValue(value_0)
+    }
+  }
+  toValue(value_0) {
+    return _descriptor_0.toValue(value_0.is_left).concat(_descriptor_4.toValue(value_0.left).concat(_descriptor_42.toValue(value_0.right)));
+  }
+}
+
+const _descriptor_43 = new _Either_1();
+
+class _Maybe_0 {
+  alignment() {
+    return _descriptor_0.alignment().concat(_descriptor_43.alignment());
+  }
+  fromValue(value_0) {
+    return {
+      is_some: _descriptor_0.fromValue(value_0),
+      value: _descriptor_43.fromValue(value_0)
+    }
+  }
+  toValue(value_0) {
+    return _descriptor_0.toValue(value_0.is_some).concat(_descriptor_43.toValue(value_0.value));
+  }
+}
+
+const _descriptor_44 = new _Maybe_0();
 
 export class Contract {
   witnesses;
@@ -481,55 +536,55 @@ export class Contract {
     }
     this.witnesses = witnesses_0;
     this.circuits = {
-      commitEntropy(context, ...args_1) {
+      async commitEntropy(context, ...args_1) {
         return { result: pureCircuits.commitEntropy(...args_1), context };
       },
-      combineEntropy(context, ...args_1) {
+      async combineEntropy(context, ...args_1) {
         return { result: pureCircuits.combineEntropy(...args_1), context };
       },
-      commitRoundSecret(context, ...args_1) {
+      async commitRoundSecret(context, ...args_1) {
         return { result: pureCircuits.commitRoundSecret(...args_1), context };
       },
-      chainBoard(context, ...args_1) {
+      async chainBoard(context, ...args_1) {
         return { result: pureCircuits.chainBoard(...args_1), context };
       },
-      chainMove(context, ...args_1) {
+      async chainMove(context, ...args_1) {
         return { result: pureCircuits.chainMove(...args_1), context };
       },
-      playerIdFromPk(context, ...args_1) {
+      async playerIdFromPk(context, ...args_1) {
         return { result: pureCircuits.playerIdFromPk(...args_1), context };
       },
-      closeConsentFor(context, ...args_1) {
+      async closeConsentFor(context, ...args_1) {
         return { result: pureCircuits.closeConsentFor(...args_1), context };
       },
-      closeConsentChallenge(context, ...args_1) {
+      async closeConsentChallenge(context, ...args_1) {
         return { result: pureCircuits.closeConsentChallenge(...args_1), context };
       },
-      closeConsentK(context, ...args_1) {
+      async closeConsentK(context, ...args_1) {
         return { result: pureCircuits.closeConsentK(...args_1), context };
       },
-      dealDigest(context, ...args_1) {
+      async dealDigest(context, ...args_1) {
         return { result: pureCircuits.dealDigest(...args_1), context };
       },
-      shuffleDigest(context, ...args_1) {
+      async shuffleDigest(context, ...args_1) {
         return { result: pureCircuits.shuffleDigest(...args_1), context };
       },
-      showdownDigest(context, ...args_1) {
+      async showdownDigest(context, ...args_1) {
         return { result: pureCircuits.showdownDigest(...args_1), context };
       },
-      commitBoundary(context, ...args_1) {
+      async commitBoundary(context, ...args_1) {
         return { result: pureCircuits.commitBoundary(...args_1), context };
       },
-      commitTranscript(context, ...args_1) {
+      async commitTranscript(context, ...args_1) {
         return { result: pureCircuits.commitTranscript(...args_1), context };
       },
-      proveRound: (...args_1) => {
+      proveRound: async (...args_1) => {
         if (args_1.length !== 2) {
           throw new __compactRuntime.CompactError(`proveRound: expected 2 arguments (as invoked from Typescript), received ${args_1.length}`);
         }
         const contextOrig_0 = args_1[0];
         const round_0 = args_1[1];
-        if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.currentQueryContext != undefined)) {
+        if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.callContext.currentQueryContext != undefined)) {
           __compactRuntime.typeError('proveRound',
                                      'argument 1 (as invoked from Typescript)',
                                      'five-up-two-down.compact line 470 char 1',
@@ -543,7 +598,7 @@ export class Contract {
                                      'Uint<0..256>',
                                      round_0)
         }
-        const context = { ...contextOrig_0, gasCost: __compactRuntime.emptyRunningCost() };
+        const context = __compactRuntime.copyCircuitContext(contextOrig_0);
         const partialProofData = {
           input: {
             value: _descriptor_1.toValue(round_0),
@@ -553,11 +608,14 @@ export class Contract {
           publicTranscript: [],
           privateTranscriptOutputs: []
         };
-        const result_0 = this._proveRound_0(context, partialProofData, round_0);
+        const result_0 = await this._proveRound_0(context,
+                                                  partialProofData,
+                                                  round_0);
         partialProofData.output = { value: [], alignment: [] };
-        return { result: result_0, context: context, proofData: partialProofData, gasCost: context.gasCost };
+        __compactRuntime.finalizeCallProofData(context, partialProofData);
+        return { result: result_0, context: context, gasCost: context.callContext.currentGasCost };
       },
-      closeGame: (...args_1) => {
+      closeGame: async (...args_1) => {
         if (args_1.length !== 4) {
           throw new __compactRuntime.CompactError(`closeGame: expected 4 arguments (as invoked from Typescript), received ${args_1.length}`);
         }
@@ -565,7 +623,7 @@ export class Contract {
         const finalP1Score_0 = args_1[1];
         const finalP2Score_0 = args_1[2];
         const finalWinner_0 = args_1[3];
-        if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.currentQueryContext != undefined)) {
+        if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.callContext.currentQueryContext != undefined)) {
           __compactRuntime.typeError('closeGame',
                                      'argument 1 (as invoked from Typescript)',
                                      'five-up-two-down.compact line 548 char 1',
@@ -593,7 +651,7 @@ export class Contract {
                                      'Uint<0..256>',
                                      finalWinner_0)
         }
-        const context = { ...contextOrig_0, gasCost: __compactRuntime.emptyRunningCost() };
+        const context = __compactRuntime.copyCircuitContext(contextOrig_0);
         const partialProofData = {
           input: {
             value: _descriptor_1.toValue(finalP1Score_0).concat(_descriptor_1.toValue(finalP2Score_0).concat(_descriptor_1.toValue(finalWinner_0))),
@@ -603,13 +661,14 @@ export class Contract {
           publicTranscript: [],
           privateTranscriptOutputs: []
         };
-        const result_0 = this._closeGame_0(context,
-                                           partialProofData,
-                                           finalP1Score_0,
-                                           finalP2Score_0,
-                                           finalWinner_0);
+        const result_0 = await this._closeGame_0(context,
+                                                 partialProofData,
+                                                 finalP1Score_0,
+                                                 finalP2Score_0,
+                                                 finalWinner_0);
         partialProofData.output = { value: [], alignment: [] };
-        return { result: result_0, context: context, proofData: partialProofData, gasCost: context.gasCost };
+        __compactRuntime.finalizeCallProofData(context, partialProofData);
+        return { result: result_0, context: context, gasCost: context.callContext.currentGasCost };
       }
     };
     this.impureCircuits = {
@@ -621,7 +680,7 @@ export class Contract {
       closeGame: this.circuits.closeGame
     };
   }
-  initialState(...args_0) {
+  async initialState(...args_0) {
     if (args_0.length !== 8) {
       throw new __compactRuntime.CompactError(`Contract state constructor: expected 8 arguments (as invoked from Typescript), received ${args_0.length}`);
     }
@@ -714,7 +773,7 @@ export class Contract {
     state_0.data = new __compactRuntime.ChargedState(stateValue_0);
     state_0.setOperation('proveRound', new __compactRuntime.ContractOperation());
     state_0.setOperation('closeGame', new __compactRuntime.ContractOperation());
-    const context = __compactRuntime.createCircuitContext(__compactRuntime.dummyContractAddress(), constructorContext_0.initialZswapLocalState.coinPublicKey, state_0.data, constructorContext_0.initialPrivateState);
+    const context = __compactRuntime.createCircuitContext({circuitId: 'constructor', contractAddress: __compactRuntime.dummyContractAddress(), coinPublicKeyOrZswapState: constructorContext_0.initialZswapLocalState.coinPublicKey, contractState: state_0.data, privateState: constructorContext_0.initialPrivateState});
     const partialProofData = {
       input: { value: [], alignment: [] },
       output: undefined,
@@ -872,11 +931,11 @@ export class Contract {
                                                                                               alignment: _descriptor_1.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
     const m_0 = gameMode_0;
-    __compactRuntime.assert(this._equal_0(m_0, 0n) || this._equal_1(m_0, 1n),
+    __compactRuntime.assert(m_0 === 0n || m_0 === 1n,
                             'mode must be CASUAL (0) or STANDARD (1)');
     const p1_0 = playerOneId_0;
     const p2_0 = playerTwoId_0;
-    __compactRuntime.assert(!this._equal_2(p1_0, p2_0), 'Players must differ');
+    __compactRuntime.assert(!this._equal_0(p1_0, p2_0), 'Players must differ');
     __compactRuntime.queryLedgerState(context,
                                       partialProofData,
                                       [
@@ -909,21 +968,21 @@ export class Contract {
                                        { ins: { cached: false, n: 1 } }]);
     const e1_0 = p1Entropy_0;
     const e2_0 = p2Entropy_0;
-    __compactRuntime.assert(!this._equal_3(e1_0, e2_0),
+    __compactRuntime.assert(!this._equal_1(e1_0, e2_0),
                             'Entropy commitments must differ');
     const r1_0 = p1Rounds_0;
     const r2_0 = p2Rounds_0;
-    this._folder_0(context,
-                   partialProofData,
-                   ((context, partialProofData, t_0, i_0) =>
-                    {
-                      __compactRuntime.assert(!this._equal_4(r1_0[i_0],
-                                                             r2_0[i_0]),
-                                              'Round-secret commitments must differ');
-                      return t_0;
-                    }),
-                   [],
-                   [0n, 1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n]);
+    await this._folder_0(context,
+                         partialProofData,
+                         (async (context, partialProofData, t_0, i_0) =>
+                          {
+                            __compactRuntime.assert(!this._equal_2(r1_0[i_0],
+                                                                   r2_0[i_0]),
+                                                    'Round-secret commitments must differ');
+                            return t_0;
+                          }),
+                         [],
+                         [0n, 1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n]);
     __compactRuntime.queryLedgerState(context,
                                       partialProofData,
                                       [
@@ -1056,23 +1115,23 @@ export class Contract {
                                                  value: __compactRuntime.StateValue.newCell({ value: _descriptor_1.toValue(tmp_5),
                                                                                               alignment: _descriptor_1.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } }]);
-    state_0.data = new __compactRuntime.ChargedState(context.currentQueryContext.state.state);
+    state_0.data = new __compactRuntime.ChargedState(context.callContext.currentQueryContext.state.state);
     return {
       currentContractState: state_0,
-      currentPrivateState: context.currentPrivateState,
-      currentZswapLocalState: context.currentZswapLocalState
+      currentPrivateState: context.callContext.currentPrivateState,
+      currentZswapLocalState: context.callContext.currentZswapLocalState
     }
   }
   _transientHash_0(value_0) {
-    const result_0 = __compactRuntime.transientHash(_descriptor_37, value_0);
+    const result_0 = __compactRuntime.transientHash(_descriptor_38, value_0);
     return result_0;
   }
   _transientHash_1(value_0) {
-    const result_0 = __compactRuntime.transientHash(_descriptor_35, value_0);
+    const result_0 = __compactRuntime.transientHash(_descriptor_36, value_0);
     return result_0;
   }
   _transientHash_2(value_0) {
-    const result_0 = __compactRuntime.transientHash(_descriptor_36, value_0);
+    const result_0 = __compactRuntime.transientHash(_descriptor_37, value_0);
     return result_0;
   }
   _transientHash_3(value_0) {
@@ -1080,7 +1139,7 @@ export class Contract {
     return result_0;
   }
   _transientHash_4(value_0) {
-    const result_0 = __compactRuntime.transientHash(_descriptor_34, value_0);
+    const result_0 = __compactRuntime.transientHash(_descriptor_35, value_0);
     return result_0;
   }
   _transientHash_5(value_0) {
@@ -1088,35 +1147,35 @@ export class Contract {
     return result_0;
   }
   _transientHash_6(value_0) {
-    const result_0 = __compactRuntime.transientHash(_descriptor_33, value_0);
+    const result_0 = __compactRuntime.transientHash(_descriptor_34, value_0);
     return result_0;
   }
   _persistentHash_0(value_0) {
-    const result_0 = __compactRuntime.persistentHash(_descriptor_31, value_0);
-    return result_0;
-  }
-  _persistentHash_1(value_0) {
     const result_0 = __compactRuntime.persistentHash(_descriptor_32, value_0);
     return result_0;
   }
-  _persistentHash_2(value_0) {
-    const result_0 = __compactRuntime.persistentHash(_descriptor_29, value_0);
+  _persistentHash_1(value_0) {
+    const result_0 = __compactRuntime.persistentHash(_descriptor_33, value_0);
     return result_0;
   }
-  _persistentHash_3(value_0) {
+  _persistentHash_2(value_0) {
     const result_0 = __compactRuntime.persistentHash(_descriptor_30, value_0);
     return result_0;
   }
+  _persistentHash_3(value_0) {
+    const result_0 = __compactRuntime.persistentHash(_descriptor_31, value_0);
+    return result_0;
+  }
   _persistentHash_4(value_0) {
-    const result_0 = __compactRuntime.persistentHash(_descriptor_28, value_0);
+    const result_0 = __compactRuntime.persistentHash(_descriptor_29, value_0);
     return result_0;
   }
-  _jubjubPointX_0(np_0) {
-    const result_0 = __compactRuntime.jubjubPointX(np_0);
+  _jubjubPointX_0(pt_0) {
+    const result_0 = __compactRuntime.jubjubPointX(pt_0);
     return result_0;
   }
-  _jubjubPointY_0(np_0) {
-    const result_0 = __compactRuntime.jubjubPointY(np_0);
+  _jubjubPointY_0(pt_0) {
+    const result_0 = __compactRuntime.jubjubPointY(pt_0);
     return result_0;
   }
   _ecAdd_0(a_0, b_0) {
@@ -1132,14 +1191,14 @@ export class Contract {
     return result_0;
   }
   _get_challenge_reduction_0(context, partialProofData, challenge_hash_0) {
-    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.currentQueryContext.state), context.currentPrivateState, context.currentQueryContext.address);
+    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.callContext.currentQueryContext.state), context.callContext.currentPrivateState, context.callContext.currentQueryContext.address);
     const [nextPrivateState_0, result_0] = this.witnesses.get_challenge_reduction(witnessContext_0,
                                                                                   challenge_hash_0);
-    context.currentPrivateState = nextPrivateState_0;
+    context.callContext.currentPrivateState = nextPrivateState_0;
     if (!(Array.isArray(result_0) && result_0.length === 2  && typeof(result_0[0]) === 'bigint' && result_0[0] >= 0n && result_0[0] <= 127n && typeof(result_0[1]) === 'bigint' && result_0[1] >= 0n && result_0[1] <= 452312848583266388373324160190187140051835877600158453279131187530910662655n)) {
       __compactRuntime.typeError('get_challenge_reduction',
                                  'return value',
-                                 'signed_credential.compact line 64 char 3',
+                                 'signed_credential.compact line 70 char 3',
                                  '[Uint<0..128>, Uint<0..452312848583266388373324160190187140051835877600158453279131187530910662656>]',
                                  result_0)
     }
@@ -1151,10 +1210,14 @@ export class Contract {
   }
   _compute_challenge_0(r_0, pk_0, credential_0) {
     const credential_hash_0 = this._transientHash_5(credential_0);
-    return this._transientHash_6({ r: r_0, pk: pk_0, ch: credential_hash_0 });
+    return this._transientHash_6({ rx: this._jubjubPointX_0(r_0),
+                                   ry: this._jubjubPointY_0(r_0),
+                                   pkx: this._jubjubPointX_0(pk_0),
+                                   pky: this._jubjubPointY_0(pk_0),
+                                   ch: credential_hash_0 });
   }
   _deterministic_k_0(nonce_0) { return this._transientHash_3(nonce_0); }
-  _reduce_challenge_0(context, partialProofData, full_0) {
+  async _reduce_challenge_0(context, partialProofData, full_0) {
     const TWO_248_0 = 452312848583266388373324160190187140051835877600158453279131187530910662656n;
     const __compact_pattern_tmp1_0 = this._get_challenge_reduction_0(context,
                                                                      partialProofData,
@@ -1170,18 +1233,19 @@ export class Contract {
     return r_0;
   }
   _verify_0(signed_0, challenge_0) {
-    const lhs_0 = this._ecMulGenerator_0(signed_0.signature.s);
+    const lhs_0 = this._ecMulGenerator_0(__compactRuntime.convertNumericToJubjubScalar(signed_0.signature.s));
     const rhs_0 = this._ecAdd_0(signed_0.signature.r,
-                                this._ecMul_0(signed_0.pk, challenge_0));
+                                this._ecMul_0(signed_0.pk,
+                                              __compactRuntime.convertNumericToJubjubScalar(challenge_0)));
     return this._jubjubPointX_0(lhs_0) === this._jubjubPointX_0(rhs_0)
            &&
            this._jubjubPointY_0(lhs_0) === this._jubjubPointY_0(rhs_0);
   }
-  _assert_signed_by_0(context, partialProofData, signed_0, trusted_pk_0) {
+  async _assert_signed_by_0(context, partialProofData, signed_0, trusted_pk_0) {
     const full_0 = this._compute_challenge_0(signed_0.signature.r,
                                              signed_0.pk,
                                              signed_0.credential);
-    const c_0 = this._reduce_challenge_0(context, partialProofData, full_0);
+    const c_0 = await this._reduce_challenge_0(context, partialProofData, full_0);
     __compactRuntime.assert(this._verify_0(signed_0, c_0),
                             'signed-credential: signature invalid');
     __compactRuntime.assert(this._jubjubPointX_0(signed_0.pk)
@@ -1257,9 +1321,9 @@ export class Contract {
                   }
                   return t1;
                 })(u_0 * m_0);
-    const pb_0 = Array.from(__compactRuntime.convertFieldToBytes(3,
-                                                                 p_0,
-                                                                 'five-up-two-down.compact line 108 char 15'),
+    const pb_0 = Array.from(__compactRuntime.convertBigintToBytes(3,
+                                                                  p_0,
+                                                                  'five-up-two-down.compact line 108 char 15'),
                             BigInt);
     return pb_0[2];
   }
@@ -1289,80 +1353,63 @@ export class Contract {
   _dealNineIdx_0(b_0) {
     const c0_0 = this._boundedDraw_0(b_0[0], b_0[1], 44n);
     const t1_0 = this._boundedDraw_0(b_0[2], b_0[3], 45n);
-    const c1_0 = this._equal_5(t1_0, c0_0) ? 44n : t1_0;
+    const c1_0 = t1_0 === c0_0 ? 44n : t1_0;
     const t2_0 = this._boundedDraw_0(b_0[4], b_0[5], 46n);
-    const c2_0 = this._equal_6(t2_0, c0_0) || this._equal_7(t2_0, c1_0) ?
-                 45n :
-                 t2_0;
+    const c2_0 = t2_0 === c0_0 || t2_0 === c1_0 ? 45n : t2_0;
     const t3_0 = this._boundedDraw_0(b_0[6], b_0[7], 47n);
-    const c3_0 = this._equal_8(t3_0, c0_0) || this._equal_9(t3_0, c1_0)
-                 ||
-                 this._equal_10(t3_0, c2_0)
-                 ?
-                 46n :
-                 t3_0;
+    const c3_0 = t3_0 === c0_0 || t3_0 === c1_0 || t3_0 === c2_0 ? 46n : t3_0;
     const t4_0 = this._boundedDraw_0(b_0[8], b_0[9], 48n);
-    const c4_0 = this._equal_11(t4_0, c0_0) || this._equal_12(t4_0, c1_0)
+    const c4_0 = t4_0 === c0_0 || t4_0 === c1_0 || t4_0 === c2_0
                  ||
-                 this._equal_13(t4_0, c2_0)
-                 ||
-                 this._equal_14(t4_0, c3_0)
+                 t4_0 === c3_0
                  ?
                  47n :
                  t4_0;
     const t5_0 = this._boundedDraw_0(b_0[10], b_0[11], 49n);
-    const c5_0 = this._equal_15(t5_0, c0_0) || this._equal_16(t5_0, c1_0)
+    const c5_0 = t5_0 === c0_0 || t5_0 === c1_0 || t5_0 === c2_0
                  ||
-                 this._equal_17(t5_0, c2_0)
+                 t5_0 === c3_0
                  ||
-                 this._equal_18(t5_0, c3_0)
-                 ||
-                 this._equal_19(t5_0, c4_0)
+                 t5_0 === c4_0
                  ?
                  48n :
                  t5_0;
     const t6_0 = this._boundedDraw_0(b_0[12], b_0[13], 50n);
-    const c6_0 = this._equal_20(t6_0, c0_0) || this._equal_21(t6_0, c1_0)
+    const c6_0 = t6_0 === c0_0 || t6_0 === c1_0 || t6_0 === c2_0
                  ||
-                 this._equal_22(t6_0, c2_0)
+                 t6_0 === c3_0
                  ||
-                 this._equal_23(t6_0, c3_0)
+                 t6_0 === c4_0
                  ||
-                 this._equal_24(t6_0, c4_0)
-                 ||
-                 this._equal_25(t6_0, c5_0)
+                 t6_0 === c5_0
                  ?
                  49n :
                  t6_0;
     const t7_0 = this._boundedDraw_0(b_0[14], b_0[15], 51n);
-    const c7_0 = this._equal_26(t7_0, c0_0) || this._equal_27(t7_0, c1_0)
+    const c7_0 = t7_0 === c0_0 || t7_0 === c1_0 || t7_0 === c2_0
                  ||
-                 this._equal_28(t7_0, c2_0)
+                 t7_0 === c3_0
                  ||
-                 this._equal_29(t7_0, c3_0)
+                 t7_0 === c4_0
                  ||
-                 this._equal_30(t7_0, c4_0)
+                 t7_0 === c5_0
                  ||
-                 this._equal_31(t7_0, c5_0)
-                 ||
-                 this._equal_32(t7_0, c6_0)
+                 t7_0 === c6_0
                  ?
                  50n :
                  t7_0;
     const t8_0 = this._boundedDraw_0(b_0[16], b_0[17], 52n);
-    const c8_0 = this._equal_33(t8_0, c0_0) || this._equal_34(t8_0, c1_0)
+    const c8_0 = t8_0 === c0_0 || t8_0 === c1_0 || t8_0 === c2_0
                  ||
-                 this._equal_35(t8_0, c2_0)
+                 t8_0 === c3_0
                  ||
-                 this._equal_36(t8_0, c3_0)
+                 t8_0 === c4_0
                  ||
-                 this._equal_37(t8_0, c4_0)
+                 t8_0 === c5_0
                  ||
-                 this._equal_38(t8_0, c5_0)
+                 t8_0 === c6_0
                  ||
-                 this._equal_39(t8_0, c6_0)
-                 ||
-                 this._equal_40(t8_0, c7_0)
+                 t8_0 === c7_0
                  ?
                  51n :
                  t8_0;
@@ -1562,32 +1609,32 @@ export class Contract {
     return this._shuffle9_0(this._dealNineIdx_0(dealB_0), shuffleB_0);
   }
   _dealDigest_0(salt0_0, salt1_0, seed_0, round_0) {
-    return __compactRuntime.convertFieldToBytes(32,
-                                                this._transientHash_4({ separator:
-                                                                          new Uint8Array([112, 111, 98, 58, 53, 117, 50, 100, 58, 100, 101, 97, 108, 58, 118, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                                                                        salt0:
-                                                                          salt0_0,
-                                                                        salt1:
-                                                                          salt1_0,
-                                                                        seed:
-                                                                          seed_0,
-                                                                        round:
-                                                                          round_0 }),
-                                                'five-up-two-down.compact line 241 char 10');
+    return __compactRuntime.convertBigintToBytes(32,
+                                                 this._transientHash_4({ separator:
+                                                                           new Uint8Array([112, 111, 98, 58, 53, 117, 50, 100, 58, 100, 101, 97, 108, 58, 118, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                                                                         salt0:
+                                                                           salt0_0,
+                                                                         salt1:
+                                                                           salt1_0,
+                                                                         seed:
+                                                                           seed_0,
+                                                                         round:
+                                                                           round_0 }),
+                                                 'five-up-two-down.compact line 241 char 10');
   }
   _shuffleDigest_0(salt0_0, salt1_0, seed_0, round_0) {
-    return __compactRuntime.convertFieldToBytes(32,
-                                                this._transientHash_4({ separator:
-                                                                          new Uint8Array([112, 111, 98, 58, 53, 117, 50, 100, 58, 115, 104, 117, 102, 102, 108, 101, 58, 118, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                                                                        salt0:
-                                                                          salt0_0,
-                                                                        salt1:
-                                                                          salt1_0,
-                                                                        seed:
-                                                                          seed_0,
-                                                                        round:
-                                                                          round_0 }),
-                                                'five-up-two-down.compact line 244 char 10');
+    return __compactRuntime.convertBigintToBytes(32,
+                                                 this._transientHash_4({ separator:
+                                                                           new Uint8Array([112, 111, 98, 58, 53, 117, 50, 100, 58, 115, 104, 117, 102, 102, 108, 101, 58, 118, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                                                                         salt0:
+                                                                           salt0_0,
+                                                                         salt1:
+                                                                           salt1_0,
+                                                                         seed:
+                                                                           seed_0,
+                                                                         round:
+                                                                           round_0 }),
+                                                 'five-up-two-down.compact line 244 char 10');
   }
   _minU8_0(a_0, b_0) { if (a_0 < b_0) { return a_0; } else { return b_0; } }
   _maxU8_0(a_0, b_0) { if (a_0 < b_0) { return b_0; } else { return a_0; } }
@@ -1779,28 +1826,26 @@ export class Contract {
             this._skipDealt_0(k_0[3], s_0)];
   }
   _showdownDigest_0(salt0_0, salt1_0, seed_0, round_0) {
-    return __compactRuntime.convertFieldToBytes(32,
-                                                this._transientHash_4({ separator:
-                                                                          new Uint8Array([112, 111, 98, 58, 53, 117, 50, 100, 58, 115, 104, 111, 119, 100, 111, 119, 110, 58, 118, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                                                                        salt0:
-                                                                          salt0_0,
-                                                                        salt1:
-                                                                          salt1_0,
-                                                                        seed:
-                                                                          seed_0,
-                                                                        round:
-                                                                          round_0 }),
-                                                'five-up-two-down.compact line 323 char 10');
+    return __compactRuntime.convertBigintToBytes(32,
+                                                 this._transientHash_4({ separator:
+                                                                           new Uint8Array([112, 111, 98, 58, 53, 117, 50, 100, 58, 115, 104, 111, 119, 100, 111, 119, 110, 58, 118, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                                                                         salt0:
+                                                                           salt0_0,
+                                                                         salt1:
+                                                                           salt1_0,
+                                                                         seed:
+                                                                           seed_0,
+                                                                         round:
+                                                                           round_0 }),
+                                                 'five-up-two-down.compact line 323 char 10');
   }
-  _targetScore_0(mode_0) { return this._equal_41(mode_0, 0n) ? 10n : 20n; }
+  _targetScore_0(mode_0) { return mode_0 === 0n ? 10n : 20n; }
   _onBoard_0(r_0, board_0) {
-    return this._equal_42(r_0, board_0[0]) || this._equal_43(r_0, board_0[1])
+    return r_0 === board_0[0] || r_0 === board_0[1] || r_0 === board_0[2]
            ||
-           this._equal_44(r_0, board_0[2])
+           r_0 === board_0[3]
            ||
-           this._equal_45(r_0, board_0[3])
-           ||
-           this._equal_46(r_0, board_0[4]);
+           r_0 === board_0[4];
   }
   _subFloor_0(score_0, d_0) {
     if (score_0 <= d_0) {
@@ -1812,20 +1857,16 @@ export class Contract {
     }
   }
   _resolvePass_0(hole_0, draw_0, pass_0, response_0) {
-    __compactRuntime.assert(this._equal_47(pass_0.kind, 4n), 'expected a PASS');
-    __compactRuntime.assert(this._equal_48(pass_0.count, 0n)
+    __compactRuntime.assert(pass_0.kind === 4n, 'expected a PASS');
+    __compactRuntime.assert(pass_0.count === 0n && pass_0.rankA === 0n
                             &&
-                            this._equal_49(pass_0.rankA, 0n)
-                            &&
-                            this._equal_50(pass_0.rankB, 0n),
+                            pass_0.rankB === 0n,
                             'pass fields must be zero');
-    __compactRuntime.assert(this._equal_51(response_0.kind, 0n),
+    __compactRuntime.assert(response_0.kind === 0n,
                             'a pass can only be followed by NOOP');
-    __compactRuntime.assert(this._equal_52(response_0.count, 0n)
+    __compactRuntime.assert(response_0.count === 0n && response_0.rankA === 0n
                             &&
-                            this._equal_53(response_0.rankA, 0n)
-                            &&
-                            this._equal_54(response_0.rankB, 0n),
+                            response_0.rankB === 0n,
                             'noop fields must be zero');
     let t_0, t_1;
     const wins_0 = ((t_0 = draw_0[0], t_0 > hole_0[0]) ? 1n : 0n)
@@ -1834,14 +1875,14 @@ export class Contract {
     return { claimantGain: 0n, claimantLoss: 0n, responderGain: wins_0, lies: 0n };
   }
   _resolveExchange_0(hole_0, draw_0, board_0, claim_0, response_0) {
-    if (this._equal_55(claim_0.kind, 4n)) {
+    if (claim_0.kind === 4n) {
       return this._resolvePass_0(hole_0, draw_0, claim_0, response_0);
     } else {
       return this._resolveClaim_0(hole_0, board_0, claim_0, response_0);
     }
   }
   _resolveClaim_0(hole_0, board_0, claim_0, response_0) {
-    __compactRuntime.assert(this._equal_56(claim_0.kind, 1n), 'expected a CLAIM');
+    __compactRuntime.assert(claim_0.kind === 1n, 'expected a CLAIM');
     let t_0;
     __compactRuntime.assert((t_0 = claim_0.count, t_0 <= 2n),
                             'claim count out of range');
@@ -1858,41 +1899,31 @@ export class Contract {
     let t_3;
     __compactRuntime.assert((t_3 = claim_0.count, t_3 >= 1n)
                             ||
-                            this._equal_57(claim_0.rankA, 0n),
+                            claim_0.rankA === 0n,
                             'unused claim slot must be zero');
     let t_4;
     __compactRuntime.assert((t_4 = claim_0.count, t_4 >= 2n)
                             ||
-                            this._equal_58(claim_0.rankB, 0n),
+                            claim_0.rankB === 0n,
                             'unused claim slot must be zero');
-    const isAccept_0 = this._equal_59(response_0.kind, 2n);
-    const isChallenge_0 = this._equal_60(response_0.kind, 3n);
+    const isAccept_0 = response_0.kind === 2n;
+    const isChallenge_0 = response_0.kind === 3n;
     __compactRuntime.assert(isAccept_0 || isChallenge_0, 'expected a response');
-    __compactRuntime.assert(this._equal_61(response_0.count, 0n)
+    __compactRuntime.assert(response_0.count === 0n && response_0.rankA === 0n
                             &&
-                            this._equal_62(response_0.rankA, 0n)
-                            &&
-                            this._equal_63(response_0.rankB, 0n),
+                            response_0.rankB === 0n,
                             'response fields must be zero');
     let t_5;
     __compactRuntime.assert(!isChallenge_0 || (t_5 = claim_0.count, t_5 >= 1n),
                             'nothing to challenge');
-    const aHit_0 = this._equal_64(hole_0[0], claim_0.rankA)
-                   ||
-                   this._equal_65(hole_0[1], claim_0.rankA);
-    const bHit_0 = this._equal_66(hole_0[0], claim_0.rankB)
-                   ||
-                   this._equal_67(hole_0[1], claim_0.rankB);
-    const pairHit_0 = this._equal_68(hole_0[0], claim_0.rankA)
-                      &&
-                      this._equal_69(hole_0[1], claim_0.rankB)
+    const aHit_0 = hole_0[0] === claim_0.rankA || hole_0[1] === claim_0.rankA;
+    const bHit_0 = hole_0[0] === claim_0.rankB || hole_0[1] === claim_0.rankB;
+    const pairHit_0 = hole_0[0] === claim_0.rankA && hole_0[1] === claim_0.rankB
                       ||
-                      this._equal_70(hole_0[0], claim_0.rankB)
-                      &&
-                      this._equal_71(hole_0[1], claim_0.rankA);
-    const trueCount_0 = this._equal_72(claim_0.count, 0n) ?
+                      hole_0[0] === claim_0.rankB && hole_0[1] === claim_0.rankA;
+    const trueCount_0 = claim_0.count === 0n ?
                         0n :
-                        this._equal_73(claim_0.count, 1n) ?
+                        claim_0.count === 1n ?
                         aHit_0 ? 1n : 0n :
                         pairHit_0 ? 2n : aHit_0 || bHit_0 ? 1n : 0n;
     let t_6;
@@ -1900,15 +1931,13 @@ export class Contract {
                     (__compactRuntime.assert(t_6 >= trueCount_0,
                                              'result of subtraction would be negative'),
                      t_6 - trueCount_0));
-    const acceptGain_0 = this._equal_74(claim_0.count, 0n) ?
+    const acceptGain_0 = claim_0.count === 0n ?
                          0n :
-                         this._equal_75(claim_0.count, 1n) ? 1n : 3n;
-    const provenGain_0 = this._equal_76(claim_0.count, 1n) ? 2n : 4n;
+                         claim_0.count === 1n ? 1n : 3n;
+    const provenGain_0 = claim_0.count === 1n ? 2n : 4n;
     const shown_0 = isChallenge_0 ? lies_0 : 0n;
     return { claimantGain:
-               isAccept_0 ?
-               acceptGain_0 :
-               this._equal_77(lies_0, 0n) ? provenGain_0 : 0n,
+               isAccept_0 ? acceptGain_0 : lies_0 === 0n ? provenGain_0 : 0n,
              claimantLoss: shown_0,
              responderGain: shown_0,
              lies: shown_0 };
@@ -1924,9 +1953,9 @@ export class Contract {
                                     chain: chain_0 });
   }
   _entropyPair_0(context, partialProofData) {
-    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.currentQueryContext.state), context.currentPrivateState, context.currentQueryContext.address);
+    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.callContext.currentQueryContext.state), context.callContext.currentPrivateState, context.callContext.currentQueryContext.address);
     const [nextPrivateState_0, result_0] = this.witnesses.entropyPair(witnessContext_0);
-    context.currentPrivateState = nextPrivateState_0;
+    context.callContext.currentPrivateState = nextPrivateState_0;
     if (!(Array.isArray(result_0) && result_0.length === 2  && result_0[0].buffer instanceof ArrayBuffer && result_0[0].BYTES_PER_ELEMENT === 1 && result_0[0].length === 32 && result_0[1].buffer instanceof ArrayBuffer && result_0[1].BYTES_PER_ELEMENT === 1 && result_0[1].length === 32)) {
       __compactRuntime.typeError('entropyPair',
                                  'return value',
@@ -1941,9 +1970,9 @@ export class Contract {
     return result_0;
   }
   _roundSecrets_0(context, partialProofData) {
-    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.currentQueryContext.state), context.currentPrivateState, context.currentQueryContext.address);
+    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.callContext.currentQueryContext.state), context.callContext.currentPrivateState, context.callContext.currentQueryContext.address);
     const [nextPrivateState_0, result_0] = this.witnesses.roundSecrets(witnessContext_0);
-    context.currentPrivateState = nextPrivateState_0;
+    context.callContext.currentPrivateState = nextPrivateState_0;
     if (!(Array.isArray(result_0) && result_0.length === 2  && result_0[0].buffer instanceof ArrayBuffer && result_0[0].BYTES_PER_ELEMENT === 1 && result_0[0].length === 32 && result_0[1].buffer instanceof ArrayBuffer && result_0[1].BYTES_PER_ELEMENT === 1 && result_0[1].length === 32)) {
       __compactRuntime.typeError('roundSecrets',
                                  'return value',
@@ -1958,9 +1987,9 @@ export class Contract {
     return result_0;
   }
   _roundMoves_0(context, partialProofData) {
-    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.currentQueryContext.state), context.currentPrivateState, context.currentQueryContext.address);
+    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.callContext.currentQueryContext.state), context.callContext.currentPrivateState, context.callContext.currentQueryContext.address);
     const [nextPrivateState_0, result_0] = this.witnesses.roundMoves(witnessContext_0);
-    context.currentPrivateState = nextPrivateState_0;
+    context.callContext.currentPrivateState = nextPrivateState_0;
     if (!(Array.isArray(result_0) && result_0.length === 4 && result_0.every((t) => typeof(t) === 'object' && typeof(t.kind) === 'bigint' && t.kind >= 0n && t.kind <= 255n && typeof(t.count) === 'bigint' && t.count >= 0n && t.count <= 255n && typeof(t.rankA) === 'bigint' && t.rankA >= 0n && t.rankA <= 255n && typeof(t.rankB) === 'bigint' && t.rankB >= 0n && t.rankB <= 255n))) {
       __compactRuntime.typeError('roundMoves',
                                  'return value',
@@ -1975,9 +2004,9 @@ export class Contract {
     return result_0;
   }
   _roundDigests_0(context, partialProofData) {
-    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.currentQueryContext.state), context.currentPrivateState, context.currentQueryContext.address);
+    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.callContext.currentQueryContext.state), context.callContext.currentPrivateState, context.callContext.currentQueryContext.address);
     const [nextPrivateState_0, result_0] = this.witnesses.roundDigests(witnessContext_0);
-    context.currentPrivateState = nextPrivateState_0;
+    context.callContext.currentPrivateState = nextPrivateState_0;
     if (!(Array.isArray(result_0) && result_0.length === 3  && Array.isArray(result_0[0]) && result_0[0].length === 32 && result_0[0].every((t) => typeof(t) === 'bigint' && t >= 0n && t <= 255n) && Array.isArray(result_0[1]) && result_0[1].length === 32 && result_0[1].every((t) => typeof(t) === 'bigint' && t >= 0n && t <= 255n) && Array.isArray(result_0[2]) && result_0[2].length === 32 && result_0[2].every((t) => typeof(t) === 'bigint' && t >= 0n && t <= 255n))) {
       __compactRuntime.typeError('roundDigests',
                                  'return value',
@@ -1992,9 +2021,9 @@ export class Contract {
     return result_0;
   }
   _dealtCards_0(context, partialProofData) {
-    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.currentQueryContext.state), context.currentPrivateState, context.currentQueryContext.address);
+    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.callContext.currentQueryContext.state), context.callContext.currentPrivateState, context.callContext.currentQueryContext.address);
     const [nextPrivateState_0, result_0] = this.witnesses.dealtCards(witnessContext_0);
-    context.currentPrivateState = nextPrivateState_0;
+    context.callContext.currentPrivateState = nextPrivateState_0;
     if (!(Array.isArray(result_0) && result_0.length === 13 && result_0.every((t) => typeof(t) === 'bigint' && t >= 0n && t <= 255n))) {
       __compactRuntime.typeError('dealtCards',
                                  'return value',
@@ -2009,9 +2038,9 @@ export class Contract {
     return result_0;
   }
   _dealtRanks_0(context, partialProofData) {
-    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.currentQueryContext.state), context.currentPrivateState, context.currentQueryContext.address);
+    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.callContext.currentQueryContext.state), context.callContext.currentPrivateState, context.callContext.currentQueryContext.address);
     const [nextPrivateState_0, result_0] = this.witnesses.dealtRanks(witnessContext_0);
-    context.currentPrivateState = nextPrivateState_0;
+    context.callContext.currentPrivateState = nextPrivateState_0;
     if (!(Array.isArray(result_0) && result_0.length === 13 && result_0.every((t) => typeof(t) === 'bigint' && t >= 0n && t <= 255n))) {
       __compactRuntime.typeError('dealtRanks',
                                  'return value',
@@ -2026,9 +2055,9 @@ export class Contract {
     return result_0;
   }
   _startBoundary_0(context, partialProofData) {
-    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.currentQueryContext.state), context.currentPrivateState, context.currentQueryContext.address);
+    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.callContext.currentQueryContext.state), context.callContext.currentPrivateState, context.callContext.currentQueryContext.address);
     const [nextPrivateState_0, result_0] = this.witnesses.startBoundary(witnessContext_0);
-    context.currentPrivateState = nextPrivateState_0;
+    context.callContext.currentPrivateState = nextPrivateState_0;
     if (!(typeof(result_0) === 'object' && typeof(result_0.turn) === 'bigint' && result_0.turn >= 0n && result_0.turn <= 255n && typeof(result_0.score0) === 'bigint' && result_0.score0 >= 0n && result_0.score0 <= 255n && typeof(result_0.score1) === 'bigint' && result_0.score1 >= 0n && result_0.score1 <= 255n && typeof(result_0.round) === 'bigint' && result_0.round >= 0n && result_0.round <= 255n && typeof(result_0.ended) === 'boolean' && typeof(result_0.winner) === 'bigint' && result_0.winner >= 0n && result_0.winner <= 255n && typeof(result_0.chain) === 'bigint' && result_0.chain >= 0 && result_0.chain <= __compactRuntime.MAX_FIELD)) {
       __compactRuntime.typeError('startBoundary',
                                  'return value',
@@ -2043,14 +2072,14 @@ export class Contract {
     return result_0;
   }
   _p1CloseConsent_0(context, partialProofData) {
-    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.currentQueryContext.state), context.currentPrivateState, context.currentQueryContext.address);
+    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.callContext.currentQueryContext.state), context.callContext.currentPrivateState, context.callContext.currentQueryContext.address);
     const [nextPrivateState_0, result_0] = this.witnesses.p1CloseConsent(witnessContext_0);
-    context.currentPrivateState = nextPrivateState_0;
-    if (!(typeof(result_0) === 'object' && typeof(result_0.credential) === 'object' && result_0.credential.sep.buffer instanceof ArrayBuffer && result_0.credential.sep.BYTES_PER_ELEMENT === 1 && result_0.credential.sep.length === 32 && result_0.credential.gameId.buffer instanceof ArrayBuffer && result_0.credential.gameId.BYTES_PER_ELEMENT === 1 && result_0.credential.gameId.length === 32 && typeof(result_0.credential.transcriptRoot) === 'bigint' && result_0.credential.transcriptRoot >= 0 && result_0.credential.transcriptRoot <= __compactRuntime.MAX_FIELD && typeof(result_0.credential.p1Score) === 'bigint' && result_0.credential.p1Score >= 0n && result_0.credential.p1Score <= 255n && typeof(result_0.credential.p2Score) === 'bigint' && result_0.credential.p2Score >= 0n && result_0.credential.p2Score <= 255n && typeof(result_0.credential.winner) === 'bigint' && result_0.credential.winner >= 0n && result_0.credential.winner <= 255n && typeof(result_0.signature) === 'object' && true && typeof(result_0.signature.s) === 'bigint' && result_0.signature.s >= 0 && result_0.signature.s <= __compactRuntime.MAX_FIELD && true)) {
+    context.callContext.currentPrivateState = nextPrivateState_0;
+    if (!(typeof(result_0) === 'object' && typeof(result_0.credential) === 'object' && result_0.credential.sep.buffer instanceof ArrayBuffer && result_0.credential.sep.BYTES_PER_ELEMENT === 1 && result_0.credential.sep.length === 32 && result_0.credential.gameId.buffer instanceof ArrayBuffer && result_0.credential.gameId.BYTES_PER_ELEMENT === 1 && result_0.credential.gameId.length === 32 && typeof(result_0.credential.transcriptRoot) === 'bigint' && result_0.credential.transcriptRoot >= 0 && result_0.credential.transcriptRoot <= __compactRuntime.MAX_FIELD && typeof(result_0.credential.p1Score) === 'bigint' && result_0.credential.p1Score >= 0n && result_0.credential.p1Score <= 255n && typeof(result_0.credential.p2Score) === 'bigint' && result_0.credential.p2Score >= 0n && result_0.credential.p2Score <= 255n && typeof(result_0.credential.winner) === 'bigint' && result_0.credential.winner >= 0n && result_0.credential.winner <= 255n && typeof(result_0.signature) === 'object' && typeof(result_0.signature.r.x) === 'bigint' && result_0.signature.r.x >= 0n && result_0.signature.r.x <= __compactRuntime.MAX_FIELD && typeof(result_0.signature.r.y) === 'bigint' && result_0.signature.r.y >= 0n && result_0.signature.r.y <= __compactRuntime.MAX_FIELD && typeof(result_0.signature.s) === 'bigint' && result_0.signature.s >= 0 && result_0.signature.s <= __compactRuntime.MAX_FIELD && typeof(result_0.pk.x) === 'bigint' && result_0.pk.x >= 0n && result_0.pk.x <= __compactRuntime.MAX_FIELD && typeof(result_0.pk.y) === 'bigint' && result_0.pk.y >= 0n && result_0.pk.y <= __compactRuntime.MAX_FIELD)) {
       __compactRuntime.typeError('p1CloseConsent',
                                  'return value',
                                  'five-up-two-down.compact line 417 char 1',
-                                 'struct SignedCredential<credential: struct CloseConsent<sep: Bytes<32>, gameId: Bytes<32>, transcriptRoot: Field, p1Score: Uint<0..256>, p2Score: Uint<0..256>, winner: Uint<0..256>>, signature: struct Signature<r: Opaque<"JubjubPoint">, s: Field>, pk: Opaque<"JubjubPoint">>',
+                                 'struct SignedCredential<credential: struct CloseConsent<sep: Bytes<32>, gameId: Bytes<32>, transcriptRoot: Field, p1Score: Uint<0..256>, p2Score: Uint<0..256>, winner: Uint<0..256>>, signature: struct Signature<r: JubjubPoint, s: Field>, pk: JubjubPoint>',
                                  result_0)
     }
     partialProofData.privateTranscriptOutputs.push({
@@ -2060,14 +2089,14 @@ export class Contract {
     return result_0;
   }
   _p2CloseConsent_0(context, partialProofData) {
-    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.currentQueryContext.state), context.currentPrivateState, context.currentQueryContext.address);
+    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.callContext.currentQueryContext.state), context.callContext.currentPrivateState, context.callContext.currentQueryContext.address);
     const [nextPrivateState_0, result_0] = this.witnesses.p2CloseConsent(witnessContext_0);
-    context.currentPrivateState = nextPrivateState_0;
-    if (!(typeof(result_0) === 'object' && typeof(result_0.credential) === 'object' && result_0.credential.sep.buffer instanceof ArrayBuffer && result_0.credential.sep.BYTES_PER_ELEMENT === 1 && result_0.credential.sep.length === 32 && result_0.credential.gameId.buffer instanceof ArrayBuffer && result_0.credential.gameId.BYTES_PER_ELEMENT === 1 && result_0.credential.gameId.length === 32 && typeof(result_0.credential.transcriptRoot) === 'bigint' && result_0.credential.transcriptRoot >= 0 && result_0.credential.transcriptRoot <= __compactRuntime.MAX_FIELD && typeof(result_0.credential.p1Score) === 'bigint' && result_0.credential.p1Score >= 0n && result_0.credential.p1Score <= 255n && typeof(result_0.credential.p2Score) === 'bigint' && result_0.credential.p2Score >= 0n && result_0.credential.p2Score <= 255n && typeof(result_0.credential.winner) === 'bigint' && result_0.credential.winner >= 0n && result_0.credential.winner <= 255n && typeof(result_0.signature) === 'object' && true && typeof(result_0.signature.s) === 'bigint' && result_0.signature.s >= 0 && result_0.signature.s <= __compactRuntime.MAX_FIELD && true)) {
+    context.callContext.currentPrivateState = nextPrivateState_0;
+    if (!(typeof(result_0) === 'object' && typeof(result_0.credential) === 'object' && result_0.credential.sep.buffer instanceof ArrayBuffer && result_0.credential.sep.BYTES_PER_ELEMENT === 1 && result_0.credential.sep.length === 32 && result_0.credential.gameId.buffer instanceof ArrayBuffer && result_0.credential.gameId.BYTES_PER_ELEMENT === 1 && result_0.credential.gameId.length === 32 && typeof(result_0.credential.transcriptRoot) === 'bigint' && result_0.credential.transcriptRoot >= 0 && result_0.credential.transcriptRoot <= __compactRuntime.MAX_FIELD && typeof(result_0.credential.p1Score) === 'bigint' && result_0.credential.p1Score >= 0n && result_0.credential.p1Score <= 255n && typeof(result_0.credential.p2Score) === 'bigint' && result_0.credential.p2Score >= 0n && result_0.credential.p2Score <= 255n && typeof(result_0.credential.winner) === 'bigint' && result_0.credential.winner >= 0n && result_0.credential.winner <= 255n && typeof(result_0.signature) === 'object' && typeof(result_0.signature.r.x) === 'bigint' && result_0.signature.r.x >= 0n && result_0.signature.r.x <= __compactRuntime.MAX_FIELD && typeof(result_0.signature.r.y) === 'bigint' && result_0.signature.r.y >= 0n && result_0.signature.r.y <= __compactRuntime.MAX_FIELD && typeof(result_0.signature.s) === 'bigint' && result_0.signature.s >= 0 && result_0.signature.s <= __compactRuntime.MAX_FIELD && typeof(result_0.pk.x) === 'bigint' && result_0.pk.x >= 0n && result_0.pk.x <= __compactRuntime.MAX_FIELD && typeof(result_0.pk.y) === 'bigint' && result_0.pk.y >= 0n && result_0.pk.y <= __compactRuntime.MAX_FIELD)) {
       __compactRuntime.typeError('p2CloseConsent',
                                  'return value',
                                  'five-up-two-down.compact line 418 char 1',
-                                 'struct SignedCredential<credential: struct CloseConsent<sep: Bytes<32>, gameId: Bytes<32>, transcriptRoot: Field, p1Score: Uint<0..256>, p2Score: Uint<0..256>, winner: Uint<0..256>>, signature: struct Signature<r: Opaque<"JubjubPoint">, s: Field>, pk: Opaque<"JubjubPoint">>',
+                                 'struct SignedCredential<credential: struct CloseConsent<sep: Bytes<32>, gameId: Bytes<32>, transcriptRoot: Field, p1Score: Uint<0..256>, p2Score: Uint<0..256>, winner: Uint<0..256>>, signature: struct Signature<r: JubjubPoint, s: Field>, pk: JubjubPoint>',
                                  result_0)
     }
     partialProofData.privateTranscriptOutputs.push({
@@ -2077,31 +2106,31 @@ export class Contract {
     return result_0;
   }
   _selectCommit_0(commits_0, round_0) {
-    if (this._equal_78(round_0, 1n)) {
+    if (round_0 === 1n) {
       return commits_0[0];
     } else {
-      if (this._equal_79(round_0, 2n)) {
+      if (round_0 === 2n) {
         return commits_0[1];
       } else {
-        if (this._equal_80(round_0, 3n)) {
+        if (round_0 === 3n) {
           return commits_0[2];
         } else {
-          if (this._equal_81(round_0, 4n)) {
+          if (round_0 === 4n) {
             return commits_0[3];
           } else {
-            if (this._equal_82(round_0, 5n)) {
+            if (round_0 === 5n) {
               return commits_0[4];
             } else {
-              if (this._equal_83(round_0, 6n)) {
+              if (round_0 === 6n) {
                 return commits_0[5];
               } else {
-                if (this._equal_84(round_0, 7n)) {
+                if (round_0 === 7n) {
                   return commits_0[6];
                 } else {
-                  if (this._equal_85(round_0, 8n)) {
+                  if (round_0 === 8n) {
                     return commits_0[7];
                   } else {
-                    if (this._equal_86(round_0, 9n)) {
+                    if (round_0 === 9n) {
                       return commits_0[8];
                     } else {
                       return commits_0[9];
@@ -2115,7 +2144,7 @@ export class Contract {
       }
     }
   }
-  _proveRound_0(context, partialProofData, round_0) {
+  async _proveRound_0(context, partialProofData, round_0) {
     __compactRuntime.assert(!_descriptor_0.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                        partialProofData,
                                                                                        [
@@ -2144,92 +2173,93 @@ export class Contract {
                             'Proven history already reached game end');
     const r_0 = round_0;
     __compactRuntime.assert(r_0 >= 1n && r_0 <= 10n, 'bad round');
-    __compactRuntime.assert(this._equal_87(r_0,
-                                           ((t1) => {
-                                             if (t1 > 255n) {
-                                               throw new __compactRuntime.CompactError('five-up-two-down.compact line 475 char 16: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
-                                             }
-                                             return t1;
-                                           })(_descriptor_1.fromValue(__compactRuntime.queryLedgerState(context,
-                                                                                                        partialProofData,
-                                                                                                        [
-                                                                                                         { dup: { n: 0 } },
-                                                                                                         { idx: { cached: false,
-                                                                                                                  pushPath: false,
-                                                                                                                  path: [
-                                                                                                                         { tag: 'value',
-                                                                                                                           value: { value: _descriptor_1.toValue(7n),
-                                                                                                                                    alignment: _descriptor_1.alignment() } }] } },
-                                                                                                         { popeq: { cached: false,
-                                                                                                                    result: undefined } }]).value)
-                                              +
-                                              1n)),
+    __compactRuntime.assert(r_0
+                            ===
+                            ((t1) => {
+                              if (t1 > 255n) {
+                                throw new __compactRuntime.CompactError('five-up-two-down.compact line 475 char 16: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 255');
+                              }
+                              return t1;
+                            })(_descriptor_1.fromValue(__compactRuntime.queryLedgerState(context,
+                                                                                         partialProofData,
+                                                                                         [
+                                                                                          { dup: { n: 0 } },
+                                                                                          { idx: { cached: false,
+                                                                                                   pushPath: false,
+                                                                                                   path: [
+                                                                                                          { tag: 'value',
+                                                                                                            value: { value: _descriptor_1.toValue(7n),
+                                                                                                                     alignment: _descriptor_1.alignment() } }] } },
+                                                                                          { popeq: { cached: false,
+                                                                                                     result: undefined } }]).value)
+                               +
+                               1n),
                             'rounds must be proven in order');
     const e_0 = this._entropyPair_0(context, partialProofData);
-    __compactRuntime.assert(this._equal_88(this._commitEntropy_0(e_0[0]),
-                                           _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
-                                                                                                     partialProofData,
-                                                                                                     [
-                                                                                                      { dup: { n: 0 } },
-                                                                                                      { idx: { cached: false,
-                                                                                                               pushPath: false,
-                                                                                                               path: [
-                                                                                                                      { tag: 'value',
-                                                                                                                        value: { value: _descriptor_1.toValue(3n),
-                                                                                                                                 alignment: _descriptor_1.alignment() } }] } },
-                                                                                                      { popeq: { cached: false,
-                                                                                                                 result: undefined } }]).value)),
+    __compactRuntime.assert(this._equal_3(this._commitEntropy_0(e_0[0]),
+                                          _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
+                                                                                                    partialProofData,
+                                                                                                    [
+                                                                                                     { dup: { n: 0 } },
+                                                                                                     { idx: { cached: false,
+                                                                                                              pushPath: false,
+                                                                                                              path: [
+                                                                                                                     { tag: 'value',
+                                                                                                                       value: { value: _descriptor_1.toValue(3n),
+                                                                                                                                alignment: _descriptor_1.alignment() } }] } },
+                                                                                                     { popeq: { cached: false,
+                                                                                                                result: undefined } }]).value)),
                             'P1 entropy mismatch');
-    __compactRuntime.assert(this._equal_89(this._commitEntropy_0(e_0[1]),
-                                           _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
-                                                                                                     partialProofData,
-                                                                                                     [
-                                                                                                      { dup: { n: 0 } },
-                                                                                                      { idx: { cached: false,
-                                                                                                               pushPath: false,
-                                                                                                               path: [
-                                                                                                                      { tag: 'value',
-                                                                                                                        value: { value: _descriptor_1.toValue(4n),
-                                                                                                                                 alignment: _descriptor_1.alignment() } }] } },
-                                                                                                      { popeq: { cached: false,
-                                                                                                                 result: undefined } }]).value)),
+    __compactRuntime.assert(this._equal_4(this._commitEntropy_0(e_0[1]),
+                                          _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
+                                                                                                    partialProofData,
+                                                                                                    [
+                                                                                                     { dup: { n: 0 } },
+                                                                                                     { idx: { cached: false,
+                                                                                                              pushPath: false,
+                                                                                                              path: [
+                                                                                                                     { tag: 'value',
+                                                                                                                       value: { value: _descriptor_1.toValue(4n),
+                                                                                                                                alignment: _descriptor_1.alignment() } }] } },
+                                                                                                     { popeq: { cached: false,
+                                                                                                                result: undefined } }]).value)),
                             'P2 entropy mismatch');
     const secrets_0 = this._roundSecrets_0(context, partialProofData);
-    __compactRuntime.assert(this._equal_90(this._commitRoundSecret_0(secrets_0[0],
-                                                                     r_0),
-                                           this._selectCommit_0(_descriptor_3.fromValue(__compactRuntime.queryLedgerState(context,
-                                                                                                                          partialProofData,
-                                                                                                                          [
-                                                                                                                           { dup: { n: 0 } },
-                                                                                                                           { idx: { cached: false,
-                                                                                                                                    pushPath: false,
-                                                                                                                                    path: [
-                                                                                                                                           { tag: 'value',
-                                                                                                                                             value: { value: _descriptor_1.toValue(5n),
-                                                                                                                                                      alignment: _descriptor_1.alignment() } }] } },
-                                                                                                                           { popeq: { cached: false,
-                                                                                                                                      result: undefined } }]).value),
-                                                                r_0)),
+    __compactRuntime.assert(this._equal_5(this._commitRoundSecret_0(secrets_0[0],
+                                                                    r_0),
+                                          this._selectCommit_0(_descriptor_3.fromValue(__compactRuntime.queryLedgerState(context,
+                                                                                                                         partialProofData,
+                                                                                                                         [
+                                                                                                                          { dup: { n: 0 } },
+                                                                                                                          { idx: { cached: false,
+                                                                                                                                   pushPath: false,
+                                                                                                                                   path: [
+                                                                                                                                          { tag: 'value',
+                                                                                                                                            value: { value: _descriptor_1.toValue(5n),
+                                                                                                                                                     alignment: _descriptor_1.alignment() } }] } },
+                                                                                                                          { popeq: { cached: false,
+                                                                                                                                     result: undefined } }]).value),
+                                                               r_0)),
                             'P1 round secret mismatch');
-    __compactRuntime.assert(this._equal_91(this._commitRoundSecret_0(secrets_0[1],
-                                                                     r_0),
-                                           this._selectCommit_0(_descriptor_3.fromValue(__compactRuntime.queryLedgerState(context,
-                                                                                                                          partialProofData,
-                                                                                                                          [
-                                                                                                                           { dup: { n: 0 } },
-                                                                                                                           { idx: { cached: false,
-                                                                                                                                    pushPath: false,
-                                                                                                                                    path: [
-                                                                                                                                           { tag: 'value',
-                                                                                                                                             value: { value: _descriptor_1.toValue(6n),
-                                                                                                                                                      alignment: _descriptor_1.alignment() } }] } },
-                                                                                                                           { popeq: { cached: false,
-                                                                                                                                      result: undefined } }]).value),
-                                                                r_0)),
+    __compactRuntime.assert(this._equal_6(this._commitRoundSecret_0(secrets_0[1],
+                                                                    r_0),
+                                          this._selectCommit_0(_descriptor_3.fromValue(__compactRuntime.queryLedgerState(context,
+                                                                                                                         partialProofData,
+                                                                                                                         [
+                                                                                                                          { dup: { n: 0 } },
+                                                                                                                          { idx: { cached: false,
+                                                                                                                                   pushPath: false,
+                                                                                                                                   path: [
+                                                                                                                                          { tag: 'value',
+                                                                                                                                            value: { value: _descriptor_1.toValue(6n),
+                                                                                                                                                     alignment: _descriptor_1.alignment() } }] } },
+                                                                                                                          { popeq: { cached: false,
+                                                                                                                                     result: undefined } }]).value),
+                                                               r_0)),
                             'P2 round secret mismatch');
     const seed_0 = this._combineEntropy_0(e_0[0], e_0[1]);
     const prev_0 = this._startBoundary_0(context, partialProofData);
-    const b0_0 = this._equal_92(r_0, 1n) ?
+    const b0_0 = r_0 === 1n ?
                  { turn: 0n,
                    score0: 0n,
                    score1: 0n,
@@ -2239,39 +2269,40 @@ export class Contract {
                    chain: 0n }
                  :
                  prev_0;
-    __compactRuntime.assert(this._equal_93(this._commitBoundary_0(b0_0),
-                                           _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
-                                                                                                     partialProofData,
-                                                                                                     [
-                                                                                                      { dup: { n: 0 } },
-                                                                                                      { idx: { cached: false,
-                                                                                                               pushPath: false,
-                                                                                                               path: [
-                                                                                                                      { tag: 'value',
-                                                                                                                        value: { value: _descriptor_1.toValue(8n),
-                                                                                                                                 alignment: _descriptor_1.alignment() } }] } },
-                                                                                                      { popeq: { cached: false,
-                                                                                                                 result: undefined } }]).value)),
+    __compactRuntime.assert(this._equal_7(this._commitBoundary_0(b0_0),
+                                          _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
+                                                                                                    partialProofData,
+                                                                                                    [
+                                                                                                     { dup: { n: 0 } },
+                                                                                                     { idx: { cached: false,
+                                                                                                              pushPath: false,
+                                                                                                              path: [
+                                                                                                                     { tag: 'value',
+                                                                                                                       value: { value: _descriptor_1.toValue(8n),
+                                                                                                                                alignment: _descriptor_1.alignment() } }] } },
+                                                                                                     { popeq: { cached: false,
+                                                                                                                result: undefined } }]).value)),
                             'boundary does not open stateRoot');
-    __compactRuntime.assert(this._equal_94(b0_0.round,
-                                           (__compactRuntime.assert(r_0 >= 1n,
-                                                                    'result of subtraction would be negative'),
-                                            r_0 - 1n)),
+    __compactRuntime.assert(b0_0.round
+                            ===
+                            (__compactRuntime.assert(r_0 >= 1n,
+                                                     'result of subtraction would be negative'),
+                             r_0 - 1n),
                             'boundary round mismatch');
     const dg_0 = this._roundDigests_0(context, partialProofData);
-    __compactRuntime.assert(this._equal_95(Uint8Array.from(dg_0[0], Number),
-                                           this._dealDigest_0(secrets_0[0],
-                                                              secrets_0[1],
-                                                              seed_0,
-                                                              r_0)),
+    __compactRuntime.assert(this._equal_8(Uint8Array.from(dg_0[0], Number),
+                                          this._dealDigest_0(secrets_0[0],
+                                                             secrets_0[1],
+                                                             seed_0,
+                                                             r_0)),
                             'deal digest mismatch');
-    __compactRuntime.assert(this._equal_96(Uint8Array.from(dg_0[1], Number),
-                                           this._shuffleDigest_0(secrets_0[0],
-                                                                 secrets_0[1],
-                                                                 seed_0,
-                                                                 r_0)),
+    __compactRuntime.assert(this._equal_9(Uint8Array.from(dg_0[1], Number),
+                                          this._shuffleDigest_0(secrets_0[0],
+                                                                secrets_0[1],
+                                                                seed_0,
+                                                                r_0)),
                             'shuffle digest mismatch');
-    __compactRuntime.assert(this._equal_97(Uint8Array.from(dg_0[2], Number),
+    __compactRuntime.assert(this._equal_10(Uint8Array.from(dg_0[2], Number),
                                            this._showdownDigest_0(secrets_0[0],
                                                                   secrets_0[1],
                                                                   seed_0,
@@ -2279,17 +2310,16 @@ export class Contract {
                             'showdown digest mismatch');
     const cards_0 = this._dealtCards_0(context, partialProofData);
     const nine_0 = this._dealNineShuffled_0(dg_0[0], dg_0[1]);
-    this._folder_1(context,
-                   partialProofData,
-                   ((context, partialProofData, t_0, i_0) =>
-                    {
-                      __compactRuntime.assert(this._equal_98(cards_0[i_0],
-                                                             nine_0[i_0]),
-                                              'deal mismatch');
-                      return t_0;
-                    }),
-                   [],
-                   [0n, 1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n]);
+    await this._folder_1(context,
+                         partialProofData,
+                         (async (context, partialProofData, t_0, i_0) =>
+                          {
+                            __compactRuntime.assert(cards_0[i_0] === nine_0[i_0],
+                                                    'deal mismatch');
+                            return t_0;
+                          }),
+                         [],
+                         [0n, 1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n]);
     const dealt9_0 = [cards_0[0],
                       cards_0[1],
                       cards_0[2],
@@ -2300,26 +2330,25 @@ export class Contract {
                       cards_0[7],
                       cards_0[8]];
     const sd_0 = this._showdownCards_0(dealt9_0, dg_0[2]);
-    __compactRuntime.assert(this._equal_99(cards_0[9], sd_0[0])
+    __compactRuntime.assert(cards_0[9] === sd_0[0] && cards_0[10] === sd_0[1]
                             &&
-                            this._equal_100(cards_0[10], sd_0[1])
+                            cards_0[11] === sd_0[2]
                             &&
-                            this._equal_101(cards_0[11], sd_0[2])
-                            &&
-                            this._equal_102(cards_0[12], sd_0[3]),
+                            cards_0[12] === sd_0[3],
                             'showdown mismatch');
     const ranks_0 = this._dealtRanks_0(context, partialProofData);
-    this._folder_2(context,
-                   partialProofData,
-                   ((context, partialProofData, t_1, i_1) =>
-                    {
-                      __compactRuntime.assert(this._equal_103(ranks_0[i_1],
-                                                              this._cardToRank_0(cards_0[i_1])),
-                                              'rank mismatch');
-                      return t_1;
-                    }),
-                   [],
-                   [0n, 1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n, 10n, 11n, 12n]);
+    await this._folder_2(context,
+                         partialProofData,
+                         (async (context, partialProofData, t_1, i_1) =>
+                          {
+                            __compactRuntime.assert(ranks_0[i_1]
+                                                    ===
+                                                    this._cardToRank_0(cards_0[i_1]),
+                                                    'rank mismatch');
+                            return t_1;
+                          }),
+                         [],
+                         [0n, 1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n, 10n, 11n, 12n]);
     const hole0_0 = [ranks_0[0], ranks_0[1]];
     const hole1_0 = [ranks_0[2], ranks_0[3]];
     const board_0 = [ranks_0[4], ranks_0[5], ranks_0[6], ranks_0[7], ranks_0[8]];
@@ -2327,7 +2356,7 @@ export class Contract {
     const drawB_0 = [ranks_0[11], ranks_0[12]];
     const chain1_0 = this._chainBoard_0(b0_0.chain, board_0);
     const moves_0 = this._roundMoves_0(context, partialProofData);
-    const firstIs0_0 = this._equal_104(b0_0.turn, 0n);
+    const firstIs0_0 = b0_0.turn === 0n;
     const resA_0 = this._resolveExchange_0(firstIs0_0 ? hole0_0 : hole1_0,
                                            drawA_0,
                                            board_0,
@@ -2398,8 +2427,8 @@ export class Contract {
                    }
                    return t1;
                  })(a1_0 + resB_0.responderGain);
-    const passA_0 = this._equal_105(moves_0[0].kind, 4n);
-    const passB_0 = this._equal_106(moves_0[2].kind, 4n);
+    const passA_0 = moves_0[0].kind === 4n;
+    const passB_0 = moves_0[2].kind === 4n;
     const chain2_0 = this._chainMove_0(chain1_0,
                                        moves_0[0].kind,
                                        passA_0 ?
@@ -2440,9 +2469,7 @@ export class Contract {
                                                                                                                                alignment: _descriptor_1.alignment() } }] } },
                                                                                                     { popeq: { cached: false,
                                                                                                                result: undefined } }]).value));
-    const gameEnded_0 = s0_0 >= target_0 || s1_0 >= target_0
-                        ||
-                        this._equal_107(r_0, 10n);
+    const gameEnded_0 = s0_0 >= target_0 || s1_0 >= target_0 || r_0 === 10n;
     const w_0 = !gameEnded_0 ? 0n : s0_0 > s1_0 ? 1n : s1_0 > s0_0 ? 2n : 0n;
     const b1_0 = { turn: firstIs0_0 ? 1n : 0n,
                    score0: s0_0,
@@ -2484,11 +2511,11 @@ export class Contract {
                                        { ins: { cached: false, n: 1 } }]);
     return [];
   }
-  _closeGame_0(context,
-               partialProofData,
-               finalP1Score_0,
-               finalP2Score_0,
-               finalWinner_0)
+  async _closeGame_0(context,
+                     partialProofData,
+                     finalP1Score_0,
+                     finalP2Score_0,
+                     finalWinner_0)
   {
     __compactRuntime.assert(!_descriptor_0.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                        partialProofData,
@@ -2517,41 +2544,41 @@ export class Contract {
                                                                                                   result: undefined } }]).value),
                             'Proven history has not reached game end');
     const b_0 = this._startBoundary_0(context, partialProofData);
-    __compactRuntime.assert(this._equal_108(this._commitBoundary_0(b_0),
-                                            _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
-                                                                                                      partialProofData,
-                                                                                                      [
-                                                                                                       { dup: { n: 0 } },
-                                                                                                       { idx: { cached: false,
-                                                                                                                pushPath: false,
-                                                                                                                path: [
-                                                                                                                       { tag: 'value',
-                                                                                                                         value: { value: _descriptor_1.toValue(8n),
-                                                                                                                                  alignment: _descriptor_1.alignment() } }] } },
-                                                                                                       { popeq: { cached: false,
-                                                                                                                  result: undefined } }]).value)),
+    __compactRuntime.assert(this._equal_11(this._commitBoundary_0(b_0),
+                                           _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
+                                                                                                     partialProofData,
+                                                                                                     [
+                                                                                                      { dup: { n: 0 } },
+                                                                                                      { idx: { cached: false,
+                                                                                                               pushPath: false,
+                                                                                                               path: [
+                                                                                                                      { tag: 'value',
+                                                                                                                        value: { value: _descriptor_1.toValue(8n),
+                                                                                                                                 alignment: _descriptor_1.alignment() } }] } },
+                                                                                                      { popeq: { cached: false,
+                                                                                                                 result: undefined } }]).value)),
                             'boundary does not open stateRoot');
-    __compactRuntime.assert(this._equal_109(b_0.round,
-                                            _descriptor_1.fromValue(__compactRuntime.queryLedgerState(context,
-                                                                                                      partialProofData,
-                                                                                                      [
-                                                                                                       { dup: { n: 0 } },
-                                                                                                       { idx: { cached: false,
-                                                                                                                pushPath: false,
-                                                                                                                path: [
-                                                                                                                       { tag: 'value',
-                                                                                                                         value: { value: _descriptor_1.toValue(7n),
-                                                                                                                                  alignment: _descriptor_1.alignment() } }] } },
-                                                                                                       { popeq: { cached: false,
-                                                                                                                  result: undefined } }]).value)),
+    __compactRuntime.assert(b_0.round
+                            ===
+                            _descriptor_1.fromValue(__compactRuntime.queryLedgerState(context,
+                                                                                      partialProofData,
+                                                                                      [
+                                                                                       { dup: { n: 0 } },
+                                                                                       { idx: { cached: false,
+                                                                                                pushPath: false,
+                                                                                                path: [
+                                                                                                       { tag: 'value',
+                                                                                                         value: { value: _descriptor_1.toValue(7n),
+                                                                                                                  alignment: _descriptor_1.alignment() } }] } },
+                                                                                       { popeq: { cached: false,
+                                                                                                  result: undefined } }]).value),
                             'boundary round mismatch');
     const w_0 = b_0.winner;
-    __compactRuntime.assert(this._equal_110(finalP1Score_0, b_0.score0)
+    __compactRuntime.assert(finalP1Score_0 === b_0.score0
                             &&
-                            this._equal_111(finalP2Score_0, b_0.score1),
+                            finalP2Score_0 === b_0.score1,
                             'final score mismatch');
-    __compactRuntime.assert(this._equal_112(finalWinner_0, w_0),
-                            'winner mismatch');
+    __compactRuntime.assert(finalWinner_0 === w_0, 'winner mismatch');
     const consent1_0 = this._p1CloseConsent_0(context, partialProofData);
     const consent2_0 = this._p2CloseConsent_0(context, partialProofData);
     const expected_0 = this._closeConsentFor_0(_descriptor_4.fromValue(__compactRuntime.queryLedgerState(context,
@@ -2570,46 +2597,46 @@ export class Contract {
                                                b_0.score0,
                                                b_0.score1,
                                                w_0);
-    __compactRuntime.assert(this._equal_113(this._playerIdFromPk_0(consent1_0.pk),
-                                            _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
-                                                                                                      partialProofData,
-                                                                                                      [
-                                                                                                       { dup: { n: 0 } },
-                                                                                                       { idx: { cached: false,
-                                                                                                                pushPath: false,
-                                                                                                                path: [
-                                                                                                                       { tag: 'value',
-                                                                                                                         value: { value: _descriptor_1.toValue(0n),
-                                                                                                                                  alignment: _descriptor_1.alignment() } }] } },
-                                                                                                       { popeq: { cached: false,
-                                                                                                                  result: undefined } }]).value)),
+    __compactRuntime.assert(this._equal_12(this._playerIdFromPk_0(consent1_0.pk),
+                                           _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
+                                                                                                     partialProofData,
+                                                                                                     [
+                                                                                                      { dup: { n: 0 } },
+                                                                                                      { idx: { cached: false,
+                                                                                                               pushPath: false,
+                                                                                                               path: [
+                                                                                                                      { tag: 'value',
+                                                                                                                        value: { value: _descriptor_1.toValue(0n),
+                                                                                                                                 alignment: _descriptor_1.alignment() } }] } },
+                                                                                                      { popeq: { cached: false,
+                                                                                                                 result: undefined } }]).value)),
                             'P1 signer is not player one');
-    __compactRuntime.assert(this._equal_114(this._playerIdFromPk_0(consent2_0.pk),
-                                            _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
-                                                                                                      partialProofData,
-                                                                                                      [
-                                                                                                       { dup: { n: 0 } },
-                                                                                                       { idx: { cached: false,
-                                                                                                                pushPath: false,
-                                                                                                                path: [
-                                                                                                                       { tag: 'value',
-                                                                                                                         value: { value: _descriptor_1.toValue(1n),
-                                                                                                                                  alignment: _descriptor_1.alignment() } }] } },
-                                                                                                       { popeq: { cached: false,
-                                                                                                                  result: undefined } }]).value)),
+    __compactRuntime.assert(this._equal_13(this._playerIdFromPk_0(consent2_0.pk),
+                                           _descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
+                                                                                                     partialProofData,
+                                                                                                     [
+                                                                                                      { dup: { n: 0 } },
+                                                                                                      { idx: { cached: false,
+                                                                                                               pushPath: false,
+                                                                                                               path: [
+                                                                                                                      { tag: 'value',
+                                                                                                                        value: { value: _descriptor_1.toValue(1n),
+                                                                                                                                 alignment: _descriptor_1.alignment() } }] } },
+                                                                                                      { popeq: { cached: false,
+                                                                                                                 result: undefined } }]).value)),
                             'P2 signer is not player two');
-    __compactRuntime.assert(this._equal_115(consent1_0.credential, expected_0),
+    __compactRuntime.assert(this._equal_14(consent1_0.credential, expected_0),
                             'P1 signed a different result');
-    __compactRuntime.assert(this._equal_116(consent2_0.credential, expected_0),
+    __compactRuntime.assert(this._equal_15(consent2_0.credential, expected_0),
                             'P2 signed a different result');
-    this._assert_signed_by_0(context,
-                             partialProofData,
-                             consent1_0,
-                             consent1_0.pk);
-    this._assert_signed_by_0(context,
-                             partialProofData,
-                             consent2_0,
-                             consent2_0.pk);
+    await this._assert_signed_by_0(context,
+                                   partialProofData,
+                                   consent1_0,
+                                   consent1_0.pk);
+    await this._assert_signed_by_0(context,
+                                   partialProofData,
+                                   consent2_0,
+                                   consent2_0.pk);
     const tmp_0 = this._commitTranscript_0(b_0.chain);
     __compactRuntime.queryLedgerState(context,
                                       partialProofData,
@@ -2666,16 +2693,20 @@ export class Contract {
     return [];
   }
   _equal_0(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_1(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_2(x0, y0) {
     if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
+  }
+  async _folder_0(context, partialProofData, f, x, a0) {
+    for (let i = 0; i < 10; i++) { x = await f(context, partialProofData, x, a0[i]); }
+    return x;
   }
   _equal_3(x0, y0) {
     if (!x0.every((x, i) => y0[i] === x)) { return false; }
@@ -2685,459 +2716,51 @@ export class Contract {
     if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
-  _folder_0(context, partialProofData, f, x, a0) {
-    for (let i = 0; i < 10; i++) { x = f(context, partialProofData, x, a0[i]); }
-    return x;
-  }
   _equal_5(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_6(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_7(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_8(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_9(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_10(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
+  async _folder_1(context, partialProofData, f, x, a0) {
+    for (let i = 0; i < 9; i++) { x = await f(context, partialProofData, x, a0[i]); }
+    return x;
+  }
+  async _folder_2(context, partialProofData, f, x, a0) {
+    for (let i = 0; i < 13; i++) { x = await f(context, partialProofData, x, a0[i]); }
+    return x;
+  }
   _equal_11(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_12(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_13(x0, y0) {
-    if (x0 !== y0) { return false; }
+    if (!x0.every((x, i) => y0[i] === x)) { return false; }
     return true;
   }
   _equal_14(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_15(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_16(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_17(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_18(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_19(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_20(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_21(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_22(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_23(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_24(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_25(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_26(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_27(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_28(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_29(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_30(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_31(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_32(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_33(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_34(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_35(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_36(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_37(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_38(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_39(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_40(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_41(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_42(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_43(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_44(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_45(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_46(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_47(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_48(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_49(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_50(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_51(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_52(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_53(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_54(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_55(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_56(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_57(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_58(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_59(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_60(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_61(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_62(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_63(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_64(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_65(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_66(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_67(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_68(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_69(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_70(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_71(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_72(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_73(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_74(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_75(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_76(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_77(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_78(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_79(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_80(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_81(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_82(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_83(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_84(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_85(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_86(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_87(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_88(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
-    return true;
-  }
-  _equal_89(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
-    return true;
-  }
-  _equal_90(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
-    return true;
-  }
-  _equal_91(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
-    return true;
-  }
-  _equal_92(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_93(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
-    return true;
-  }
-  _equal_94(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_95(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
-    return true;
-  }
-  _equal_96(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
-    return true;
-  }
-  _equal_97(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
-    return true;
-  }
-  _equal_98(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _folder_1(context, partialProofData, f, x, a0) {
-    for (let i = 0; i < 9; i++) { x = f(context, partialProofData, x, a0[i]); }
-    return x;
-  }
-  _equal_99(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_100(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_101(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_102(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_103(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _folder_2(context, partialProofData, f, x, a0) {
-    for (let i = 0; i < 13; i++) { x = f(context, partialProofData, x, a0[i]); }
-    return x;
-  }
-  _equal_104(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_105(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_106(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_107(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_108(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
-    return true;
-  }
-  _equal_109(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_110(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_111(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_112(x0, y0) {
-    if (x0 !== y0) { return false; }
-    return true;
-  }
-  _equal_113(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
-    return true;
-  }
-  _equal_114(x0, y0) {
-    if (!x0.every((x, i) => y0[i] === x)) { return false; }
-    return true;
-  }
-  _equal_115(x0, y0) {
     {
       let x1 = x0.sep;
       let y1 = y0.sep;
@@ -3170,7 +2793,7 @@ export class Contract {
     }
     return true;
   }
-  _equal_116(x0, y0) {
+  _equal_15(x0, y0) {
     {
       let x1 = x0.sep;
       let y1 = y0.sep;
@@ -3208,7 +2831,7 @@ export function ledger(stateOrChargedState) {
   const state = stateOrChargedState instanceof __compactRuntime.StateValue ? stateOrChargedState : stateOrChargedState.state;
   const chargedState = stateOrChargedState instanceof __compactRuntime.StateValue ? new __compactRuntime.ChargedState(stateOrChargedState) : stateOrChargedState;
   const context = {
-    currentQueryContext: new __compactRuntime.QueryContext(chargedState, __compactRuntime.dummyContractAddress()),
+    callContext: { currentQueryContext: new __compactRuntime.QueryContext(chargedState, __compactRuntime.dummyContractAddress()), currentGasCost: __compactRuntime.emptyRunningCost() },
     costModel: __compactRuntime.CostModel.initialCostModel()
   };
   const partialProofData = {
@@ -3431,7 +3054,7 @@ export function ledger(stateOrChargedState) {
   };
 }
 const _emptyContext = {
-  currentQueryContext: new __compactRuntime.QueryContext(new __compactRuntime.ContractState().data, __compactRuntime.dummyContractAddress())
+  callContext: { currentQueryContext: new __compactRuntime.QueryContext(new __compactRuntime.ContractState().data, __compactRuntime.dummyContractAddress()), currentGasCost: __compactRuntime.emptyRunningCost() }
 };
 const _dummyContract = new Contract({
   get_challenge_reduction: (...args) => undefined,
@@ -3590,6 +3213,13 @@ export const pureCircuits = {
       throw new __compactRuntime.CompactError(`playerIdFromPk: expected 1 argument (as invoked from Typescript), received ${args_0.length}`);
     }
     const pk_0 = args_0[0];
+    if (!(typeof(pk_0.x) === 'bigint' && pk_0.x >= 0n && pk_0.x <= __compactRuntime.MAX_FIELD && typeof(pk_0.y) === 'bigint' && pk_0.y >= 0n && pk_0.y <= __compactRuntime.MAX_FIELD)) {
+      __compactRuntime.typeError('playerIdFromPk',
+                                 'argument 1',
+                                 'five-up-two-down.compact line 77 char 1',
+                                 'JubjubPoint',
+                                 pk_0)
+    }
     return _dummyContract._playerIdFromPk_0(pk_0);
   },
   closeConsentFor: (...args_0) => {
@@ -3649,6 +3279,20 @@ export const pureCircuits = {
     const r_0 = args_0[0];
     const pk_0 = args_0[1];
     const consent_0 = args_0[2];
+    if (!(typeof(r_0.x) === 'bigint' && r_0.x >= 0n && r_0.x <= __compactRuntime.MAX_FIELD && typeof(r_0.y) === 'bigint' && r_0.y >= 0n && r_0.y <= __compactRuntime.MAX_FIELD)) {
+      __compactRuntime.typeError('closeConsentChallenge',
+                                 'argument 1',
+                                 'five-up-two-down.compact line 90 char 1',
+                                 'JubjubPoint',
+                                 r_0)
+    }
+    if (!(typeof(pk_0.x) === 'bigint' && pk_0.x >= 0n && pk_0.x <= __compactRuntime.MAX_FIELD && typeof(pk_0.y) === 'bigint' && pk_0.y >= 0n && pk_0.y <= __compactRuntime.MAX_FIELD)) {
+      __compactRuntime.typeError('closeConsentChallenge',
+                                 'argument 2',
+                                 'five-up-two-down.compact line 90 char 1',
+                                 'JubjubPoint',
+                                 pk_0)
+    }
     if (!(typeof(consent_0) === 'object' && consent_0.sep.buffer instanceof ArrayBuffer && consent_0.sep.BYTES_PER_ELEMENT === 1 && consent_0.sep.length === 32 && consent_0.gameId.buffer instanceof ArrayBuffer && consent_0.gameId.BYTES_PER_ELEMENT === 1 && consent_0.gameId.length === 32 && typeof(consent_0.transcriptRoot) === 'bigint' && consent_0.transcriptRoot >= 0 && consent_0.transcriptRoot <= __compactRuntime.MAX_FIELD && typeof(consent_0.p1Score) === 'bigint' && consent_0.p1Score >= 0n && consent_0.p1Score <= 255n && typeof(consent_0.p2Score) === 'bigint' && consent_0.p2Score >= 0n && consent_0.p2Score <= 255n && typeof(consent_0.winner) === 'bigint' && consent_0.winner >= 0n && consent_0.winner <= 255n)) {
       __compactRuntime.typeError('closeConsentChallenge',
                                  'argument 3',
@@ -3823,6 +3467,30 @@ export const pureCircuits = {
     return _dummyContract._commitTranscript_0(chain_0);
   }
 };
-export const contractReferenceLocations =
-  { tag: 'publicLedgerArray', indices: { } };
+export const expectedVk = {
+  'closeGame': '608545d09ed90118d86ec45157e6a565730fc9fa473e86d14a6a571c6cd9ba18',
+  'proveRound': 'c7d742d0b04ce32d562d6ded4470edc44afa3ee7813af0e28b0cbaaecee156c5',
+};
+
+export const circuitSignatures = {
+  'commitEntropy': {pure: true, provable: false, argumentTypes: [{tag: 'Bytes', length: 32}], resultType: {tag: 'Bytes', length: 32}},
+  'combineEntropy': {pure: true, provable: false, argumentTypes: [{tag: 'Bytes', length: 32}, {tag: 'Bytes', length: 32}], resultType: {tag: 'Field'}},
+  'commitRoundSecret': {pure: true, provable: false, argumentTypes: [{tag: 'Bytes', length: 32}, {tag: 'Uint', maxval: '255'}], resultType: {tag: 'Bytes', length: 32}},
+  'chainBoard': {pure: true, provable: false, argumentTypes: [{tag: 'Field'}, {tag: 'Vector', length: 5, type: {tag: 'Uint', maxval: '255'}}], resultType: {tag: 'Field'}},
+  'chainMove': {pure: true, provable: false, argumentTypes: [{tag: 'Field'}, {tag: 'Uint', maxval: '255'}, {tag: 'Uint', maxval: '255'}, {tag: 'Uint', maxval: '255'}, {tag: 'Uint', maxval: '255'}, {tag: 'Uint', maxval: '255'}], resultType: {tag: 'Field'}},
+  'playerIdFromPk': {pure: true, provable: false, argumentTypes: [{tag: 'JubjubPoint'}], resultType: {tag: 'Bytes', length: 32}},
+  'closeConsentFor': {pure: true, provable: false, argumentTypes: [{tag: 'Bytes', length: 32}, {tag: 'Field'}, {tag: 'Uint', maxval: '255'}, {tag: 'Uint', maxval: '255'}, {tag: 'Uint', maxval: '255'}], resultType: {tag: 'Struct', name: 'CloseConsent', elements: [{name: 'sep', type: {tag: 'Bytes', length: 32}}, {name: 'gameId', type: {tag: 'Bytes', length: 32}}, {name: 'transcriptRoot', type: {tag: 'Field'}}, {name: 'p1Score', type: {tag: 'Uint', maxval: '255'}}, {name: 'p2Score', type: {tag: 'Uint', maxval: '255'}}, {name: 'winner', type: {tag: 'Uint', maxval: '255'}}]}},
+  'closeConsentChallenge': {pure: true, provable: false, argumentTypes: [{tag: 'JubjubPoint'}, {tag: 'JubjubPoint'}, {tag: 'Struct', name: 'CloseConsent', elements: [{name: 'sep', type: {tag: 'Bytes', length: 32}}, {name: 'gameId', type: {tag: 'Bytes', length: 32}}, {name: 'transcriptRoot', type: {tag: 'Field'}}, {name: 'p1Score', type: {tag: 'Uint', maxval: '255'}}, {name: 'p2Score', type: {tag: 'Uint', maxval: '255'}}, {name: 'winner', type: {tag: 'Uint', maxval: '255'}}]}], resultType: {tag: 'Field'}},
+  'closeConsentK': {pure: true, provable: false, argumentTypes: [{tag: 'Field'}, {tag: 'Struct', name: 'CloseConsent', elements: [{name: 'sep', type: {tag: 'Bytes', length: 32}}, {name: 'gameId', type: {tag: 'Bytes', length: 32}}, {name: 'transcriptRoot', type: {tag: 'Field'}}, {name: 'p1Score', type: {tag: 'Uint', maxval: '255'}}, {name: 'p2Score', type: {tag: 'Uint', maxval: '255'}}, {name: 'winner', type: {tag: 'Uint', maxval: '255'}}]}], resultType: {tag: 'Field'}},
+  'dealDigest': {pure: true, provable: false, argumentTypes: [{tag: 'Bytes', length: 32}, {tag: 'Bytes', length: 32}, {tag: 'Field'}, {tag: 'Uint', maxval: '4294967295'}], resultType: {tag: 'Bytes', length: 32}},
+  'shuffleDigest': {pure: true, provable: false, argumentTypes: [{tag: 'Bytes', length: 32}, {tag: 'Bytes', length: 32}, {tag: 'Field'}, {tag: 'Uint', maxval: '4294967295'}], resultType: {tag: 'Bytes', length: 32}},
+  'showdownDigest': {pure: true, provable: false, argumentTypes: [{tag: 'Bytes', length: 32}, {tag: 'Bytes', length: 32}, {tag: 'Field'}, {tag: 'Uint', maxval: '4294967295'}], resultType: {tag: 'Bytes', length: 32}},
+  'commitBoundary': {pure: true, provable: false, argumentTypes: [{tag: 'Struct', name: 'Boundary', elements: [{name: 'turn', type: {tag: 'Uint', maxval: '255'}}, {name: 'score0', type: {tag: 'Uint', maxval: '255'}}, {name: 'score1', type: {tag: 'Uint', maxval: '255'}}, {name: 'round', type: {tag: 'Uint', maxval: '255'}}, {name: 'ended', type: {tag: 'Boolean'}}, {name: 'winner', type: {tag: 'Uint', maxval: '255'}}, {name: 'chain', type: {tag: 'Field'}}]}], resultType: {tag: 'Bytes', length: 32}},
+  'commitTranscript': {pure: true, provable: false, argumentTypes: [{tag: 'Field'}], resultType: {tag: 'Bytes', length: 32}},
+  'proveRound': {pure: false, provable: true, argumentTypes: [{tag: 'Uint', maxval: '255'}], resultType: {tag: 'Tuple', types: []}},
+  'closeGame': {pure: false, provable: true, argumentTypes: [{tag: 'Uint', maxval: '255'}, {tag: 'Uint', maxval: '255'}, {tag: 'Uint', maxval: '255'}], resultType: {tag: 'Tuple', types: []}},
+};
+
+export const declaredInterfaces = {};
+
 //# sourceMappingURL=index.js.map

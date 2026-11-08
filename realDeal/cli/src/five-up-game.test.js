@@ -30,23 +30,37 @@ function circuitChain() {
   });
   const address = runtime.dummyContractAddress();
   let context = null;
-  const call = (name, ...args) => { const r = contract.circuits[name](context, ...args); context = r.context; return r.result; };
+  const call = async (name, ...args) => {
+    const nextContext = runtime.createCircuitContext({
+      circuitId: name, contractAddress: address,
+      coinPublicKeyOrZswapState: '33'.repeat(32),
+      contractState: context.callContext.currentQueryContext.state,
+      privateState: context.callContext.currentPrivateState, time: 1_800_000_000,
+    });
+    const r = await contract.circuits[name](nextContext, ...args);
+    context = r.context;
+    return r.result;
+  };
   return {
-    state: () => ledger(context.currentQueryContext.state),
+    state: () => ledger(context.callContext.currentQueryContext.state),
     async deployGame(a) {
-      const init = contract.initialState(runtime.createConstructorContext({}, '33'.repeat(32)),
+      const init = await contract.initialState(runtime.createConstructorContext({}, '33'.repeat(32)),
         a.playerOne, a.playerTwo, a.mode, a.p1EntropyCommit, a.p2EntropyCommit, a.p1RoundCommits, a.p2RoundCommits);
-      context = runtime.createCircuitContext(address, '33'.repeat(32), init.currentContractState.data, init.currentPrivateState, undefined, undefined, 1_800_000_000);
+      context = runtime.createCircuitContext({
+        circuitId: 'proveRound', contractAddress: address,
+        coinPublicKeyOrZswapState: '33'.repeat(32), contractState: init.currentContractState,
+        privateState: init.currentPrivateState, time: 1_800_000_000,
+      });
       return { contractAddress: address, txHash: 'sim-deploy', blockHeight: 1 };
     },
     async proveRound({ round, witnesses: w }) {
       witness.entropy = w.entropyPair; witness.roundSecrets = w.roundSecrets; witness.moves = w.moves; witness.cards = w.cards; witness.ranks = w.ranks; witness.digests = w.digests; witness.boundary = w.boundaryIn;
-      call('proveRound', BigInt(round));
+      await call('proveRound', BigInt(round));
       return { txHash: `sim-r${round}`, blockHeight: 1 + round };
     },
     async closeGame(a) {
       witness.boundary = a.boundary; witness.p1 = a.p1CloseConsent; witness.p2 = a.p2CloseConsent;
-      call('closeGame', a.p1Score, a.p2Score, a.winner);
+      await call('closeGame', a.p1Score, a.p2Score, a.winner);
       return { txHash: 'sim-close', blockHeight: 99 };
     },
     async joinAt() {},

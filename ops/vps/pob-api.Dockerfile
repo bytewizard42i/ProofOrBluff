@@ -24,7 +24,8 @@
 # path and must stay in lockstep with the rsync list in deploy.sh. Add a
 # source directory → add it in both places.
 #
-# Why node:22-bookworm-slim: Debian glibc (the Midnight WASM/N-API packages and
+# Why node:22-bookworm-slim: Node >= 22.12 is REQUIRED by midnight-js 5.x /
+# wallet-sdk 2.x (all packages are ESM-only). Debian glibc (the Midnight WASM/N-API packages and
 # leveldown's native binding are built for glibc, not Alpine's musl), but
 # without compilers/docs → ~200 MB instead of ~1 GB.
 
@@ -38,12 +39,17 @@ WORKDIR /app
 # The repo is an npm WORKSPACE (root package.json → realDeal/app + realDeal/cli).
 # `npm ci` refuses to run unless every workspace's package.json is present —
 # even realDeal/app, which we never execute here. The root package.json also
-# carries the `overrides` pin for @midnight-ntwrk/ledger-v8 8.1.2; npm honours
+# carries the ledger-9 WASM singleton pins; npm honours
 # overrides ONLY at the workspace root, which is why we install from the root
 # and not from inside realDeal/cli (see the _versionNotes in its package.json).
 COPY package.json package-lock.json ./
 COPY realDeal/app/package.json realDeal/app/
 COPY realDeal/cli/package.json realDeal/cli/
+COPY realDeal/contracts/managed/proof-or-bluff/package.json realDeal/contracts/managed/proof-or-bluff/
+COPY realDeal/contracts/managed/proof-or-bluff-mainnet/package.json realDeal/contracts/managed/proof-or-bluff-mainnet/
+COPY realDeal/contracts/managed/proof-or-bluff-rollup/package.json realDeal/contracts/managed/proof-or-bluff-rollup/
+COPY realDeal/contracts/managed/proof-or-bluff-rollup-v3/package.json realDeal/contracts/managed/proof-or-bluff-rollup-v3/
+COPY realDeal/contracts/managed/proof-or-bluff-rollup-v3p/package.json realDeal/contracts/managed/proof-or-bluff-rollup-v3p/
 
 # --omit=dev drops vite/vitest/etc. The lockfile is honoured exactly (ci, not
 # install), so the box runs the same dependency tree we tested locally.
@@ -68,6 +74,9 @@ WORKDIR /app
 # copy both so Node's resolution walk finds everything.
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/realDeal/cli/node_modules ./realDeal/cli/node_modules
+# Archived generated contracts retain runtime 0.16 for historical tooling.
+# Active v4/5U2D artifacts resolve runtime 0.21 from /app/node_modules.
+COPY --from=deps /app/realDeal/contracts/managed ./realDeal/contracts/managed
 COPY package.json ./
 COPY realDeal/cli/package.json realDeal/cli/
 

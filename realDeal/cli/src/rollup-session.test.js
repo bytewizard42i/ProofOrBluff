@@ -10,7 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import * as runtime from '@midnight-ntwrk/compact-runtime';
+import * as runtime from 'compact-runtime-ledger8';
 import { Contract, ledger, pureCircuits } from '../../contracts/managed/proof-or-bluff-rollup/contract/index.js';
 import { KIND, MAX_MOVES, MAX_ROUNDS, handSize, startingRank } from '../../contracts/rollup-referee.js';
 import { createRollupSession, probeTurnRule, SEAT, SESSION_STATUS } from './rollup-session.js';

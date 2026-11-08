@@ -6,7 +6,8 @@
   "description": "Proof or Bluff (POB) — a Midnight-native privacy-preserving bluffing card game. MLH x Midnight Hackathon May 15-17 2026.",
   "workspaces": [
     "realDeal/app",
-    "realDeal/cli"
+    "realDeal/cli",
+    "realDeal/contracts/managed/*"
   ],
   "scripts": {
     "dev": "vite",
@@ -18,14 +19,22 @@
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "@midnight-ntwrk/compact-runtime": "0.16.0"
+    "@midnight-ntwrk/compact-runtime": "0.21.0"
   },
   "devDependencies": {
+    "compact-runtime-ledger8": "npm:@midnight-ntwrk/compact-runtime@0.16.0",
+    "@midnight-ntwrk/midnight-js-contracts": "5.0.0",
+    "@midnight-ntwrk/midnight-js-types": "5.0.0",
+    "@midnight-ntwrk/midnight-js-protocol": "5.0.0",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "5.0.0",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "5.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "vite": "^5.4.10",
     "vitest": "^2.1.9"
   },
   "overrides": {
-    "@midnight-ntwrk/ledger-v8": "8.1.2"
+    "@midnightntwrk/ledger-v9": "1.0.0",
+    "@midnightntwrk/onchain-runtime-v4": "4.0.0",
+    "@midnight-ntwrk/platform-js": "3.0.0"
   }
 }

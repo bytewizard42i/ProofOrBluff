@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import * as runtime from '@midnight-ntwrk/compact-runtime';
+import * as runtime from 'compact-runtime-ledger8';
 import {
   createV3Referee, KIND, MAX_ROUNDS, MAX_ROUND_MOVES, initialBoundary, roundFinished, startingRank,
 } from './rollup-v3-referee.js';

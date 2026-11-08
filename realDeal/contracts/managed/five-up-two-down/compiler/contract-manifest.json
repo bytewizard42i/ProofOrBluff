@@ -1,0 +1,79 @@
+{
+  "manifest-version": "1",
+  "compiler-version": "0.36.0",
+  "compiler-commit": "b5d9e4dfc532fe47011c4f6296e254f4853eb469",
+  "language-version": "0.28.0",
+  "runtime-version": "0.21.0",
+  "compiler": {
+    "type": "directory",
+    "contract-info.json": {
+      "type": "file",
+      "size": 25324,
+      "hash": "9c7076729b56a5b7184ccbe3354b13d2bb908fd3c7d713b692bec6c67a11e460"
+    }
+  },
+  "contract": {
+    "type": "directory",
+    "index.d.ts": {
+      "type": "file",
+      "size": 11561,
+      "hash": "abdcab017104730f1d99d0afb7cb62f8c73715d91c3955b1fb5ed9b797d01672"
+    },
+    "index.js": {
+      "type": "file",
+      "size": 213010,
+      "hash": "ee034faf722fcf11608baccbb745b7a229e29c569805fb42392f539fe6deecd6"
+    },
+    "index.js.map": {
+      "type": "file",
+      "size": 23887,
+      "hash": "0a7a0a1c881ffdcbdd1a0586b68c9ddb26b1c0a4a50aada41e04c012321b3264"
+    }
+  },
+  "zkir": {
+    "type": "directory",
+    "closeGame.bzkir": {
+      "type": "file",
+      "size": 6294,
+      "hash": "9d7db8aeae37cd037becabe2363d96f035bfb875d6cc832b9eaa17c8a8200fae"
+    },
+    "closeGame.zkir": {
+      "type": "file",
+      "size": 21579,
+      "hash": "89e4145088e342dbdd58459f19bfb8f0cbf4c918ba534be028561d120b8ec139"
+    },
+    "proveRound.bzkir": {
+      "type": "file",
+      "size": 59543,
+      "hash": "b1f03d212b5e1467ea9cecbb0fd542339c89f5e2c6046b1083deac429b99f1b3"
+    },
+    "proveRound.zkir": {
+      "type": "file",
+      "size": 195483,
+      "hash": "c7d5c5c65d166e52edc367e6aca849dcde2231cf7d4bc4913e51071d9ed8d8a1"
+    }
+  },
+  "keys": {
+    "type": "directory",
+    "closeGame.prover": {
+      "type": "file",
+      "size": 49294134,
+      "hash": "8d31257c77384cf4a4b9490c54b2862576195b340e46d2f43cf2645fbf500f1a"
+    },
+    "closeGame.verifier": {
+      "type": "file",
+      "size": 2313,
+      "hash": "608545d09ed90118d86ec45157e6a565730fc9fa473e86d14a6a571c6cd9ba18"
+    },
+    "proveRound.prover": {
+      "type": "file",
+      "size": 90241449,
+      "hash": "d410ed291f283a80579725b3062df8f062518cfb27c1921787820f4eb12eb184"
+    },
+    "proveRound.verifier": {
+      "type": "file",
+      "size": 2121,
+      "hash": "c7d742d0b04ce32d562d6ded4470edc44afa3ee7813af0e28b0cbaaecee156c5"
+    }
+  }
+}

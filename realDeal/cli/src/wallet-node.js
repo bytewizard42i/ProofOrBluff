@@ -1,39 +1,41 @@
 /**
- * wallet-node.js — headless seed-based wallet for the CLI, v8 SDK.
+ * wallet-node.js — headless seed-based wallet for the CLI, wallet-sdk 2.0.0.
  *
- * Built around the @midnight-ntwrk/wallet-sdk barrel. Mirrors the canonical
- * pattern from midnightntwrk/example-counter/counter-cli/src/api.ts, the
- * official midnight-local-dev wallet helpers, and Edda Labs' starter
- * (eddalabs/midnight-starter-template counter-cli/src/api.ts, Aug 2026).
+ * WHAT: builds a WalletFacade over the three sub-wallets — Shielded (Zswap),
+ * Unshielded (NIGHT), Dust — all derived from ONE master seed, and waits for
+ * it to sync.
  *
- * Three sub-wallets back the facade — Shielded (Zswap), Unshielded
- * (NIGHT), Dust — derived from the same HD seed via role-specific paths.
- * Tx fees are paid in DUST, which is generated FROM unshielded NIGHT
- * UTXOs but only after a one-time `registerNightUtxosForDustGeneration`
- * tx. We do that automatically the first time a wallet has unregistered
- * NIGHT.
+ * WHY the shapes below (post-ledger-9):
+ *   * Seeds, not keys: `WalletSeeds.fromMasterSeed` walks the same HD path the
+ *     1.x SDK did (account 0, index 0, roles Zswap/NightExternal/Dust) — the
+ *     derive-check scripts proved byte-identical addresses — but returns
+ *     version-agnostic seed bytes, the only key material that crosses a
+ *     protocol boundary.
+ *   * `facade.start(seeds)` replaces `start(shieldedSecretKeys, dustSecretKey)`;
+ *     no transacting method takes secret keys in 2.0.0.
+ *   * Signing is async: `keystore.signDataAsync` is handed to `signRecipe` /
+ *     `registerNightUtxosForDustGeneration` directly.
+ *   * Tx fees are still paid in DUST generated FROM unshielded NIGHT UTXOs,
+ *     registered once via `registerNightUtxosForDustGeneration` — now
+ *     self-signing, so the recipe comes back ready to finalize.
  */
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { WebSocket } from 'ws';
 import * as Rx from 'rxjs';
-import * as ledger from '@midnight-ntwrk/ledger-v8';
-// Single-barrel wallet SDK (official public-network matrix: exact 1.2.0).
-// It wraps facade 4.x / dust 4.x / unshielded 3.x; importing the split
-// packages directly pinned us a major behind and produced transactions the
-// current node validated but never included.
+import * as ledger from '@midnightntwrk/ledger-v9';
+// Single-barrel wallet SDK (@midnightntwrk scope — the new protocol packages
+// moved there; midnight-js-* stays on @midnight-ntwrk).
 import {
-  HDWallet,
-  Roles,
+  WalletSeeds,
   WalletFacade,
   ShieldedWallet,
   DustWallet,
   createKeystore,
-  InMemoryTransactionHistoryStorage,
   PublicKey as UnshieldedPublicKey,
   UnshieldedWallet,
-} from '@midnight-ntwrk/wallet-sdk';
+} from '@midnightntwrk/wallet-sdk';
 import { Buffer } from 'buffer';
 
 import { log } from './log.js';
@@ -45,30 +47,19 @@ if (typeof globalThis.WebSocket === 'undefined') {
 }
 
 /**
- * Derive the three role-specific keys from a 32-byte hex seed.
- * Mirrors the example-counter pattern. Throws if the seed is invalid.
+ * Derive the three per-wallet seeds from a 32-byte hex master seed.
+ * WalletSeeds.fromMasterSeed defaults to account 0 / index 0 /
+ * Roles.NightExternal — the same path the 1.x HDWallet.selectRoles()
+ * derivation walked (verified identical by scripts/derive-check*.mjs).
  */
-function deriveKeysFromSeed(hexSeed) {
+function deriveSeedsFromMasterSeed(hexSeed) {
   if (!/^[0-9a-fA-F]{64}$/.test(hexSeed)) {
     throw new Error(
       'Seed must be a 64-character hex string (32 bytes). '
       + 'Generate with: node -e "console.log(require(\\\"crypto\\\").randomBytes(32).toString(\\\"hex\\\"))"'
     );
   }
-  const seed = Buffer.from(hexSeed, 'hex');
-  const hd = HDWallet.fromSeed(seed);
-  if (hd.type !== 'seedOk') {
-    throw new Error(`HDWallet.fromSeed failed: ${hd.type}`);
-  }
-  const derivation = hd.hdWallet
-    .selectAccount(0)
-    .selectRoles([Roles.Zswap, Roles.NightExternal, Roles.Dust])
-    .deriveKeysAt(0);
-  if (derivation.type !== 'keysDerived') {
-    throw new Error(`Failed to derive keys: ${derivation.type}`);
-  }
-  hd.hdWallet.clear();
-  return derivation.keys;
+  return WalletSeeds.fromMasterSeed(Buffer.from(hexSeed, 'hex'));
 }
 
 /**
@@ -77,8 +68,9 @@ function deriveKeysFromSeed(hexSeed) {
  * faucet funds before the first (slow) public-network sync.
  */
 export function deriveUnshieldedAddress(seed, networkId) {
-  const keys = deriveKeysFromSeed(seed);
-  return createKeystore(keys[Roles.NightExternal], networkId).getBech32Address().asString();
+  const seeds = deriveSeedsFromMasterSeed(seed);
+  return createKeystore({ kind: 'schnorr', secret: seeds.unshielded }, networkId)
+    .getBech32Address().asString();
 }
 
 function buildFacadeConfig(networkId, endpoints) {
@@ -94,14 +86,18 @@ function buildFacadeConfig(networkId, endpoints) {
       additionalFeeOverhead: 300_000_000_000_000n,
       feeBlocksMargin: 5,
     },
-    txHistoryStorage: new InMemoryTransactionHistoryStorage(),
+    // `forks` is deliberately left out: the facade presets
+    // DefaultForkSchedule (ledger-v9 at the protocol version a 2.x node
+    // reports), which is where Mainnet already is.
+    // txHistoryStorage is gone from DefaultConfiguration in facade 5.0.0 —
+    // history is held inside the per-wallet snapshots we already persist.
   };
 }
 
 /**
- * Build the WalletContext (facade + secret keys + unshielded keystore)
- * and wait for it to sync. Returns a `walletHandle` whose `.api` shape
- * mirrors what the contract.js layer expects.
+ * Build the wallet handle (facade + unshielded keystore) and wait for it to
+ * sync. Returns a `walletHandle` whose `.ctx` shape is what providers.js
+ * expects.
  */
 export async function buildWalletFromSeed({
   seed,
@@ -112,10 +108,8 @@ export async function buildWalletFromSeed({
   // Never print even a prefix of a production seed. Wallet addresses are
   // public; seed material is not, including in development logs.
   log.step(`Building wallet on ${networkId}`);
-  const keys = deriveKeysFromSeed(seed);
-  const shieldedSecretKeys = ledger.ZswapSecretKeys.fromSeed(keys[Roles.Zswap]);
-  const dustSecretKey = ledger.DustSecretKey.fromSeed(keys[Roles.Dust]);
-  const unshieldedKeystore = createKeystore(keys[Roles.NightExternal], networkId);
+  const seeds = deriveSeedsFromMasterSeed(seed);
+  const unshieldedKeystore = createKeystore({ kind: 'schnorr', secret: seeds.unshielded }, networkId);
 
   const configuration = buildFacadeConfig(networkId, endpoints);
 
@@ -132,23 +126,23 @@ export async function buildWalletFromSeed({
     configuration,
     shielded: (cfg) => (snapshot
       ? ShieldedWallet(cfg).restore(snapshot.shielded)
-      : ShieldedWallet(cfg).startWithSecretKeys(shieldedSecretKeys)),
+      : ShieldedWallet(cfg).startWithSeed(seeds.shielded)),
     unshielded: (cfg) => (snapshot
       ? UnshieldedWallet(cfg).restore(snapshot.unshielded)
       : UnshieldedWallet(cfg).startWithPublicKey(UnshieldedPublicKey.fromKeyStore(unshieldedKeystore))),
     dust: (cfg) => (snapshot
       ? DustWallet(cfg).restore(snapshot.dust)
-      : DustWallet(cfg).startWithSecretKey(dustSecretKey, ledger.LedgerParameters.initialParameters().dust)),
+      : DustWallet(cfg).startWithSeed(seeds.dust)),
   });
-  await facade.start(shieldedSecretKeys, dustSecretKey);
+  try {
+  await facade.start(seeds);
 
-  const ctx = { wallet: facade, shieldedSecretKeys, dustSecretKey, unshieldedKeystore };
+  const ctx = { wallet: facade, unshieldedKeystore };
 
   log.info(`  Unshielded address: ${unshieldedKeystore.getBech32Address().asString()}`);
   // Local chains sync in seconds. Public networks replay the chain's ledger
   // events for a new wallet; the Foundation measured ~67 min for a full
-  // Preprod sync. Blockfrost also slows idle progress updates, so a short
-  // fixed timeout causes false failures. `each` resets on every emission.
+  // Preprod sync. `each` resets on every emission.
   const syncTimeoutMs = networkId === 'undeployed'
     ? 120_000
     : Number(process.env.POB_SYNC_TIMEOUT_MS || 90 * 60_000);
@@ -196,13 +190,29 @@ export async function buildWalletFromSeed({
       try { await facade.stop(); } catch { /* noop */ }
     },
   };
+  } catch (error) {
+    // Includes start, sync, registration and snapshot failures: never leave
+    // an orphaned wallet retrying after the caller has entered paused mode.
+    await facade.stop().catch(() => {});
+    throw error;
+  }
 }
 
 async function readWalletSnapshot(snapshotPath, networkId) {
   if (!snapshotPath) return null;
   try {
     const raw = JSON.parse(await fs.readFile(snapshotPath, 'utf8'));
-    if (raw.version !== 1 || raw.networkId !== networkId || !raw.shielded || !raw.unshielded || !raw.dust) {
+    // version 2 = wallet-sdk 2.0.0 writes. A version-1 (SDK 1.2.0) snapshot is
+    // not loadable by the new wallets, so it is a cold start, not an error.
+    if (raw.version !== 2) {
+      if (raw.version === 1) {
+        log.warn(`  Wallet snapshot at ${snapshotPath} was written by wallet-sdk 1.x; cold start (it will be overwritten with a v2 snapshot after sync).`);
+        return null;
+      }
+      log.warn(`  Wallet snapshot at ${snapshotPath} is for another network/version; cold start.`);
+      return null;
+    }
+    if (raw.networkId !== networkId || !raw.shielded || !raw.unshielded || !raw.dust) {
       log.warn(`  Wallet snapshot at ${snapshotPath} is for another network/version; cold start.`);
       return null;
     }
@@ -218,16 +228,16 @@ async function writeWalletSnapshot(snapshotPath, networkId, facade) {
   const [shielded, unshielded, dust] = await Promise.all([
     facade.shielded.serializeState(), facade.unshielded.serializeState(), facade.dust.serializeState(),
   ]);
-  const body = JSON.stringify({ version: 1, networkId, savedAt: new Date().toISOString(), shielded, unshielded, dust });
+  const body = JSON.stringify({ version: 2, networkId, savedAt: new Date().toISOString(), shielded, unshielded, dust });
   await fs.mkdir(path.dirname(snapshotPath), { recursive: true });
   await fs.writeFile(`${snapshotPath}.tmp`, body, 'utf8');
   await fs.rename(`${snapshotPath}.tmp`, snapshotPath);
 }
 
 /**
- * Register all unregistered NIGHT UTXOs for dust generation. This is a
- * separate on-chain tx that costs no fees (it's the bootstrap path) and
- * unblocks the wallet's ability to pay future tx fees in DUST.
+ * Register all unregistered NIGHT UTXOs for dust generation. The wallet-sdk
+ * 2.0.0 call self-signs via the SignSegment callback and returns an
+ * UnprovenTransactionRecipe — finalize + submit only.
  */
 async function registerNightForDust(ctx, networkId) {
   const state = await Rx.firstValueFrom(
@@ -241,10 +251,12 @@ async function registerNightForDust(ctx, networkId) {
     return false;
   }
   log.info(`  Found ${unregistered.length} unregistered NIGHT UTXO(s)`);
+  // The recipe is already signed (the SignSegment is applied inside the call);
+  // only finalize + submit remain.
   const recipe = await ctx.wallet.registerNightUtxosForDustGeneration(
     unregistered,
     ctx.unshieldedKeystore.getPublicKey(),
-    (payload) => ctx.unshieldedKeystore.signData(payload),
+    ctx.unshieldedKeystore.signDataAsync,
   );
   const finalized = await ctx.wallet.finalizeRecipe(recipe);
   const txId = await ctx.wallet.submitTransaction(finalized);
@@ -252,10 +264,8 @@ async function registerNightForDust(ctx, networkId) {
   // DUST generation is linear from zero once the registration lands. On a
   // local chain that is seconds; on Preview the first registration run
   // (2026-10-02) was INCLUDED in block 1128568 yet the wallet still showed
-  // DUST 0 for well over 2 minutes, and the old fixed 120 s wait aborted
-  // the whole e2e even though nothing was wrong. Public networks therefore
-  // get a long, env-overridable wait and a periodic heartbeat so a human
-  // watching the terminal can tell "waiting" from "stuck".
+  // DUST 0 for well over 2 minutes. Public networks therefore get a long,
+  // env-overridable wait and a periodic heartbeat.
   const dustWaitMs = networkId === 'undeployed'
     ? 120_000
     : Number(process.env.POB_DUST_WAIT_MS || 30 * 60_000);

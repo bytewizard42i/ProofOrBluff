@@ -13,23 +13,23 @@
     "e2e": "node src/cli.js e2e"
   },
   "dependencies": {
-    "@midnight-ntwrk/compact-runtime": "0.16.0",
-    "@midnight-ntwrk/compact-js": "2.5.1",
-    "@midnight-ntwrk/ledger-v8": "8.1.2",
-    "@midnight-ntwrk/midnight-js": "4.1.1",
-    "@midnight-ntwrk/midnight-js-contracts": "4.1.1",
-    "@midnight-ntwrk/midnight-js-types": "4.1.1",
-    "@midnight-ntwrk/midnight-js-utils": "4.1.1",
-    "@midnight-ntwrk/midnight-js-network-id": "4.1.1",
-    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "4.1.1",
-    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "4.1.1",
-    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "4.1.1",
-    "@midnight-ntwrk/midnight-js-level-private-state-provider": "4.1.1",
-    "@midnight-ntwrk/wallet-sdk": "1.2.0",
+    "@midnight-ntwrk/compact-runtime": "0.21.0",
+    "@midnight-ntwrk/compact-js": "3.0.0",
+    "@midnight-ntwrk/midnight-js": "5.0.0",
+    "@midnight-ntwrk/midnight-js-contracts": "5.0.0",
+    "@midnight-ntwrk/midnight-js-protocol": "5.0.0",
+    "@midnight-ntwrk/midnight-js-types": "5.0.0",
+    "@midnight-ntwrk/midnight-js-utils": "5.0.0",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "5.0.0",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "5.0.0",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "5.0.0",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider": "5.0.0",
+    "@midnightntwrk/ledger-v9": "1.0.0",
+    "@midnightntwrk/wallet-sdk": "2.0.0",
     "buffer": "^6.0.3",
     "dotenv": "^16.4.5",
     "rxjs": "^7.8.1",
     "ws": "^8.18.0"
   },
-  "_versionNotes": "PUBLIC-NETWORK MATRIX (Oct 2 2026, verified via Kapa + npm): midnight-js 4.1.1, wallet-sdk 1.2.0 single barrel (EXACT pin — npm latest resolves to 1.1.0), ledger-v8 8.1.2 (validated in the Foundation's Blockfrost runbook), compact-js 2.5.1, compact-runtime 0.16.0 for Compact 0.31.1. Local stack must be midnight-local-dev's node 1.0.0 / indexer-standalone 4.3.3 (api/v4) / proof-server 8.1.0. The previous split wallet-sdk-* pins (facade 3 / dust 3 / unshielded 2) were a full major behind what wallet-sdk 1.2.0 wraps and produced transactions the current node validated but never included. Do NOT follow midnight-js 5.x (ledger 9) until public networks run it. The ROOT package.json carries an `overrides` pin for ledger-v8 — midnight-js-protocol otherwise nests its own 8.1.0 copy and WASM `instanceof LedgerParameters` checks fail across the two copies (npm honours overrides only at the workspace root)."
+  "_versionNotes": "LEDGER-9 MATRIX (Mainnet hard-forked to ledger 9 on 2026-11-06): midnight-js 5.0.0, @midnightntwrk/wallet-sdk 2.0.0, @midnightntwrk/ledger-v9 1.0.0, @midnight-ntwrk/compact-js 3.0.0, @midnight-ntwrk/compact-runtime 0.21.0 for Compact 0.36.0 (language 0.28). Stack: proof-server 9.0.0, indexer 4.4.101, node accepting ledger-v9 1.0.0 transactions. Node.js >= 22.12 required — every midnight-js 5.x and wallet-sdk 2.x package is ESM-only. The ledger-9 protocol packages moved to the @midnightntwrk scope (no hyphen); midnight-js-*, compact-js, compact-runtime and platform-js stay on @midnight-ntwrk. midnight-js-network-id is gone — network id now travels in providers.config. The ROOT package.json overrides pin one copy each of ledger-v9, onchain-runtime-v4 and platform-js: two copies of a WASM package fail `instanceof` checks across copies."
 }

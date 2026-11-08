@@ -1,0 +1,6 @@
+{
+  "name": "@pob/legacy-rollup-v3p",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@midnight-ntwrk/compact-runtime": "0.16.0" }
+}

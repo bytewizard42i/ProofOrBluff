@@ -32,7 +32,7 @@ services:
   proof-server:
     # Tag pinned to the proof server version in the current Midnight support
     # matrix. Bump only together with ledger/compact/midnight.js versions.
-    image: midnightntwrk/proof-server:8.1.0
+    image: midnightntwrk/proof-server:9.0.0
     container_name: pob-proof-server
     restart: unless-stopped
     # The image's ENTRYPOINT is `bash -c <single string>`, so CLI flags passed as

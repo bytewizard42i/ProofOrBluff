@@ -5,7 +5,7 @@ TaskFence. Everything is Docker Compose; this folder is the source of truth.
 
 | Container | What | Public name |
 |---|---|---|
-| `pob-proof-server` | Midnight proof server 8.1.0 | `proof.prooforbluff.app` |
+| `pob-proof-server` | Midnight proof server 9.0.0 (fallback prover) | `proof.prooforbluff.app` |
 | `pob-api` | Sponsored game service (Node 22) | `api.prooforbluff.app` |
 | `pob-caddy` | TLS + origin-locked CORS | both |
 
@@ -71,6 +71,39 @@ ssh root@69.62.70.163 'cd /opt/prooforbluff && docker compose logs -f --tail=200
 The Blockfrost project id is scrubbed from the service's own output
 (`project_id=[redacted]`). Chain steps log as
 `chain <game8> proveRound(2) tx=… block=… 55.0s`.
+
+## Pausing the API on purpose (maintenance marker)
+
+`watchdog.sh` runs from cron every minute and restarts any stopped stack
+container. A deliberate stop therefore needs the marker file, or cron brings
+the API straight back:
+
+```bash
+ssh root@69.62.70.163 'touch /opt/prooforbluff/pob-api.maintenance && cd /opt/prooforbluff && docker compose stop pob-api'
+# ...repair...
+ssh root@69.62.70.163 'rm /opt/prooforbluff/pob-api.maintenance && cd /opt/prooforbluff && docker compose up -d pob-api'
+```
+
+Caddy and the fallback prover stay monitored while the marker exists.
+
+## Indexer quota incident (2026-11-08)
+
+Blockfrost's free tier allows 50k requests/day. After the ledger-9 hard fork
+the ledger-8 wallet could not decode the new event format and retried its
+sync continuously (~9,400 failures in six hours), exhausting the allowance
+with zero games open. Blockfrost then answered `HTTP 402` until the daily
+reset. Safeguards now in place:
+
+* `checkIndexerAvailability` sends ONE block query before wallet sync starts;
+  a 402/429 leaves the API in paused mode (`/v1/health` → `ok:false` with the
+  reason) instead of starting the SDK's background subscriptions.
+* Readiness follows the SDK's live `isSynced` verdict, and an observation
+  older than five minutes counts as stalled (the SDK heartbeats every 30 s).
+* A wallet that stays unavailable for ten minutes after a successful start is
+  shut down; the process stays alive and reports paused until an operator
+  checks the provider and restarts it.
+* Startup/sync failures stop the facade before rethrowing, so no orphaned
+  wallet keeps polling behind a paused health response.
 
 ## Rollback
 

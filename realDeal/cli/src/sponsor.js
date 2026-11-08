@@ -19,7 +19,7 @@
  *   - sponsorship that would drop the sponsor below its reserve floor
  */
 
-import * as ledger from '@midnight-ntwrk/ledger-v8';
+import * as ledger from '@midnightntwrk/ledger-v9';
 
 export const SPONSOR_LIMITS = Object.freeze({
   // A proved playCards transaction is a few hundred KB of hex at most.
@@ -118,8 +118,8 @@ export function createRateLimiter({ limit = SPONSOR_LIMITS.maxTransactionsPerMin
 
 /**
  * Builds the sponsor against an already-synced wallet context from
- * buildWalletFromSeed(): { wallet, shieldedSecretKeys, dustSecretKey,
- * unshieldedKeystore }. `reserveDust` is the floor we keep for the bot's
+ * buildWalletFromSeed(): { wallet, unshieldedKeystore }. `reserveDust` is
+ * the floor we keep for the bot's
  * own moves; below it we stop sponsoring rather than stranding the game.
  */
 export function createSponsor({
@@ -144,7 +144,7 @@ export function createSponsor({
     if (!clean) throw new SponsorError(400, 'tx must be a hex-encoded finalized transaction.');
     if (clean.length / 2 > SPONSOR_LIMITS.maxBodyBytes) throw new SponsorError(413, 'Transaction is too large to sponsor.');
     try {
-      return ledger.Transaction.deserialize('signature', 'proof', 'binding', Buffer.from(clean, 'hex'), networkId);
+      return ledger.Transaction.deserialize('signature', 'proof', 'binding', Buffer.from(clean, 'hex'));
     } catch (error) {
       throw new SponsorError(400, `Transaction could not be decoded as a finalized Midnight transaction: ${error?.message || error}`);
     }
@@ -168,20 +168,17 @@ export function createSponsor({
         throw new SponsorError(503, 'The sponsor is out of DUST right now. Pay your own fee or retry later.');
       }
 
+      // wallet-sdk 2: no secret keys in transacting calls, transactions travel
+      // as handles, and the signer is the async SignSegment shape.
+      const handle = walletCtx.wallet.adoptTransaction(Buffer.from(normalizeHex(txHex), 'hex'), 'Finalized');
       const ttl = new Date(Date.now() + SPONSOR_LIMITS.ttlMs);
       const recipe = await walletCtx.wallet.balanceFinalizedTransaction(
-        transaction,
-        { shieldedSecretKeys: walletCtx.shieldedSecretKeys, dustSecretKey: walletCtx.dustSecretKey },
+        handle,
         { ttl, tokenKindsToBalance: ['dust'] },
       );
-      const signed = await walletCtx.wallet.signRecipe(recipe, (payload) => walletCtx.unshieldedKeystore.signData(payload));
+      const signed = await walletCtx.wallet.signRecipe(recipe, walletCtx.unshieldedKeystore.signDataAsync);
       const finalized = await walletCtx.wallet.finalizeRecipe(signed);
-      let txId = null;
-      try {
-        const ids = finalized.identifiers?.();
-        txId = Array.isArray(ids) && ids.length > 0 ? ids[0] : finalized.transactionHash?.();
-      } catch { txId = null; }
-      await walletCtx.wallet.submitTransaction(finalized);
+      const txId = await walletCtx.wallet.submitTransaction(finalized);
       logger.log?.(`[sponsor] paid fees for ${txId ?? 'tx'} (client ${clientKey})`);
       return { txId, sponsored: true };
     };

@@ -15,10 +15,10 @@
 // proof. A successful return means the circuit + witnesses + keys produce a
 // valid ZK proof; on-chain acceptance is then rehearsed on Preview/Preprod.
 
-import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import * as runtime from '@midnight-ntwrk/compact-runtime';
-import * as ledger from '@midnight-ntwrk/ledger-v8';
-import { CompiledContract } from '@midnight-ntwrk/compact-js';
+import * as ledger from '@midnightntwrk/ledger-v9';
+import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/v9/compact-js';
+import { SerializedContractState, SerializedZswapChainState, SerializedLedgerParameters } from '@midnight-ntwrk/midnight-js-types';
 import { createUnprovenCallTxFromInitialStates } from '@midnight-ntwrk/midnight-js-contracts';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
@@ -132,8 +132,9 @@ console.log('      sim ledger shows the game closed — constraints satisfied');
 
 // --- build the UNPROVEN transaction ---------------------------------------
 console.log('[3/4] building the unproven closeGame transaction…');
-setNetworkId('undeployed');
-const zkConfigProvider = new NodeZkConfigProvider(MANAGED_DIR);
+// 5.0: no global network id — the config travels in the options.
+const MIDNIGHT_CONFIG = { networkId: 'undeployed', ttlSeconds: 3_600 };
+const zkConfigProvider = new NodeZkConfigProvider(MANAGED_DIR, { verify: 'require-if-present' });
 const compiledContract = CompiledContract.make('proof-or-bluff-rollup', Contract).pipe(
   CompiledContract.withWitnesses(witnesses),
   CompiledContract.withCompiledFileAssets(MANAGED_DIR),
@@ -169,10 +170,10 @@ const unsubmitted = await createUnprovenCallTxFromInitialStates(zkConfigProvider
   circuitId: 'closeGame',
   contractAddress: ledger.sampleContractAddress(),
   args: [gameId, result.transcriptRoot, result.p1Score, result.p2Score, result.winner, nowSeconds],
-  coinPublicKey: ledger.sampleCoinPublicKey(),
+  coinPublicKey: ledger.sampleCoinPublicKey(), config: MIDNIGHT_CONFIG,
   initialContractState: postOpenContractState,
-  initialZswapChainState: new ledger.ZswapChainState(),
-  ledgerParameters: ledger.LedgerParameters.initialParameters(),
+  initialZswapChainState: SerializedZswapChainState.fromBytes('v9', new ledger.ZswapChainState().serialize()),
+  ledgerParameters: SerializedLedgerParameters.fromBytes('v9', ledger.LedgerParameters.initialParameters().serialize()),
   initialPrivateState: openResult.context.currentPrivateState,
 }, ledger.sampleEncryptionPublicKey());
 const unprovenBytes = unsubmitted.private.unprovenTx.serialize();

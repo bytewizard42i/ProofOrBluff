@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeAll } from 'vitest';
-import * as runtime from '@midnight-ntwrk/compact-runtime';
+import * as runtime from 'compact-runtime-ledger8';
 import { createReferee, KIND, MAX_MOVES, startingRank, winThreshold } from './rollup-referee.js';
 import {
   consentKeyPairFromSecret, buildCloseConsent, signCloseConsent, challengeReductionWitness, TWO_248,

@@ -2,7 +2,7 @@ name: pob-terry
 
 services:
   proof-server:
-    image: midnightntwrk/proof-server:8.1.0@sha256:801bbc0340e9e96f16735f77b523f23c7459e3359842f7c79c2c53f4e994d531
+    image: midnightntwrk/proof-server:9.0.0@sha256:5617e26aa76d06c44f4bee667c37eb71ccf02fefe0e5848100fa84001282d515
     restart: unless-stopped
     environment:
       HOME: /root

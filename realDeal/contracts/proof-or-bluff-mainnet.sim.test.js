@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import * as runtime from '@midnight-ntwrk/compact-runtime';
+import * as runtime from 'compact-runtime-ledger8';
 import { Contract, pureCircuits } from './managed/proof-or-bluff-mainnet/contract/index.js';
 
 // These tests execute the REAL compiled circuits in memory (no chain, no proof

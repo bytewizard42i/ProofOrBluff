@@ -48,19 +48,19 @@ export type Witnesses<PS> = {
 }
 
 export type ImpureCircuits<PS> = {
-  proveRound(context: __compactRuntime.CircuitContext<PS>, round_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+  proveRound(context: __compactRuntime.CircuitContext<PS>, round_0: bigint): Promise<__compactRuntime.CircuitResults<PS, []>>;
   closeGame(context: __compactRuntime.CircuitContext<PS>,
             finalP1Score_0: bigint,
             finalP2Score_0: bigint,
-            finalWinner_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+            finalWinner_0: bigint): Promise<__compactRuntime.CircuitResults<PS, []>>;
 }
 
 export type ProvableCircuits<PS> = {
-  proveRound(context: __compactRuntime.CircuitContext<PS>, round_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+  proveRound(context: __compactRuntime.CircuitContext<PS>, round_0: bigint): Promise<__compactRuntime.CircuitResults<PS, []>>;
   closeGame(context: __compactRuntime.CircuitContext<PS>,
             finalP1Score_0: bigint,
             finalP2Score_0: bigint,
-            finalWinner_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+            finalWinner_0: bigint): Promise<__compactRuntime.CircuitResults<PS, []>>;
 }
 
 export type PureCircuits = {
@@ -109,53 +109,53 @@ export type PureCircuits = {
 
 export type Circuits<PS> = {
   commitEntropy(context: __compactRuntime.CircuitContext<PS>,
-                entropy_0: Uint8Array): __compactRuntime.CircuitResults<PS, Uint8Array>;
+                entropy_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
   combineEntropy(context: __compactRuntime.CircuitContext<PS>,
                  p1Entropy_0: Uint8Array,
-                 p2Entropy_0: Uint8Array): __compactRuntime.CircuitResults<PS, bigint>;
+                 p2Entropy_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, bigint>>;
   commitRoundSecret(context: __compactRuntime.CircuitContext<PS>,
                     secret_0: Uint8Array,
-                    round_0: bigint): __compactRuntime.CircuitResults<PS, Uint8Array>;
+                    round_0: bigint): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
   chainBoard(context: __compactRuntime.CircuitContext<PS>,
              prev_0: bigint,
-             board_0: bigint[]): __compactRuntime.CircuitResults<PS, bigint>;
+             board_0: bigint[]): Promise<__compactRuntime.CircuitResults<PS, bigint>>;
   chainMove(context: __compactRuntime.CircuitContext<PS>,
             prev_0: bigint,
             kind_0: bigint,
             count_0: bigint,
             rankA_0: bigint,
             rankB_0: bigint,
-            lies_0: bigint): __compactRuntime.CircuitResults<PS, bigint>;
+            lies_0: bigint): Promise<__compactRuntime.CircuitResults<PS, bigint>>;
   playerIdFromPk(context: __compactRuntime.CircuitContext<PS>,
-                 pk_0: __compactRuntime.JubjubPoint): __compactRuntime.CircuitResults<PS, Uint8Array>;
+                 pk_0: __compactRuntime.JubjubPoint): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
   closeConsentFor(context: __compactRuntime.CircuitContext<PS>,
                   gameId_0: Uint8Array,
                   transcriptRoot_0: bigint,
                   p1Score_0: bigint,
                   p2Score_0: bigint,
-                  winner_0: bigint): __compactRuntime.CircuitResults<PS, CloseConsent>;
+                  winner_0: bigint): Promise<__compactRuntime.CircuitResults<PS, CloseConsent>>;
   closeConsentChallenge(context: __compactRuntime.CircuitContext<PS>,
                         r_0: __compactRuntime.JubjubPoint,
                         pk_0: __compactRuntime.JubjubPoint,
-                        consent_0: CloseConsent): __compactRuntime.CircuitResults<PS, bigint>;
+                        consent_0: CloseConsent): Promise<__compactRuntime.CircuitResults<PS, bigint>>;
   closeConsentK(context: __compactRuntime.CircuitContext<PS>,
                 sk_0: bigint,
-                consent_0: CloseConsent): __compactRuntime.CircuitResults<PS, bigint>;
+                consent_0: CloseConsent): Promise<__compactRuntime.CircuitResults<PS, bigint>>;
   dealDigest(context: __compactRuntime.CircuitContext<PS>,
              salt0_0: Uint8Array,
              salt1_0: Uint8Array,
              seed_0: bigint,
-             round_0: bigint): __compactRuntime.CircuitResults<PS, Uint8Array>;
+             round_0: bigint): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
   shuffleDigest(context: __compactRuntime.CircuitContext<PS>,
                 salt0_0: Uint8Array,
                 salt1_0: Uint8Array,
                 seed_0: bigint,
-                round_0: bigint): __compactRuntime.CircuitResults<PS, Uint8Array>;
+                round_0: bigint): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
   showdownDigest(context: __compactRuntime.CircuitContext<PS>,
                  salt0_0: Uint8Array,
                  salt1_0: Uint8Array,
                  seed_0: bigint,
-                 round_0: bigint): __compactRuntime.CircuitResults<PS, Uint8Array>;
+                 round_0: bigint): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
   commitBoundary(context: __compactRuntime.CircuitContext<PS>,
                  b_0: { turn: bigint,
                         score0: bigint,
@@ -164,13 +164,13 @@ export type Circuits<PS> = {
                         ended: boolean,
                         winner: bigint,
                         chain: bigint
-                      }): __compactRuntime.CircuitResults<PS, Uint8Array>;
-  commitTranscript(context: __compactRuntime.CircuitContext<PS>, chain_0: bigint): __compactRuntime.CircuitResults<PS, Uint8Array>;
-  proveRound(context: __compactRuntime.CircuitContext<PS>, round_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+                      }): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
+  commitTranscript(context: __compactRuntime.CircuitContext<PS>, chain_0: bigint): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
+  proveRound(context: __compactRuntime.CircuitContext<PS>, round_0: bigint): Promise<__compactRuntime.CircuitResults<PS, []>>;
   closeGame(context: __compactRuntime.CircuitContext<PS>,
             finalP1Score_0: bigint,
             finalP2Score_0: bigint,
-            finalWinner_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+            finalWinner_0: bigint): Promise<__compactRuntime.CircuitResults<PS, []>>;
 }
 
 export type Ledger = {
@@ -191,10 +191,6 @@ export type Ledger = {
   readonly winner: bigint;
 }
 
-export type ContractReferenceLocations = any;
-
-export declare const contractReferenceLocations : ContractReferenceLocations;
-
 export declare class Contract<PS = any, W extends Witnesses<PS> = Witnesses<PS>> {
   witnesses: W;
   circuits: Circuits<PS>;
@@ -208,8 +204,11 @@ export declare class Contract<PS = any, W extends Witnesses<PS> = Witnesses<PS>>
                p1Entropy_0: Uint8Array,
                p2Entropy_0: Uint8Array,
                p1Rounds_0: Uint8Array[],
-               p2Rounds_0: Uint8Array[]): __compactRuntime.ConstructorResult<PS>;
+               p2Rounds_0: Uint8Array[]): Promise<__compactRuntime.ConstructorResult<PS>>;
 }
 
 export declare function ledger(state: __compactRuntime.StateValue | __compactRuntime.ChargedState): Ledger;
 export declare const pureCircuits: PureCircuits;
+export declare const expectedVk: Record<string, string>;
+export declare const circuitSignatures: __compactRuntime.CircuitSignatures;
+export declare const declaredInterfaces: __compactRuntime.DeclaredInterfaces;

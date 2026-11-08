@@ -22,29 +22,21 @@
 
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { Buffer } from 'buffer';
-import * as Rx from 'rxjs';
 
-import * as ledger from '@midnight-ntwrk/ledger-v8';
 import {
   deployContract as midnightDeployContract,
   findDeployedContract as midnightFindDeployedContract,
 } from '@midnight-ntwrk/midnight-js-contracts';
-import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
-import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
-import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
-import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
-import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
-import { CompiledContract } from '@midnight-ntwrk/compact-js';
+import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/v9/compact-js';
+import { ContractState } from '@midnight-ntwrk/compact-runtime';
 
-import { withDustRetry } from './contract.js';
+import { withDustRetry, buildLedger9Providers } from './providers.js';
 import { challengeReductionWitness } from './rollup-consent.js';
 import {
   assertSupportedNetwork, assertMainnetDeployApproved, assertFreshPublicSeed, toBytes32, bytesToHex,
 } from './rollup-contract.js';
 import { access } from 'node:fs/promises';
 import { initialBoundary, MAX_ROUNDS, MOVES_PER_ROUND } from '../../contracts/five-up-referee.js';
-import * as state from './state.js';
 
 export const FIVE_UP_CONTRACT_NAME = 'five-up-two-down';
 export const FIVE_UP_PRIVATE_STATE_ID = 'pob:five-up:private';
@@ -91,74 +83,16 @@ export function assertRoundWitnessShape(w) {
 }
 
 // ---------------------------------------------------------------------------
-// Provider bridge — same as rollup-contract.js (module-private there).
+// Bindings loader. The provider bridge itself lives in providers.js (shared
+// by every adapter since the ledger-9 migration).
 async function loadModule(managedDir) {
   return import(pathToFileURL(path.resolve(managedDir, 'contract', 'index.js')).href);
 }
-function signTransactionIntents(tx, signFn, proofMarker) {
-  if (!tx.intents || tx.intents.size === 0) return;
-  for (const segment of tx.intents.keys()) {
-    const intent = tx.intents.get(segment);
-    if (!intent) continue;
-    const cloned = ledger.Intent.deserialize('signature', proofMarker, 'pre-binding', intent.serialize());
-    const signature = signFn(cloned.signatureData(segment));
-    for (const offerName of ['fallibleUnshieldedOffer', 'guaranteedUnshieldedOffer']) {
-      const offer = cloned[offerName];
-      if (!offer) continue;
-      cloned[offerName] = offer.addSignatures(offer.inputs.map((_i, idx) => offer.signatures.at(idx) ?? signature));
-    }
-    tx.intents.set(segment, cloned);
-  }
-}
-async function createWalletAndMidnightProvider(walletCtx) {
-  const synced = await Rx.firstValueFrom(walletCtx.wallet.state().pipe(Rx.filter((s) => s.isSynced)));
-  return {
-    getCoinPublicKey() { return synced.shielded.coinPublicKey.toHexString(); },
-    getEncryptionPublicKey() { return synced.shielded.encryptionPublicKey.toHexString(); },
-    async balanceTx(tx, ttl) {
-      const recipe = await walletCtx.wallet.balanceUnboundTransaction(
-        tx,
-        { shieldedSecretKeys: walletCtx.shieldedSecretKeys, dustSecretKey: walletCtx.dustSecretKey },
-        { ttl: ttl ?? new Date(Date.now() + 30 * 60 * 1000) },
-      );
-      const signFn = (payload) => walletCtx.unshieldedKeystore.signData(payload);
-      signTransactionIntents(recipe.baseTransaction, signFn, 'proof');
-      if (recipe.balancingTransaction) signTransactionIntents(recipe.balancingTransaction, signFn, 'pre-proof');
-      return walletCtx.wallet.finalizeRecipe(recipe);
-    },
-    submitTx(tx) { return walletCtx.wallet.submitTransaction(tx); },
-  };
-}
-function resolvePrivateStatePassword(networkId, accountId, environment = process.env) {
-  const password = networkId === 'undeployed'
-    ? environment.POB_PRIVATE_STATE_PASSWORD || `${Buffer.from(accountId, 'hex').toString('base64')}!pob`
-    : environment.POB_PRIVATE_STATE_PASSWORD;
-  if (!password || password.length < 16) throw new Error('Set POB_PRIVATE_STATE_PASSWORD (at least 16 characters) before connecting to a public network.');
-  return password;
-}
 async function buildDefaultProviders({ walletHandle, endpoints, networkId, managedDir, proofServerUrl }) {
-  const walletCtx = walletHandle?.ctx;
-  if (!walletCtx) throw new Error('walletHandle.ctx missing — build it with buildWalletFromSeed() from wallet-node.js first.');
-  if (!endpoints?.indexer || !endpoints?.indexerWs) throw new Error('endpoints.indexer and endpoints.indexerWs are required.');
-  const proofServer = proofServerUrl ?? endpoints.proofServer;
-  if (!proofServer) throw new Error('No proof server URL. Pass proofServerUrl or endpoints.proofServer (POB_PROOF_SERVER).');
-  const wmp = await createWalletAndMidnightProvider(walletCtx);
-  const accountId = wmp.getCoinPublicKey();
-  const zkConfigProvider = new NodeZkConfigProvider(managedDir);
-  return {
-    privateStateProvider: levelPrivateStateProvider({
-      privateStateStoreName: 'pob-five-up',
-      privateStateStorePath: path.join(state.stateRoot(), networkId, 'private-state-five-up'),
-      accountId,
-      privateStoragePasswordProvider: () => resolvePrivateStatePassword(networkId, accountId),
-    }),
-    publicDataProvider: indexerPublicDataProvider(endpoints.indexer, endpoints.indexerWs),
-    zkConfigProvider,
-    // Large timeout: a round proof is a few seconds on our prover; a cold public server may be slower.
-    proofProvider: httpClientProofProvider(proofServer, zkConfigProvider, { timeout: 1_800_000 }),
-    walletProvider: wmp,
-    midnightProvider: wmp,
-  };
+  return buildLedger9Providers({
+    walletHandle, endpoints, networkId, managedDir, proofServerUrl,
+    storeName: 'pob-five-up', storeDirName: 'private-state-five-up',
+  });
 }
 
 const txHash = (f) => (f?.public ?? f)?.txHash ?? (f?.public ?? f)?.txId ?? null;
@@ -180,7 +114,6 @@ export async function getFiveUpContractApi({
 }) {
   assertSupportedNetwork(networkId);
   if (seedHex !== undefined) assertFreshPublicSeed(seedHex, networkId);
-  setNetworkId(networkId);
   const internals = {
     loadContractModule: loadModule, buildProviders: buildDefaultProviders,
     deployContract: midnightDeployContract, findDeployedContract: midnightFindDeployedContract, ..._internals,
@@ -226,9 +159,11 @@ export async function getFiveUpContractApi({
     return withDustRetry(name, () => circuit(...args));
   };
   const readLedger = async () => {
-    const cs = await providers.publicDataProvider.queryContractState(contractAddress);
-    if (!cs) throw new Error(`The indexer has no state for 5U2D game ${contractAddress} yet. Wait for the deploy tx to be indexed and retry.`);
-    return decodeLedger(cs.data);
+    const read = await providers.publicDataProvider.queryContractState(contractAddress);
+    if (!read) throw new Error(`The indexer has no state for 5U2D game ${contractAddress} yet. Wait for the deploy tx to be indexed and retry.`);
+    // 5.0 returns SerializedContractState (bytes + era); decode with our own
+    // compact-runtime copy, the one the contract was compiled against.
+    return decodeLedger(read.contractState.deserialize({ v9: ContractState }).data);
   };
 
   return {

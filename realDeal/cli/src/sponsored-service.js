@@ -30,6 +30,37 @@ import { createFiveUpGame, FIVE_UP_MODES, GAME_TYPE as FIVE_UP } from './five-up
 // so the chain queue asks for the right contract binding.
 export const GAME_TYPES = Object.freeze(['original', FIVE_UP]);
 
+// Use the current SDK verdict and expire observations if the stream stalls.
+// An old positive DUST balance does not establish that the wallet can transact.
+export function walletObservation(state, now = Date.now()) {
+  return {
+    balance: state.dust?.balance(new Date(now)) ?? 0n,
+    synced: state.isSynced === true,
+    at: new Date(now).toISOString(),
+  };
+}
+
+export function walletIsCurrent(observation, now = Date.now()) {
+  const age = now - Date.parse(observation.at);
+  return observation.synced && age >= 0 && age < 5 * 60_000;
+}
+
+/** One bounded request before starting the SDK's background subscriptions. */
+export async function checkIndexerAvailability(indexerUrl, fetchRequest = fetch) {
+  const response = await fetchRequest(indexerUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: '{ block { height protocolVersion } }' }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (response.status === 402 || response.status === 429) {
+    throw new Error(`Indexer access paused (HTTP ${response.status}): check the Blockfrost quota before restarting the API.`);
+  }
+  if (!response.ok) throw new Error(`Indexer unavailable (HTTP ${response.status}); wallet sync was not started.`);
+  const body = await response.json();
+  if (!body.data?.block || body.errors?.length) throw new Error('Indexer did not return a valid block; wallet sync was not started.');
+}
+
 // Bind address. Loopback by default (local dev, or a bare-metal box where Caddy
 // runs on the same host). Inside the Docker stack (ops/vps/compose.yaml) Caddy
 // lives in ANOTHER container and reaches us over the compose network, so the
@@ -502,11 +533,42 @@ async function main() {
   // from everything that reaches stdout/stderr so container logs stay clean.
   installConsoleRedaction(process.env.BLOCKFROST_PROJECT_ID?.trim());
 
+  // Keep liveness separate from readiness, including DURING wallet startup.
+  // A quota/configuration failure must not crash into Docker/watchdog restarts.
+  let app, queue, walletHandle, walletSubscription, walletGuardTimer;
+  let startupReason = 'Wallet is starting; games are paused.';
+  const server = http.createServer((request, response) => {
+    if (app) return app.handle(request, response);
+    try {
+      applyCors(request, response, allowedOriginsFromEnvironment());
+      if (request.method === 'OPTIONS') { response.writeHead(204); response.end(); return; }
+      if (request.method === 'GET' && request.url === '/v1/health') {
+        return sendJson(response, 200, { ok: false, network: networkId, reason: startupReason, wallet: { synced: false } });
+      }
+      return sendJson(response, 503, { error: 'Games are temporarily paused. Please try again later.' });
+    } catch (error) { sendJson(response, error.statusCode ?? 500, { error: 'Request refused.' }); }
+  });
+  server.keepAliveTimeout = 75_000;
+  server.headersTimeout = 80_000;
+  server.listen(port, LOOPBACK_HOST, () => log(`listening on http://${LOOPBACK_HOST}:${port}/v1`));
+  const shutdown = async (signal) => {
+    log(`${signal}: draining chain queue…`);
+    server.close();
+    if (walletGuardTimer) clearInterval(walletGuardTimer);
+    if (queue) await Promise.race([queue.idle(), new Promise((r) => setTimeout(r, 120_000))]);
+    walletSubscription?.unsubscribe();
+    await walletHandle?.shutdown?.();
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+
+  try {
   const { buildWalletFromSeed } = await import('./wallet-node.js');
-  // Contract version switch: 'v3p' is the live contract; 'v4' is the shared-deck
-  // + empty-hand-win revision. v4 needs its managed bindings + keys deployed.
-  const contractVersion = process.env.POB_CONTRACT_VERSION || 'v3p';
-  if (!['v3p', 'v4'].includes(contractVersion)) throw new Error(`POB_CONTRACT_VERSION must be v3p or v4 (got ${contractVersion}).`);
+  // Only the active v4 table has ledger-9 artifacts. Older bindings remain
+  // available for historical regression tests, never as a Mainnet fallback.
+  const contractVersion = process.env.POB_CONTRACT_VERSION || 'v4';
+  if (contractVersion !== 'v4') throw new Error('The ledger-9 sponsored service requires POB_CONTRACT_VERSION=v4 and its regenerated artifacts.');
   const contractModule = contractVersion === 'v4' ? './rollup-v4-contract.js' : './rollup-v3p-contract.js';
   const contractApi = await import(contractModule);
   const getContractApi = contractVersion === 'v4' ? contractApi.getV4ContractApi : contractApi.getV3pContractApi;
@@ -526,10 +588,25 @@ async function main() {
     : { node: `https://rpc.${networkId}.midnight.network`, indexer: `https://indexer.${networkId}.midnight.network/api/v4/graphql`, indexerWs: `wss://indexer.${networkId}.midnight.network/api/v4/graphql/ws`, proofServer };
 
   log(`sponsored service network=${networkId} proofServer=${proofServer} stateDir=${stateDir}`);
+  // While the provider quota is exhausted (402/429) stay in paused mode and
+  // re-check once per POB_INDEXER_RECHECK_MS (default 15 min) — one request
+  // per check, so a day-long outage costs ~100 requests instead of ~40,000.
+  // Any other indexer failure is left to the operator (no automatic retry).
+  const INDEXER_RECHECK_MS = Number(process.env.POB_INDEXER_RECHECK_MS || 15 * 60_000);
+  for (;;) {
+    try { await checkIndexerAvailability(endpoints.indexer); break; }
+    catch (error) {
+      if (!/access paused/.test(error.message)) throw error;
+      startupReason = `${safeErrorMessage(error)} Re-checking in ${Math.round(INDEXER_RECHECK_MS / 60_000)} min.`;
+      log(`Startup paused: ${startupReason}`);
+      await new Promise((resolve) => setTimeout(resolve, INDEXER_RECHECK_MS));
+    }
+  }
+  startupReason = 'Wallet is syncing; games are paused.';
   // Sync snapshot on the state volume: restart = ~40 s instead of a ~20 min cold
   // sync (measured on Preview: 737 s cold → 37 s restored).
   const snapshotPath = process.env.POB_WALLET_SNAPSHOT || path.join(stateDir, `wallet-${networkId}.snapshot.json`);
-  const walletHandle = await buildWalletFromSeed({ seed: seedHex, endpoints, networkId, snapshotPath });
+  walletHandle = await buildWalletFromSeed({ seed: seedHex, endpoints, networkId, snapshotPath });
 
   // One contract API instance per game (each binds to one contract address).
   const apis = new Map();
@@ -547,17 +624,29 @@ async function main() {
   // Live DUST view: a game costs several transactions, so refuse to open new
   // games unless the operator wallet can pay for at least one. Mirrors the
   // wallet facade's own state stream; cheap to read on every /v1/health.
-  const { default: Rx } = await import('rxjs').then((m) => ({ default: m }));
-  // buildWalletFromSeed only returns after the initial sync, so from here on
-  // the wallet IS synced; later state emissions don't always re-assert the
-  // flag, so don't gate on it — gate on the live DUST balance only.
-  let dust = { balance: 0n, synced: true, at: new Date().toISOString() };
-  walletHandle.api.state().pipe(Rx.throttleTime(5_000)).subscribe((st) => {
-    dust = { balance: st.dust?.balance(new Date()) ?? 0n, synced: true, at: new Date().toISOString() };
+  let dust = { balance: 0n, synced: false, at: new Date().toISOString() };
+  walletSubscription = walletHandle.api.state().subscribe({
+    next: (st) => { dust = walletObservation(st); },
+    error: () => { dust = { ...dust, synced: false }; log('Wallet state stream failed; games are paused.'); },
+    complete: () => { dust = { ...dust, synced: false }; },
   });
+  // After initial sync, a prolonged failure stops network activity until an
+  // operator restarts us. Keeping HTTP alive avoids automatic retry storms.
+  let unavailableSince = null;
+  walletGuardTimer = setInterval(async () => {
+    if (walletIsCurrent(dust)) { unavailableSince = null; return; }
+    unavailableSince ??= Date.now();
+    if (Date.now() - unavailableSince < 10 * 60_000) return;
+    clearInterval(walletGuardTimer);
+    walletSubscription.unsubscribe();
+    dust = { ...dust, synced: false };
+    log('Wallet unavailable for 10 minutes: stopping sync to protect the provider quota. Inspect logs and provider status before manually restarting.');
+    await walletHandle.shutdown().catch(() => {});
+  }, 30_000);
+  walletGuardTimer.unref();
   const MIN_DUST_FOR_A_GAME = BigInt(process.env.POB_MIN_DUST_FOR_GAME || '1000000000000000'); // 1 DUST in specks (1 DUST = 1e15)
   const readiness = () => {
-    if (!dust.synced) return { ok: false, reason: 'Wallet is syncing; try again in a minute.' };
+    if (!walletIsCurrent(dust)) return { ok: false, reason: 'Wallet sync is unavailable; games are paused.' };
     if (dust.balance < MIN_DUST_FOR_A_GAME) return { ok: false, reason: 'Operator wallet has no DUST yet; games are paused.' };
     return { ok: true };
   };
@@ -573,13 +662,13 @@ async function main() {
   const DUST_STEP_WAIT_MS = Number(process.env.POB_DUST_STEP_WAIT_MS || 10 * 60_000);
   let dustLowSince = null;
   const waitDustReady = async (gameId, step) => {
-    if (dust.balance >= MIN_DUST_FOR_A_GAME) { dustLowSince = null; return; }
+    if (walletIsCurrent(dust) && dust.balance >= MIN_DUST_FOR_A_GAME) { dustLowSince = null; return; }
     const label = `${step.step}${step.round != null ? `(${step.round})` : ''}`;
     if (!dustLowSince) { dustLowSince = new Date(); log(`chain ${gameId.slice(0, 8)} ${label}: spendable DUST=${dust.balance} — waiting for the wallet view to catch up…`); }
     const deadline = Date.now() + DUST_STEP_WAIT_MS;
-    while (dust.balance < MIN_DUST_FOR_A_GAME) {
+    while (!walletIsCurrent(dust) || dust.balance < MIN_DUST_FOR_A_GAME) {
       if (Date.now() >= deadline) {
-        throw new Error(`dust-unready: spendable DUST stayed ${dust.balance} for ${DUST_STEP_WAIT_MS / 1000}s before ${label} — wallet dust tracking is likely stuck (lost change UTXO). Fix: restart pob-api with the wallet snapshot deleted (cold resync), then retry.`);
+        throw new Error(`wallet-unready: sync or DUST remained unavailable for ${DUST_STEP_WAIT_MS / 1000}s before ${label}. Inspect wallet/indexer logs before restarting; do not repeatedly resync.`);
       }
       await new Promise((resolve) => setTimeout(resolve, 15_000));
     }
@@ -587,37 +676,26 @@ async function main() {
     dustLowSince = null;
   };
 
-  let app;
-  const queue = createChainQueue({ chainForGame, stateDir, onReceipt: (gameId, r) => app.receipt(gameId, r), beforeStep: waitDustReady });
+  queue = createChainQueue({ chainForGame, stateDir, onReceipt: (gameId, r) => app.receipt(gameId, r), beforeStep: waitDustReady });
   app = createSponsoredHttpApp({
     pureCircuits, fiveUpPureCircuits, queue, network: networkId, allowedOrigins: allowedOriginsFromEnvironment(),
     walletAddress: walletHandle.address ?? null,
     readiness, contractVersion,
-    walletExtra: () => ({ dust: dust.balance.toString(), synced: dust.synced, observedAt: dust.at, dustLowSince: dustLowSince?.toISOString() ?? null }),
+    walletExtra: () => ({ dust: dust.balance.toString(), synced: walletIsCurrent(dust), observedAt: dust.at, dustLowSince: dustLowSince?.toISOString() ?? null }),
   });
 
-  const server = http.createServer((req, res) => app.handle(req, res));
-  // Caddy pools keep-alive upstream connections and can reuse one a fraction
-  // of a second after Node's default 5 s keepAliveTimeout has begun closing it
-  // → "connection reset by peer" → the player sees a 502 mid-game (observed
-  // 2026-10-08). Keep server sockets alive well past the proxy's idle window.
-  server.keepAliveTimeout = 75_000;
-  server.headersTimeout = 80_000;
-  server.listen(port, LOOPBACK_HOST, () => log(`listening on http://${LOOPBACK_HOST}:${port}/v1`));
   // Abandon live games nobody has touched for IDLE_ABANDON_MS (closed laptop,
   // lost tab, no beacon). Checked every minute; unref so it never holds the
   // process open on shutdown.
   setInterval(() => app.sweep(), 60_000).unref();
 
-  const shutdown = async (signal) => {
-    log(`${signal}: draining chain queue…`);
-    server.close();
-    await Promise.race([queue.idle(), new Promise((r) => setTimeout(r, 120_000))]);
-    await walletHandle.shutdown?.();
-    process.exit(0);
-  };
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  } catch (error) {
+    startupReason = safeErrorMessage(error);
+    log(`Startup paused: ${startupReason}`);
+    if (walletGuardTimer) clearInterval(walletGuardTimer);
+    walletSubscription?.unsubscribe();
+    await walletHandle?.shutdown?.().catch(() => {});
+  }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

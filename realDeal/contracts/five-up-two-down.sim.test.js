@@ -28,7 +28,7 @@ const CASUAL = 0n;
 const secretsFor = (seat) => Array.from({ length: MAX_ROUNDS }, (_, i) => new Uint8Array(32).fill(0x20 * (seat + 1) + i + 1));
 const SECRETS = [secretsFor(0), secretsFor(1)];
 
-function newGame({ mode = STANDARD, secrets = SECRETS, entropy = [E1, E2] } = {}) {
+async function newGame({ mode = STANDARD, secrets = SECRETS, entropy = [E1, E2] } = {}) {
   const [e1, e2] = entropy;
   const seed = pureCircuits.combineEntropy(e1, e2);
   const witness = {
@@ -48,20 +48,27 @@ function newGame({ mode = STANDARD, secrets = SECRETS, entropy = [E1, E2] } = {}
     get_challenge_reduction: (ctx, full) => challengeReductionWitness(ctx, full),
   });
   const commits = (seat) => secrets[seat].map((s, i) => pureCircuits.commitRoundSecret(s, BigInt(i + 1)));
-  const initial = contract.initialState(
+  const initial = await contract.initialState(
     runtime.createConstructorContext({}, SPONSOR),
     P1, P2, mode, pureCircuits.commitEntropy(e1), pureCircuits.commitEntropy(e2), commits(0), commits(1),
   );
-  let context = runtime.createCircuitContext(
-    runtime.dummyContractAddress(), SPONSOR,
-    initial.currentContractState.data, initial.currentPrivateState, undefined, undefined, 1_800_000_000,
-  );
-  const call = (name, ...args) => {
-    const r = contract.circuits[name](context, ...args);
+  let context = runtime.createCircuitContext({
+    circuitId: 'proveRound', contractAddress: runtime.dummyContractAddress(),
+    coinPublicKeyOrZswapState: SPONSOR, contractState: initial.currentContractState,
+    privateState: initial.currentPrivateState, time: 1_800_000_000,
+  });
+  const call = async (name, ...args) => {
+    const nextContext = runtime.createCircuitContext({
+      circuitId: name, contractAddress: runtime.dummyContractAddress(),
+      coinPublicKeyOrZswapState: SPONSOR,
+      contractState: context.callContext.currentQueryContext.state,
+      privateState: context.callContext.currentPrivateState, time: 1_800_000_000,
+    });
+    const r = await contract.circuits[name](nextContext, ...args);
     context = r.context;
     return r.result;
   };
-  const state = () => ledger(context.currentQueryContext.state);
+  const state = () => ledger(context.callContext.currentQueryContext.state);
   const referee = createFiveUpReferee(pureCircuits, { seed, roundSecrets: secrets, mode });
 
   const proveRound = (finished, { tamper } = {}) => {
@@ -116,11 +123,11 @@ function playRound(ref, { p1 = 'honest', p2 = 'honest', respond = 'accept' } = {
   }
   return ref.finishRound();
 }
-function playToEnd(g, opts) {
+async function playToEnd(g, opts) {
   const rounds = [];
   while (!g.referee.boundary.ended) {
     const fin = playRound(g.referee, opts);
-    g.proveRound(fin);
+    await g.proveRound(fin);
     rounds.push(fin);
   }
   return rounds;
@@ -248,33 +255,33 @@ describe('5 Up 2 Down: the pass showdown (referee mirror of resolvePass)', () =>
 });
 
 describe('5 Up 2 Down: the circuit accepts honest referee transcripts', () => {
-  it('plays a full Standard game to 20 and closes it with the proven winner', () => {
-    const g = newGame();
-    const rounds = playToEnd(g, { respond: (ref) => (ref.state.pending?.count === 2n ? 'challenge' : 'accept') });
+  it('plays a full Standard game to 20 and closes it with the proven winner', async () => {
+    const g = await newGame();
+    const rounds = await playToEnd(g, { respond: (ref) => (ref.state.pending?.count === 2n ? 'challenge' : 'accept') });
     expect(rounds.length).toBeGreaterThan(0);
     expect(rounds.length).toBeLessThanOrEqual(MAX_ROUNDS);
     const res = g.referee.result();
     expect(res.p1Score >= 20n || res.p2Score >= 20n || rounds.length === MAX_ROUNDS).toBe(true);
     expect(g.state().ended).toBe(true);
-    g.closeGame();
+    await g.closeGame();
     const s = g.state();
     expect(s.closed).toBe(true);
     expect(s.p1Score).toBe(res.p1Score); expect(s.p2Score).toBe(res.p2Score); expect(s.winner).toBe(res.winner);
     expect(Buffer.from(s.transcriptRoot)).toEqual(Buffer.from(pureCircuits.commitTranscript(res.transcriptChain)));
   });
-  it('Casual races to 10', () => {
-    const g = newGame({ mode: CASUAL });
+  it('Casual races to 10', async () => {
+    const g = await newGame({ mode: CASUAL });
     expect(g.referee.target).toBe(10n);
-    playToEnd(g);
+    await playToEnd(g);
     const res = g.referee.result();
     expect(res.p1Score >= 10n || res.p2Score >= 10n || res.boundary.round === BigInt(MAX_ROUNDS)).toBe(true);
-    g.closeGame();
+    await g.closeGame();
     expect(g.state().closed).toBe(true);
   });
-  it('a liar who is always challenged loses points and the challenger gains them', () => {
-    const g = newGame();
+  it('a liar who is always challenged loses points and the challenger gains them', async () => {
+    const g = await newGame();
     const fin = playRound(g.referee, { p1: 'lie', p2: 'honest', respond: 'challenge' });
-    g.proveRound(fin);
+    await g.proveRound(fin);
     const liarOut = fin.outcomes.find((o) => o.claimant === 0n);
     if (liarOut.lies > 0n) {
       expect(liarOut.claimantGain).toBe(0n);
@@ -282,127 +289,127 @@ describe('5 Up 2 Down: the circuit accepts honest referee transcripts', () => {
     }
     expect(g.state().roundsProven).toBe(1n);
   });
-  it('an accepted bluff pays out and discloses nothing (lies in the chain are 0)', () => {
-    const g = newGame();
+  it('an accepted bluff pays out and discloses nothing (lies in the chain are 0)', async () => {
+    const g = await newGame();
     const fin = playRound(g.referee, { p1: 'lie', respond: 'accept' });
-    g.proveRound(fin);
+    await g.proveRound(fin);
     for (const o of fin.outcomes) expect(o.lies).toBe(0n);
     expect(g.state().roundsProven).toBe(1n);
   });
-  it('first claimant alternates each round', () => {
-    const g = newGame();
-    const a = playRound(g.referee); g.proveRound(a);
-    const b = playRound(g.referee); g.proveRound(b);
+  it('first claimant alternates each round', async () => {
+    const g = await newGame();
+    const a = playRound(g.referee); await g.proveRound(a);
+    const b = playRound(g.referee); await g.proveRound(b);
     expect(a.boundaryIn.turn).toBe(0n);
     expect(a.boundaryOut.turn).toBe(1n);
     expect(b.boundaryOut.turn).toBe(0n);
   });
-  it('round cap: the game ends after round 10 with the higher score winning (or a draw)', () => {
-    const g = newGame();
+  it('round cap: the game ends after round 10 with the higher score winning (or a draw)', async () => {
+    const g = await newGame();
     // everyone claims 0 → no points ever → runs to the cap
     const zero = (ref) => { ref.startRound(); ref.claim(0n); ref.accept(); ref.claim(0n); ref.accept(); return ref.finishRound(); };
-    for (let i = 0; i < MAX_ROUNDS; i += 1) g.proveRound(zero(g.referee));
+    for (let i = 0; i < MAX_ROUNDS; i += 1) await g.proveRound(zero(g.referee));
     expect(g.state().ended).toBe(true);
     const res = g.referee.result();
     expect(res.winner).toBe(0n);
     expect(res.p1Score).toBe(0n);
-    g.closeGame();
+    await g.closeGame();
     expect(g.state().winner).toBe(0n);
   });
 });
 
 describe('5 Up 2 Down: pass showdown through the circuit', () => {
-  it('a pass consumes both move slots, the showdown scores, and the round proves', () => {
-    const g = newGame();
+  it('a pass consumes both move slots, the showdown scores, and the round proves', async () => {
+    const g = await newGame();
     const fin = playRound(g.referee, { p1: 'pass', p2: 'honest' });
     expect(fin.moves.map((m) => m.kind)).toEqual([KIND.PASS, KIND.NOOP, KIND.CLAIM, KIND.ACCEPT]);
     const out = fin.outcomes[0];
     expect(out.pass).toBe(true);
     const hole = fin.ranks.slice(0, 2);
     expect(out.responderGain).toBe(BigInt(Number(out.draws[0] > hole[0]) + Number(out.draws[1] > hole[1])));
-    g.proveRound(fin);
+    await g.proveRound(fin);
     expect(g.state().roundsProven).toBe(1n);
   });
-  it('both seats can pass; the game still ends and closes', () => {
-    const g = newGame({ mode: CASUAL });
-    const rounds = playToEnd(g, { p1: 'pass', p2: 'pass' });
+  it('both seats can pass; the game still ends and closes', async () => {
+    const g = await newGame({ mode: CASUAL });
+    const rounds = await playToEnd(g, { p1: 'pass', p2: 'pass' });
     expect(rounds.length).toBeLessThanOrEqual(MAX_ROUNDS);
     for (const fin of rounds) expect(fin.moves.map((m) => m.kind)).toEqual([KIND.PASS, KIND.NOOP, KIND.PASS, KIND.NOOP]);
-    g.closeGame();
+    await g.closeGame();
     expect(g.state().closed).toBe(true);
   });
-  it('a fake showdown result (forged wins) is refused by the circuit', () => {
-    const g = newGame();
+  it('a fake showdown result (forged wins) is refused by the circuit', async () => {
+    const g = await newGame();
     const fin = playRound(g.referee, { p1: 'pass', p2: 'honest' });
-    expect(() => g.proveRound(fin, { tamper: (w) => { w.cards[9] = (w.cards[9] + 1n) % 52n; } })).toThrow(/showdown mismatch/);
+    await expect(g.proveRound(fin, { tamper: (w) => { w.cards[9] = (w.cards[9] + 1n) % 52n; } })).rejects.toThrow(/showdown mismatch/);
   });
 });
 
 describe('5 Up 2 Down: attacks the circuit must refuse', () => {
-  it('a substituted (legal) move changes the proven chain, so the honest transcript can no longer open stateRoot', () => {
+  it('a substituted (legal) move changes the proven chain, so the honest transcript can no longer open stateRoot', async () => {
     // Moves are witnesses: the prover can feed any LEGAL round. What stops a
     // rewrite is binding — the boundary commits to the chain of moves, and the
     // players only sign the chain they actually played.
-    const g = newGame();
+    const g = await newGame();
     const a = playRound(g.referee);
-    g.proveRound(a, { tamper: (w) => { w.moves[0] = { kind: KIND.CLAIM, count: 2n, rankA: a.board[0], rankB: a.board[1] }; } });
+    await g.proveRound(a, { tamper: (w) => { w.moves[0] = { kind: KIND.CLAIM, count: 2n, rankA: a.board[0], rankB: a.board[1] }; } });
     expect(Buffer.from(g.state().stateRoot)).not.toEqual(Buffer.from(pureCircuits.commitBoundary(a.boundaryOut)));
     const b = playRound(g.referee);
-    expect(() => g.proveRound(b)).toThrow(/does not open stateRoot/);
+    await expect(g.proveRound(b)).rejects.toThrow(/does not open stateRoot/);
   });
-  it('a forged deal (dealtRanks witness ≠ the in-circuit deal) is refused', () => {
-    const g = newGame();
+  it('a forged deal (dealtRanks witness ≠ the in-circuit deal) is refused', async () => {
+    const g = await newGame();
     const fin = playRound(g.referee);
-    expect(() => g.proveRound(fin, { tamper: (w) => { w.cards[0] = (w.cards[0] + 1n) % 52n; } })).toThrow(/deal mismatch/);
+    await expect(g.proveRound(fin, { tamper: (w) => { w.cards[0] = (w.cards[0] + 1n) % 52n; } })).rejects.toThrow(/deal mismatch/);
     // ...and a forged rank over honest cards (a hole card "upgraded" to an Ace) is refused too
-    expect(() => g.proveRound(fin, { tamper: (w) => { w.ranks[0] = (w.ranks[0] + 1n) % 13n; } })).toThrow(/rank mismatch/);
+    await expect(g.proveRound(fin, { tamper: (w) => { w.ranks[0] = (w.ranks[0] + 1n) % 13n; } })).rejects.toThrow(/rank mismatch/);
   });
-  it('an illegal move (count 3) is refused outright', () => {
-    const g = newGame();
+  it('an illegal move (count 3) is refused outright', async () => {
+    const g = await newGame();
     const fin = playRound(g.referee);
-    expect(() => g.proveRound(fin, { tamper: (w) => { w.moves[0] = { kind: KIND.CLAIM, count: 3n, rankA: fin.board[0], rankB: fin.board[1] }; } })).toThrow(/count out of range/);
+    await expect(g.proveRound(fin, { tamper: (w) => { w.moves[0] = { kind: KIND.CLAIM, count: 3n, rankA: fin.board[0], rankB: fin.board[1] }; } })).rejects.toThrow(/count out of range/);
   });
-  it('wrong round secret → mismatch', () => {
-    const g = newGame();
+  it('wrong round secret → mismatch', async () => {
+    const g = await newGame();
     const fin = playRound(g.referee);
-    expect(() => g.proveRound(fin, { tamper: (w) => { w.roundSecrets = [new Uint8Array(32).fill(1), w.roundSecrets[1]]; } })).toThrow(/round secret mismatch/);
+    await expect(g.proveRound(fin, { tamper: (w) => { w.roundSecrets = [new Uint8Array(32).fill(1), w.roundSecrets[1]]; } })).rejects.toThrow(/round secret mismatch/);
   });
-  it('wrong boundary (forged scores) → does not open stateRoot', () => {
-    const g = newGame();
-    const a = playRound(g.referee); g.proveRound(a);
+  it('wrong boundary (forged scores) → does not open stateRoot', async () => {
+    const g = await newGame();
+    const a = playRound(g.referee); await g.proveRound(a);
     const b = playRound(g.referee);
-    expect(() => g.proveRound(b, { tamper: (w) => { w.boundary = { ...w.boundary, score0: w.boundary.score0 + 5n }; } })).toThrow(/does not open stateRoot/);
+    await expect(g.proveRound(b, { tamper: (w) => { w.boundary = { ...w.boundary, score0: w.boundary.score0 + 5n }; } })).rejects.toThrow(/does not open stateRoot/);
   });
-  it('rounds must be proven in order; skipping is rejected', () => {
-    const g = newGame();
+  it('rounds must be proven in order; skipping is rejected', async () => {
+    const g = await newGame();
     const a = playRound(g.referee);
     const b = playRound(g.referee);
-    expect(() => g.proveRound(b)).toThrow(/in order|boundary/);
-    g.proveRound(a); g.proveRound(b);
+    await expect(g.proveRound(b)).rejects.toThrow(/in order|boundary/);
+    await g.proveRound(a); await g.proveRound(b);
     expect(g.state().roundsProven).toBe(2n);
   });
-  it('a claim naming a rank not on the board is refused by the circuit', () => {
-    const g = newGame();
+  it('a claim naming a rank not on the board is refused by the circuit', async () => {
+    const g = await newGame();
     const fin = playRound(g.referee);
     const off = [0n, 1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n, 10n, 11n, 12n].find((r) => !fin.board.includes(r));
-    expect(() => g.proveRound(fin, { tamper: (w) => { w.moves[0] = { kind: KIND.CLAIM, count: 1n, rankA: off, rankB: 0n }; } })).toThrow(/not on board/);
+    await expect(g.proveRound(fin, { tamper: (w) => { w.moves[0] = { kind: KIND.CLAIM, count: 1n, rankA: off, rankB: 0n }; } })).rejects.toThrow(/not on board/);
   });
-  it('closeGame refuses before the proven history ends, and refuses forged results', () => {
-    const g = newGame();
-    const fin = playRound(g.referee); g.proveRound(fin);
+  it('closeGame refuses before the proven history ends, and refuses forged results', async () => {
+    const g = await newGame();
+    const fin = playRound(g.referee); await g.proveRound(fin);
     if (!g.referee.boundary.ended) {
-      expect(() => g.call('closeGame', 0n, 0n, 0n)).toThrow(/has not reached game end/);
-      playToEnd(g);
+      await expect(g.call('closeGame', 0n, 0n, 0n)).rejects.toThrow(/has not reached game end/);
+      await playToEnd(g);
     }
     const res = g.referee.result();
-    expect(() => g.closeGame({ p1Score: res.p1Score + 1n })).toThrow(/final score mismatch/);
-    expect(() => g.closeGame({ winner: res.winner === 1n ? 2n : 1n })).toThrow(/winner mismatch/);
+    await expect(g.closeGame({ p1Score: res.p1Score + 1n })).rejects.toThrow(/final score mismatch/);
+    await expect(g.closeGame({ winner: res.winner === 1n ? 2n : 1n })).rejects.toThrow(/winner mismatch/);
     const stranger = consentKeyPairFromSecret(new Uint8Array(32).fill(0x77));
-    expect(() => g.closeGame({}, { kp2: stranger })).toThrow(/signer is not player two/);
-    g.closeGame();
-    expect(() => g.closeGame()).toThrow(/already closed/);
+    await expect(g.closeGame({}, { kp2: stranger })).rejects.toThrow(/signer is not player two/);
+    await g.closeGame();
+    await expect(g.closeGame()).rejects.toThrow(/already closed/);
   });
-  it('constructor rejects identical players, entropy or round commitments, and bad modes', () => {
+  it('constructor rejects identical players, entropy or round commitments, and bad modes', async () => {
     const mk = (over) => {
       const w = (ctx) => [ctx.privateState, null];
       const contract = new Contract({
@@ -415,10 +422,10 @@ describe('5 Up 2 Down: attacks the circuit must refuse', () => {
       };
       return contract.initialState(runtime.createConstructorContext({}, SPONSOR), args.p1, args.p2, args.mode, args.e1, args.e2, args.c1, args.c2);
     };
-    expect(() => mk({ p2: P1 })).toThrow(/Players must differ/);
-    expect(() => mk({ e2: pureCircuits.commitEntropy(E1) })).toThrow(/Entropy commitments must differ/);
-    expect(() => mk({ c2: SECRETS[0].map((s, i) => pureCircuits.commitRoundSecret(s, BigInt(i + 1))) })).toThrow(/Round-secret commitments must differ/);
-    expect(() => mk({ mode: 4n })).toThrow(/mode must be/);
+    await expect(mk({ p2: P1 })).rejects.toThrow(/Players must differ/);
+    await expect(mk({ e2: pureCircuits.commitEntropy(E1) })).rejects.toThrow(/Entropy commitments must differ/);
+    await expect(mk({ c2: SECRETS[0].map((s, i) => pureCircuits.commitRoundSecret(s, BigInt(i + 1))) })).rejects.toThrow(/Round-secret commitments must differ/);
+    await expect(mk({ mode: 4n })).rejects.toThrow(/mode must be/);
   });
 });
 

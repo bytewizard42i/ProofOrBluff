@@ -1,5 +1,8 @@
 /**
- * cli/src/contract.js — v8 SDK Node mirror of the browser contract.js.
+ * cli/src/contract.js — Node contract API for the legacy per-move game.
+ * NOTE (ledger-9 migration, 2026-11): this is a ledger-8 contract; it is NOT
+ * recompiled for ledger 9, so the chain path is unverified. Shared helpers
+ * (withDustRetry, byte/hex utils) remain for the v3p/v4/five-up adapters.
  *
  * Wires up the realDeal Compact contract bindings with the v8 wallet
  * stack: WalletFacade -> custom WalletProvider/MidnightProvider ->
@@ -14,24 +17,15 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Buffer } from 'buffer';
-import * as Rx from 'rxjs';
 
-import * as ledger from '@midnight-ntwrk/ledger-v8';
+import * as ledger from '@midnightntwrk/ledger-v9';
 import {
   deployContract,
   findDeployedContract,
 } from '@midnight-ntwrk/midnight-js-contracts';
-import { httpClientProofProvider } from
-  '@midnight-ntwrk/midnight-js-http-client-proof-provider';
-import { indexerPublicDataProvider } from
-  '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
-import { NodeZkConfigProvider } from
-  '@midnight-ntwrk/midnight-js-node-zk-config-provider';
-import { levelPrivateStateProvider } from
-  '@midnight-ntwrk/midnight-js-level-private-state-provider';
-import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
-import { CompiledContract } from '@midnight-ntwrk/compact-js';
+import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/v9/compact-js';
 
+import { withDustRetry, buildLedger9Providers } from './providers.js';
 import * as state from './state.js';
 import { readPublicMatch } from '../../shared/publicMatch.js';
 
@@ -47,68 +41,9 @@ async function loadContractModule(managedDir) {
 // ---------------------------------------------------------------------------
 // Helpers
 
-function setNetwork(networkId) {
-  setNetworkId(networkId);
-}
-
-// ---------------------------------------------------------------------------
-// Resilient submit (pattern from eddalabs/midnight-starter-template
-// counter-cli/src/resilient-submit.ts, Aug 2026).
-//
-// On public networks a transaction's DUST fee proof can be rejected with
-// `1010: Invalid Transaction: Custom error: 170` (InvalidDustSpendProof) when
-// it was balanced against a DUST state the chain already advanced past (stale
-// wallet checkpoint, or indexer a step behind the node). Resubmitting the SAME
-// finalized tx can never clear a 170 — the stale proof is baked in. The only
-// fix is to REBUILD the transaction so it re-balances DUST and re-proves.
-// Hence this retries the *builder* (deployContract / callTx.x), never a bare
-// submit. Anything that is not a transient dust/socket failure is re-thrown
-// at once so real contract assertion failures are never masked.
-
-function flattenErrorText(error) {
-  let text = '';
-  let current = error;
-  while (current) {
-    text += ` ${String(current.message ?? current)}`;
-    current = current.cause;
-  }
-  return text;
-}
-
-export async function withDustRetry(label, build, { attempts = 5, backoffMs = 2_000 } = {}) {
-  let lastError;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      return await build();
-    } catch (error) {
-      lastError = error;
-      const text = flattenErrorText(error);
-      // Three distinct transient causes — label them separately in logs so a
-      // stuck-funds condition is never mislabeled as a stale fee proof:
-      //   170            chain rejected the DUST spend proof as stale → rebuild.
-      //   InsufficientFunds/"could not balance dust"   the WALLET can't find a
-      //                  spendable DUST UTXO right now (change from the previous
-      //                  tx not indexed yet, or — 2026-10-06 — tracking lost it).
-      //                  Rebuilding only helps once the view recovers, so wait
-      //                  longer than the generic backoff to let it catch up.
-      //   socket drop    transport hiccup → plain retry.
-      const staleProof = /\b170\b/.test(text);
-      const lowFunds = /balance dust|InsufficientFunds/i.test(text);
-      const socketDrop = /Normal Closure|disconnected/i.test(text);
-      if (attempt < attempts && (staleProof || lowFunds || socketDrop)) {
-        const why = staleProof ? 'stale DUST fee proof — rebuilding'
-          : lowFunds ? 'no spendable DUST in wallet view — waiting for the indexer'
-            : 'socket drop — retrying';
-        // eslint-disable-next-line no-console
-        console.warn(`[${label}] attempt ${attempt}/${attempts} failed (${why})`);
-        await new Promise((resolve) => setTimeout(resolve, lowFunds ? Math.max(backoffMs, 15_000) : backoffMs));
-        continue;
-      }
-      throw lastError;
-    }
-  }
-  throw lastError;
-}
+// withDustRetry moved to providers.js for the ledger-9 migration; re-exported
+// here so every existing `from './contract.js'` import keeps working.
+export { withDustRetry };
 
 function randomBytes32() {
   const out = new Uint8Array(32);
@@ -178,89 +113,6 @@ function rehydrateReveal(j) {
 }
 
 // ---------------------------------------------------------------------------
-// signTransactionIntents — wallet SDK workaround
-//
-// signRecipe in @midnight-ntwrk/wallet-sdk-facade hardcodes 'pre-proof'
-// when cloning intents, which fails on already-proven UnboundTransaction
-// intents that carry 'proof' data. We sign manually with the correct
-// proof markers (per the example-counter v2.1.1 workaround).
-
-function signTransactionIntents(tx, signFn, proofMarker) {
-  if (!tx.intents || tx.intents.size === 0) return;
-  for (const segment of tx.intents.keys()) {
-    const intent = tx.intents.get(segment);
-    if (!intent) continue;
-
-    const cloned = ledger.Intent.deserialize(
-      'signature',
-      proofMarker,
-      'pre-binding',
-      intent.serialize(),
-    );
-
-    const sigData = cloned.signatureData(segment);
-    const signature = signFn(sigData);
-
-    if (cloned.fallibleUnshieldedOffer) {
-      const sigs = cloned.fallibleUnshieldedOffer.inputs.map(
-        (_input, i) =>
-          cloned.fallibleUnshieldedOffer.signatures.at(i) ?? signature,
-      );
-      cloned.fallibleUnshieldedOffer =
-        cloned.fallibleUnshieldedOffer.addSignatures(sigs);
-    }
-
-    if (cloned.guaranteedUnshieldedOffer) {
-      const sigs = cloned.guaranteedUnshieldedOffer.inputs.map(
-        (_input, i) =>
-          cloned.guaranteedUnshieldedOffer.signatures.at(i) ?? signature,
-      );
-      cloned.guaranteedUnshieldedOffer =
-        cloned.guaranteedUnshieldedOffer.addSignatures(sigs);
-    }
-
-    tx.intents.set(segment, cloned);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// WalletProvider + MidnightProvider bridge
-
-async function createWalletAndMidnightProvider(walletCtx) {
-  const synced = await Rx.firstValueFrom(
-    walletCtx.wallet.state().pipe(Rx.filter((s) => s.isSynced))
-  );
-  return {
-    getCoinPublicKey() {
-      return synced.shielded.coinPublicKey.toHexString();
-    },
-    getEncryptionPublicKey() {
-      return synced.shielded.encryptionPublicKey.toHexString();
-    },
-    async balanceTx(tx, ttl) {
-      const recipe = await walletCtx.wallet.balanceUnboundTransaction(
-        tx,
-        {
-          shieldedSecretKeys: walletCtx.shieldedSecretKeys,
-          dustSecretKey: walletCtx.dustSecretKey,
-        },
-        { ttl: ttl ?? new Date(Date.now() + 30 * 60 * 1000) },
-      );
-      const signFn = (payload) =>
-        walletCtx.unshieldedKeystore.signData(payload);
-      signTransactionIntents(recipe.baseTransaction, signFn, 'proof');
-      if (recipe.balancingTransaction) {
-        signTransactionIntents(recipe.balancingTransaction, signFn, 'pre-proof');
-      }
-      return walletCtx.wallet.finalizeRecipe(recipe);
-    },
-    submitTx(tx) {
-      return walletCtx.wallet.submitTransaction(tx);
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Public factory
 
 export async function getContractApi({
@@ -276,10 +128,7 @@ export async function getContractApi({
   // match — this flag prevents that whole class of accident.)
   allowDeploy = false,
 }) {
-  setNetwork(networkId);
-
-  const walletCtx = walletHandle.ctx;
-  if (!walletCtx) {
+  if (!walletHandle?.ctx?.wallet) {
     throw new Error(
       'walletHandle.ctx missing — caller must build via buildWalletFromSeed.'
     );
@@ -329,38 +178,14 @@ export async function getContractApi({
     CompiledContract.withCompiledFileAssets(managedDir),
   );
 
-  // Build providers
-  const walletAndMidnightProvider = await createWalletAndMidnightProvider(walletCtx);
-  const accountId = walletAndMidnightProvider.getCoinPublicKey();
-  // The old local-only password was derived from a PUBLIC key. That provides
-  // no secrecy. Public networks require a private operator-chosen password.
-  // Keep the old fallback only for disposable undeployed test wallets so
-  // historical local LevelDB state remains readable.
-  const storagePassword = networkId === 'undeployed'
-    ? process.env.POB_PRIVATE_STATE_PASSWORD || `${Buffer.from(accountId, 'hex').toString('base64')}!pob`
-    : process.env.POB_PRIVATE_STATE_PASSWORD;
-  if (!storagePassword || storagePassword.length < 16) {
-    throw new Error('Set POB_PRIVATE_STATE_PASSWORD (at least 16 characters) before connecting to a public network.');
-  }
-
-  const zkConfigProvider = new NodeZkConfigProvider(managedDir);
-
-  const providers = {
-    privateStateProvider: levelPrivateStateProvider({
-      privateStateStoreName: 'pob-realdeal',
-      privateStateStorePath: state.privateStateDir(networkId, variant),
-      accountId,
-      privateStoragePasswordProvider: () => storagePassword,
-    }),
-    publicDataProvider: indexerPublicDataProvider(
-      endpoints.indexer,
-      endpoints.indexerWs,
-    ),
-    zkConfigProvider,
-    proofProvider: httpClientProofProvider(endpoints.proofServer, zkConfigProvider),
-    walletProvider: walletAndMidnightProvider,
-    midnightProvider: walletAndMidnightProvider,
-  };
+  // Providers: shared ledger-9 bridge (providers.js). The LevelDB store path
+  // is the variant's own so wagered and state-only never share a lock.
+  const providers = await buildLedger9Providers({
+    walletHandle, endpoints, networkId, managedDir,
+    proofServerUrl: endpoints.proofServer,
+    storeName: 'pob-realdeal',
+    storeDirName: variant === 'state-only' ? 'private-state-no-stakes' : 'private-state',
+  });
 
   const persisted = state.getContractAddress(networkId, variant);
   if (!persisted && !allowDeploy) {

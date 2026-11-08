@@ -1,4 +1,4 @@
-pragma language_version >= 0.16 && <= 0.23;
+pragma language_version >= 0.16 && <= 0.28;
 include "signed_credential";
 import CompactStandardLibrary;
 import SignedCredentials;
@@ -145,29 +145,29 @@ export pure circuit closeConsentK(sk: Field, consent: CloseConsent): Field {
 // Hex packing helpers.
 // ---------------------------------------------------------------------------
 circuit rankWeight(r: Uint<8>): Field {
-  return r == (0 as Uint<8>) ? 1 : r == (1 as Uint<8>) ? 16 : r == (2 as Uint<8>) ? 256 : r == (3 as Uint<8>) ? 4096
+  return (r == (0 as Uint<8>) ? 1 : r == (1 as Uint<8>) ? 16 : r == (2 as Uint<8>) ? 256 : r == (3 as Uint<8>) ? 4096
        : r == (4 as Uint<8>) ? 65536 : r == (5 as Uint<8>) ? 1048576 : r == (6 as Uint<8>) ? 16777216
        : r == (7 as Uint<8>) ? 268435456 : r == (8 as Uint<8>) ? 4294967296 : r == (9 as Uint<8>) ? 68719476736
-       : r == (10 as Uint<8>) ? 1099511627776 : r == (11 as Uint<8>) ? 17592186044416 : 281474976710656;
+       : r == (10 as Uint<8>) ? 1099511627776 : r == (11 as Uint<8>) ? 17592186044416 : 281474976710656) as Field;
 }
 // Pack the first `n` of up to 7 ranks. Every slot used must be a rank 0..12.
 circuit packRanks(ranks: Vector<7, Uint<8>>, n: Uint<8>): Field {
-  const w0: Field = n >= (1 as Uint<8>) ? rankWeight(ranks[0]) : 0;
-  const w1: Field = n >= (2 as Uint<8>) ? rankWeight(ranks[1]) : 0;
-  const w2: Field = n >= (3 as Uint<8>) ? rankWeight(ranks[2]) : 0;
-  const w3: Field = n >= (4 as Uint<8>) ? rankWeight(ranks[3]) : 0;
-  const w4: Field = n >= (5 as Uint<8>) ? rankWeight(ranks[4]) : 0;
-  const w5: Field = n >= (6 as Uint<8>) ? rankWeight(ranks[5]) : 0;
-  const w6: Field = n >= (7 as Uint<8>) ? rankWeight(ranks[6]) : 0;
+  const w0: Field = n >= (1 as Uint<8>) ? rankWeight(ranks[0]) : 0 as Field;
+  const w1: Field = n >= (2 as Uint<8>) ? rankWeight(ranks[1]) : 0 as Field;
+  const w2: Field = n >= (3 as Uint<8>) ? rankWeight(ranks[2]) : 0 as Field;
+  const w3: Field = n >= (4 as Uint<8>) ? rankWeight(ranks[3]) : 0 as Field;
+  const w4: Field = n >= (5 as Uint<8>) ? rankWeight(ranks[4]) : 0 as Field;
+  const w5: Field = n >= (6 as Uint<8>) ? rankWeight(ranks[5]) : 0 as Field;
+  const w6: Field = n >= (7 as Uint<8>) ? rankWeight(ranks[6]) : 0 as Field;
   for (const i of 0..7) { assert((i as Uint<8>) >= n || ranks[i] <= (12 as Uint<8>), "rank out of range"); }
   return w0 + w1 + w2 + w3 + w4 + w5 + w6;
 }
 // Weight-sum of the first `count` (<= 4) played cards.
 circuit playSum(cards: Vector<4, Uint<8>>, count: Uint<8>): Field {
-  const w0: Field = count >= (1 as Uint<8>) ? rankWeight(cards[0]) : 0;
-  const w1: Field = count >= (2 as Uint<8>) ? rankWeight(cards[1]) : 0;
-  const w2: Field = count >= (3 as Uint<8>) ? rankWeight(cards[2]) : 0;
-  const w3: Field = count >= (4 as Uint<8>) ? rankWeight(cards[3]) : 0;
+  const w0: Field = count >= (1 as Uint<8>) ? rankWeight(cards[0]) : 0 as Field;
+  const w1: Field = count >= (2 as Uint<8>) ? rankWeight(cards[1]) : 0 as Field;
+  const w2: Field = count >= (3 as Uint<8>) ? rankWeight(cards[2]) : 0 as Field;
+  const w3: Field = count >= (4 as Uint<8>) ? rankWeight(cards[3]) : 0 as Field;
   return w0 + w1 + w2 + w3;
 }
 
@@ -371,7 +371,7 @@ constructor(
   p1EntropyCommit = e1; p2EntropyCommit = e2;
   p1RoundCommits = r1; p2RoundCommits = r2;
   roundsProven = 0; ended = false; closed = false;
-  stateRoot = commitBoundary(Boundary { turn: 0, currentRank: 0, score0: 0, score1: 0, round: 0, ended: false, winner: 0, chain: 0 });
+  stateRoot = commitBoundary(Boundary { turn: 0, currentRank: 0, score0: 0, score1: 0, round: 0, ended: false, winner: 0, chain: 0 as Field });
   transcriptRoot = default<Bytes<32>>; p1Score = 0; p2Score = 0; winner = 0;
 }
 
@@ -498,7 +498,7 @@ export circuit proveRound(round: Uint<8>): [] {
   // seed happened to give rank 0, which hid a mismatch here.
   const prev = startBoundary();
   const b0 = r == (1 as Uint<8>)
-    ? Boundary { turn: 0, currentRank: 0, score0: 0, score1: 0, round: 0, ended: false, winner: 0, chain: 0 }
+    ? Boundary { turn: 0, currentRank: 0, score0: 0, score1: 0, round: 0, ended: false, winner: 0, chain: 0 as Field }
     : prev;
   assert(commitBoundary(b0) == stateRoot, "boundary does not open stateRoot");
   assert(b0.round == ((r - 1) as Uint<8>), "boundary round mismatch");
@@ -514,8 +514,8 @@ export circuit proveRound(round: Uint<8>): [] {
   const states = roundSnapshots();
   const moves = roundMoves();
   const opening = GameState {
-    played0: 0, played1: 0, plays0: 0, plays1: 0, turn: b0.turn, currentRank: openingRank,
-    pending: false, claimRank: 0, claimCount: 0, claimSum: 0, claimer: 0,
+    played0: 0 as Field, played1: 0 as Field, plays0: 0, plays1: 0, turn: b0.turn, currentRank: openingRank,
+    pending: false, claimRank: 0, claimCount: 0, claimSum: 0 as Field, claimer: 0,
     score0: b0.score0, score1: b0.score1, round: r, ended: false, winner: b0.winner, chain: b0.chain
   };
   assert(states[0] == opening, "opening snapshot mismatch");

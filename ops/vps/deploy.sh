@@ -31,6 +31,10 @@ SRC_PATHS=(
   package.json package-lock.json
   realDeal/app/package.json
   realDeal/cli/package.json
+  realDeal/contracts/managed/proof-or-bluff/package.json
+  realDeal/contracts/managed/proof-or-bluff-mainnet/package.json
+  realDeal/contracts/managed/proof-or-bluff-rollup/package.json
+  realDeal/contracts/managed/proof-or-bluff-rollup-v3/package.json
   realDeal/cli/src
   realDeal/shared
   realDeal/contracts/rollup-v3p-referee.js
@@ -59,6 +63,10 @@ case "${1:-up}" in
       || { echo "v4 prover key missing — restore from Terry's build before deploying" >&2; exit 1; }
     [[ -s "$REPO/realDeal/contracts/managed/five-up-two-down/keys/proveRound.prover" && -s "$REPO/realDeal/contracts/managed/five-up-two-down/zkir/proveRound.bzkir" ]] \
       || { echo "5U2D keys/bzkir missing — install from the full build before deploying" >&2; exit 1; }
+    for contract in proof-or-bluff-rollup-v4 five-up-two-down; do
+      [[ -s "$REPO/realDeal/contracts/managed/$contract/compiler/contract-manifest.json" ]] \
+        || { echo "$contract compiler manifest missing — install the complete Compact 0.36 build" >&2; exit 1; }
+    done
 
     echo "→ syncing compose.yaml, Caddyfile, Dockerfile to $VPS_HOST:$VPS_DIR"
     ssh_vps "mkdir -p $VPS_DIR/src"

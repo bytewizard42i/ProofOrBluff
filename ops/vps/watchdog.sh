@@ -17,7 +17,12 @@
 # host artefact, not config).
 set -u
 
+# An intentional repair pause must survive cron. Create this marker before
+# stopping the API; remove it only when the replacement is ready to start.
+# Caddy and the prover remain monitored during API maintenance.
+maintenance_file="$(dirname "$0")/pob-api.maintenance"
 for c in pob-api pob-caddy pob-proof-server; do
+  if [ "$c" = "pob-api" ] && [ -f "$maintenance_file" ]; then continue; fi
   state=$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null || echo missing)
   if [ "$state" != "running" ]; then
     echo "$(date -Is) $c is $state — starting"
@@ -25,6 +30,7 @@ for c in pob-api pob-caddy pob-proof-server; do
   fi
 done
 
+if [ -f "$maintenance_file" ]; then exit 0; fi
 health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' pob-api 2>/dev/null || echo missing)
 if [ "$health" = "unhealthy" ]; then
   echo "$(date -Is) pob-api healthcheck unhealthy — restarting"

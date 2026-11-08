@@ -5,7 +5,7 @@
 // witnesses the circuit rejects, a Mainnet proof would fail the same way.
 
 import { describe, expect, it } from 'vitest';
-import * as runtime from '@midnight-ntwrk/compact-runtime';
+import * as runtime from 'compact-runtime-ledger8';
 import { createSponsoredGame, GAME_STATUS, GameError, handCountsToRanks } from './sponsored-game.js';
 import { challengeReductionWitness } from './rollup-consent.js';
 import { initialBoundary, createV3pReferee } from '../../contracts/rollup-v3p-referee.js';

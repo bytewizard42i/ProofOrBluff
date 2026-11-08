@@ -6,10 +6,10 @@
 //
 //   node scripts/prove-five-up.mjs [proof-server-url]   (default http://127.0.0.1:16300)
 
-import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import * as runtime from '@midnight-ntwrk/compact-runtime';
-import * as ledger from '@midnight-ntwrk/ledger-v8';
-import { CompiledContract } from '@midnight-ntwrk/compact-js';
+import * as ledger from '@midnightntwrk/ledger-v9';
+import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/v9/compact-js';
+import { SerializedContractState, SerializedZswapChainState, SerializedLedgerParameters } from '@midnight-ntwrk/midnight-js-types';
 import { createUnprovenCallTxFromInitialStates } from '@midnight-ntwrk/midnight-js-contracts';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
@@ -64,18 +64,26 @@ function playRound(ref) {
 console.log('[1] constructing one game on the sim ledger…');
 const contract = new Contract(witnesses);
 const commits = (seat) => SECRETS[seat].map((s, i) => pureCircuits.commitRoundSecret(s, BigInt(i + 1)));
-const initial = contract.initialState(runtime.createConstructorContext({}, SPONSOR),
+const initial = await contract.initialState(runtime.createConstructorContext({}, SPONSOR),
   P1, P2, MODE, pureCircuits.commitEntropy(E1), pureCircuits.commitEntropy(E2), commits(0), commits(1));
-let context = runtime.createCircuitContext(runtime.dummyContractAddress(), SPONSOR, initial.currentContractState.data, initial.currentPrivateState, undefined, undefined, 1_800_000_000);
+let context;
 const ref = createFiveUpReferee(pureCircuits, { seed, roundSecrets: SECRETS, mode: MODE });
 
-setNetworkId('undeployed');
-const zkConfigProvider = new NodeZkConfigProvider(MANAGED_DIR);
+// 5.0: no global network id — the config travels in the options.
+const MIDNIGHT_CONFIG = { networkId: 'undeployed', ttlSeconds: 3_600 };
+const zkConfigProvider = new NodeZkConfigProvider(MANAGED_DIR, { verify: 'require' });
+// A simulator constructor leaves entry-point slots blank. Install the actual
+// verifier keys, as deployment does, before constructing calls against it.
+for (const circuitId of ['proveRound', 'closeGame']) {
+  const operation = new runtime.ContractOperation();
+  operation.verifierKey = await zkConfigProvider.getVerifierKey(circuitId);
+  initial.currentContractState.setOperation(circuitId, operation);
+}
 const compiledContract = CompiledContract.make('five-up-two-down', Contract).pipe(
   CompiledContract.withWitnesses(witnesses), CompiledContract.withCompiledFileAssets(MANAGED_DIR),
 );
 const contractAddress = ledger.sampleContractAddress();
-const common = { compiledContract, contractAddress, coinPublicKey: ledger.sampleCoinPublicKey(), initialZswapChainState: new ledger.ZswapChainState(), ledgerParameters: ledger.LedgerParameters.initialParameters() };
+const common = { compiledContract, contractAddress, coinPublicKey: ledger.sampleCoinPublicKey(), config: MIDNIGHT_CONFIG, initialZswapChainState: SerializedZswapChainState.fromBytes('v9', new ledger.ZswapChainState().serialize()), ledgerParameters: SerializedLedgerParameters.fromBytes('v9', ledger.LedgerParameters.initialParameters().serialize()) };
 const proofProvider = httpClientProofProvider(PROOF_SERVER, zkConfigProvider, { timeout: 3_600_000 });
 
 let contractState = initial.currentContractState;
@@ -86,18 +94,22 @@ while (!ref.boundary.ended) {
   const r = Number(fin.round);
   witness.roundSecrets = [SECRETS[0][r - 1], SECRETS[1][r - 1]];
   witness.moves = fin.moves; witness.cards = fin.cards; witness.ranks = fin.ranks; witness.digests = fin.digests; witness.boundary = fin.boundaryIn;
-  const sim = contract.circuits.proveRound(context, BigInt(r));
+  context = runtime.createCircuitContext({
+    circuitId: 'proveRound', contractAddress, coinPublicKeyOrZswapState: SPONSOR,
+    contractState, privateState, time: 1_800_000_000,
+  });
+  const sim = await contract.circuits.proveRound(context, BigInt(r));
   context = sim.context;
   const unproven = await createUnprovenCallTxFromInitialStates(zkConfigProvider, {
-    ...common, circuitId: 'proveRound', args: [BigInt(r)], initialContractState: contractState, initialPrivateState: privateState,
+    ...common, circuitId: 'proveRound', args: [BigInt(r)], initialContractState: SerializedContractState.fromBytes('v9', contractState.serialize()), initialPrivateState: privateState,
   }, ledger.sampleEncryptionPublicKey());
   const t0 = Date.now();
   const proven = await proofProvider.proveTx(unproven.private.unprovenTx);
   const secs = (Date.now() - t0) / 1000; times.push(secs);
   const sd = fin.outcomes.filter((o) => o.pass).map((o) => `pass by seat ${o.claimant}: drew ${o.draws.join(',')} → +${o.responderGain}`).join('; ');
   console.log(`[round ${r}] score ${fin.boundaryOut.score0}-${fin.boundaryOut.score1}${sd ? ` [${sd}]` : ''} — PROOF ACCEPTED in ${secs.toFixed(1)}s (${(proven.serialize().length / 1024).toFixed(0)} KB)`);
-  contractState = initial.currentContractState; contractState.data = context.currentQueryContext.state;
-  privateState = context.currentPrivateState;
+  contractState = initial.currentContractState; contractState.data = context.callContext.currentQueryContext.state;
+  privateState = context.callContext.currentPrivateState;
 }
 
 const result = ref.result();
@@ -108,7 +120,7 @@ witness.boundary = result.boundary;
 witness.p1 = signCloseConsent(pureCircuits, consent, KP1);
 witness.p2 = signCloseConsent(pureCircuits, consent, KP2);
 const unprovenClose = await createUnprovenCallTxFromInitialStates(zkConfigProvider, {
-  ...common, circuitId: 'closeGame', args: [result.p1Score, result.p2Score, result.winner], initialContractState: contractState, initialPrivateState: privateState,
+  ...common, circuitId: 'closeGame', args: [result.p1Score, result.p2Score, result.winner], initialContractState: SerializedContractState.fromBytes('v9', contractState.serialize()), initialPrivateState: privateState,
 }, ledger.sampleEncryptionPublicKey());
 const t0 = Date.now();
 await proofProvider.proveTx(unprovenClose.private.unprovenTx);

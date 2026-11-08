@@ -1,0 +1,1205 @@
+{
+  "compiler-version": "0.36.0",
+  "compiler-commit": "b5d9e4dfc532fe47011c4f6296e254f4853eb469",
+  "language-version": "0.28.0",
+  "runtime-version": "0.21.0",
+  "circuits": [
+    {
+      "name": "commitEntropy",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "entropy",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "combineEntropy",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "p1Entropy",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "p2Entropy",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Field"
+      }
+    },
+    {
+      "name": "commitRoundSecret",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "secret",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "round",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "chainBoard",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "prev",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "board",
+          "type": {
+            "type-name": "Vector",
+            "length": 5,
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Field"
+      }
+    },
+    {
+      "name": "chainMove",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "prev",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        },
+        {
+          "name": "count",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        },
+        {
+          "name": "rankA",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        },
+        {
+          "name": "rankB",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        },
+        {
+          "name": "lies",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Field"
+      }
+    },
+    {
+      "name": "playerIdFromPk",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "pk",
+          "type": {
+            "type-name": "JubjubPoint"
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "closeConsentFor",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "gameId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "transcriptRoot",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "p1Score",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        },
+        {
+          "name": "p2Score",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        },
+        {
+          "name": "winner",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Struct",
+        "name": "CloseConsent",
+        "elements": [
+          {
+            "name": "sep",
+            "type": {
+              "type-name": "Bytes",
+              "length": 32
+            }
+          },
+          {
+            "name": "gameId",
+            "type": {
+              "type-name": "Bytes",
+              "length": 32
+            }
+          },
+          {
+            "name": "transcriptRoot",
+            "type": {
+              "type-name": "Field"
+            }
+          },
+          {
+            "name": "p1Score",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          },
+          {
+            "name": "p2Score",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          },
+          {
+            "name": "winner",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "closeConsentChallenge",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "r",
+          "type": {
+            "type-name": "JubjubPoint"
+          }
+        },
+        {
+          "name": "pk",
+          "type": {
+            "type-name": "JubjubPoint"
+          }
+        },
+        {
+          "name": "consent",
+          "type": {
+            "type-name": "Struct",
+            "name": "CloseConsent",
+            "elements": [
+              {
+                "name": "sep",
+                "type": {
+                  "type-name": "Bytes",
+                  "length": 32
+                }
+              },
+              {
+                "name": "gameId",
+                "type": {
+                  "type-name": "Bytes",
+                  "length": 32
+                }
+              },
+              {
+                "name": "transcriptRoot",
+                "type": {
+                  "type-name": "Field"
+                }
+              },
+              {
+                "name": "p1Score",
+                "type": {
+                  "type-name": "Uint",
+                  "maxval": 255
+                }
+              },
+              {
+                "name": "p2Score",
+                "type": {
+                  "type-name": "Uint",
+                  "maxval": 255
+                }
+              },
+              {
+                "name": "winner",
+                "type": {
+                  "type-name": "Uint",
+                  "maxval": 255
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Field"
+      }
+    },
+    {
+      "name": "closeConsentK",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "sk",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "consent",
+          "type": {
+            "type-name": "Struct",
+            "name": "CloseConsent",
+            "elements": [
+              {
+                "name": "sep",
+                "type": {
+                  "type-name": "Bytes",
+                  "length": 32
+                }
+              },
+              {
+                "name": "gameId",
+                "type": {
+                  "type-name": "Bytes",
+                  "length": 32
+                }
+              },
+              {
+                "name": "transcriptRoot",
+                "type": {
+                  "type-name": "Field"
+                }
+              },
+              {
+                "name": "p1Score",
+                "type": {
+                  "type-name": "Uint",
+                  "maxval": 255
+                }
+              },
+              {
+                "name": "p2Score",
+                "type": {
+                  "type-name": "Uint",
+                  "maxval": 255
+                }
+              },
+              {
+                "name": "winner",
+                "type": {
+                  "type-name": "Uint",
+                  "maxval": 255
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Field"
+      }
+    },
+    {
+      "name": "dealDigest",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "salt0",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "salt1",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "seed",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "round",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 4294967295
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "shuffleDigest",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "salt0",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "salt1",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "seed",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "round",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 4294967295
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "showdownDigest",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "salt0",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "salt1",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "seed",
+          "type": {
+            "type-name": "Field"
+          }
+        },
+        {
+          "name": "round",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 4294967295
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "commitBoundary",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "b",
+          "type": {
+            "type-name": "Struct",
+            "name": "Boundary",
+            "elements": [
+              {
+                "name": "turn",
+                "type": {
+                  "type-name": "Uint",
+                  "maxval": 255
+                }
+              },
+              {
+                "name": "score0",
+                "type": {
+                  "type-name": "Uint",
+                  "maxval": 255
+                }
+              },
+              {
+                "name": "score1",
+                "type": {
+                  "type-name": "Uint",
+                  "maxval": 255
+                }
+              },
+              {
+                "name": "round",
+                "type": {
+                  "type-name": "Uint",
+                  "maxval": 255
+                }
+              },
+              {
+                "name": "ended",
+                "type": {
+                  "type-name": "Boolean"
+                }
+              },
+              {
+                "name": "winner",
+                "type": {
+                  "type-name": "Uint",
+                  "maxval": 255
+                }
+              },
+              {
+                "name": "chain",
+                "type": {
+                  "type-name": "Field"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "commitTranscript",
+      "pure": true,
+      "proof": false,
+      "arguments": [
+        {
+          "name": "chain",
+          "type": {
+            "type-name": "Field"
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "proveRound",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "round",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "closeGame",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "finalP1Score",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        },
+        {
+          "name": "finalP2Score",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        },
+        {
+          "name": "finalWinner",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    }
+  ],
+  "witnesses": [
+    {
+      "name": "get_challenge_reduction",
+      "arguments": [
+        {
+          "name": "challenge_hash",
+          "type": {
+            "type-name": "Field"
+          }
+        }
+      ],
+      "result type": {
+        "type-name": "Tuple",
+        "types": [
+          {
+            "type-name": "Uint",
+            "maxval": 127
+          },
+          {
+            "type-name": "Uint",
+            "maxval": 452312848583266388373324160190187140051835877600158453279131187530910662655
+          }
+        ]
+      }
+    },
+    {
+      "name": "entropyPair",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Tuple",
+        "types": [
+          {
+            "type-name": "Bytes",
+            "length": 32
+          },
+          {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        ]
+      }
+    },
+    {
+      "name": "roundSecrets",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Tuple",
+        "types": [
+          {
+            "type-name": "Bytes",
+            "length": 32
+          },
+          {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        ]
+      }
+    },
+    {
+      "name": "roundMoves",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Vector",
+        "length": 4,
+        "type": {
+          "type-name": "Struct",
+          "name": "Move",
+          "elements": [
+            {
+              "name": "kind",
+              "type": {
+                "type-name": "Uint",
+                "maxval": 255
+              }
+            },
+            {
+              "name": "count",
+              "type": {
+                "type-name": "Uint",
+                "maxval": 255
+              }
+            },
+            {
+              "name": "rankA",
+              "type": {
+                "type-name": "Uint",
+                "maxval": 255
+              }
+            },
+            {
+              "name": "rankB",
+              "type": {
+                "type-name": "Uint",
+                "maxval": 255
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "roundDigests",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Tuple",
+        "types": [
+          {
+            "type-name": "Vector",
+            "length": 32,
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          },
+          {
+            "type-name": "Vector",
+            "length": 32,
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          },
+          {
+            "type-name": "Vector",
+            "length": 32,
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "dealtCards",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Vector",
+        "length": 13,
+        "type": {
+          "type-name": "Uint",
+          "maxval": 255
+        }
+      }
+    },
+    {
+      "name": "dealtRanks",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Vector",
+        "length": 13,
+        "type": {
+          "type-name": "Uint",
+          "maxval": 255
+        }
+      }
+    },
+    {
+      "name": "startBoundary",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Struct",
+        "name": "Boundary",
+        "elements": [
+          {
+            "name": "turn",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          },
+          {
+            "name": "score0",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          },
+          {
+            "name": "score1",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          },
+          {
+            "name": "round",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          },
+          {
+            "name": "ended",
+            "type": {
+              "type-name": "Boolean"
+            }
+          },
+          {
+            "name": "winner",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          },
+          {
+            "name": "chain",
+            "type": {
+              "type-name": "Field"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "p1CloseConsent",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Struct",
+        "name": "SignedCredential",
+        "elements": [
+          {
+            "name": "credential",
+            "type": {
+              "type-name": "Struct",
+              "name": "CloseConsent",
+              "elements": [
+                {
+                  "name": "sep",
+                  "type": {
+                    "type-name": "Bytes",
+                    "length": 32
+                  }
+                },
+                {
+                  "name": "gameId",
+                  "type": {
+                    "type-name": "Bytes",
+                    "length": 32
+                  }
+                },
+                {
+                  "name": "transcriptRoot",
+                  "type": {
+                    "type-name": "Field"
+                  }
+                },
+                {
+                  "name": "p1Score",
+                  "type": {
+                    "type-name": "Uint",
+                    "maxval": 255
+                  }
+                },
+                {
+                  "name": "p2Score",
+                  "type": {
+                    "type-name": "Uint",
+                    "maxval": 255
+                  }
+                },
+                {
+                  "name": "winner",
+                  "type": {
+                    "type-name": "Uint",
+                    "maxval": 255
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "signature",
+            "type": {
+              "type-name": "Struct",
+              "name": "Signature",
+              "elements": [
+                {
+                  "name": "r",
+                  "type": {
+                    "type-name": "JubjubPoint"
+                  }
+                },
+                {
+                  "name": "s",
+                  "type": {
+                    "type-name": "Field"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "pk",
+            "type": {
+              "type-name": "JubjubPoint"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "p2CloseConsent",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Struct",
+        "name": "SignedCredential",
+        "elements": [
+          {
+            "name": "credential",
+            "type": {
+              "type-name": "Struct",
+              "name": "CloseConsent",
+              "elements": [
+                {
+                  "name": "sep",
+                  "type": {
+                    "type-name": "Bytes",
+                    "length": 32
+                  }
+                },
+                {
+                  "name": "gameId",
+                  "type": {
+                    "type-name": "Bytes",
+                    "length": 32
+                  }
+                },
+                {
+                  "name": "transcriptRoot",
+                  "type": {
+                    "type-name": "Field"
+                  }
+                },
+                {
+                  "name": "p1Score",
+                  "type": {
+                    "type-name": "Uint",
+                    "maxval": 255
+                  }
+                },
+                {
+                  "name": "p2Score",
+                  "type": {
+                    "type-name": "Uint",
+                    "maxval": 255
+                  }
+                },
+                {
+                  "name": "winner",
+                  "type": {
+                    "type-name": "Uint",
+                    "maxval": 255
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "signature",
+            "type": {
+              "type-name": "Struct",
+              "name": "Signature",
+              "elements": [
+                {
+                  "name": "r",
+                  "type": {
+                    "type-name": "JubjubPoint"
+                  }
+                },
+                {
+                  "name": "s",
+                  "type": {
+                    "type-name": "Field"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "pk",
+            "type": {
+              "type-name": "JubjubPoint"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "contracts": [
+  ],
+  "ledger": [
+    {
+      "name": "playerOne",
+      "index": 0,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "playerTwo",
+      "index": 1,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "mode",
+      "index": 2,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Uint",
+        "maxval": 255
+      }
+    },
+    {
+      "name": "p1EntropyCommit",
+      "index": 3,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "p2EntropyCommit",
+      "index": 4,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "p1RoundCommits",
+      "index": 5,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Vector",
+        "length": 10,
+        "type": {
+          "type-name": "Bytes",
+          "length": 32
+        }
+      }
+    },
+    {
+      "name": "p2RoundCommits",
+      "index": 6,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Vector",
+        "length": 10,
+        "type": {
+          "type-name": "Bytes",
+          "length": 32
+        }
+      }
+    },
+    {
+      "name": "roundsProven",
+      "index": 7,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Uint",
+        "maxval": 255
+      }
+    },
+    {
+      "name": "stateRoot",
+      "index": 8,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "ended",
+      "index": 9,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Boolean"
+      }
+    },
+    {
+      "name": "closed",
+      "index": 10,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Boolean"
+      }
+    },
+    {
+      "name": "transcriptRoot",
+      "index": 11,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "p1Score",
+      "index": 12,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Uint",
+        "maxval": 255
+      }
+    },
+    {
+      "name": "p2Score",
+      "index": 13,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Uint",
+        "maxval": 255
+      }
+    },
+    {
+      "name": "winner",
+      "index": 14,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Uint",
+        "maxval": 255
+      }
+    }
+  ]
+}

@@ -8,10 +8,10 @@
 //   node scripts/prove-rollup-v3p.mjs [proof-server-url]   (default http://127.0.0.1:16300)
 //   POB_V3P_TRUSTING=1  → accept every claim so round 1 rolls over (no close)
 
-import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import * as runtime from '@midnight-ntwrk/compact-runtime';
-import * as ledger from '@midnight-ntwrk/ledger-v8';
-import { CompiledContract } from '@midnight-ntwrk/compact-js';
+import * as ledger from '@midnightntwrk/ledger-v9';
+import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/v9/compact-js';
+import { SerializedContractState, SerializedZswapChainState, SerializedLedgerParameters } from '@midnight-ntwrk/midnight-js-types';
 import { createUnprovenCallTxFromInitialStates } from '@midnight-ntwrk/midnight-js-contracts';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
@@ -85,27 +85,35 @@ const stageRound = (r) => {
 console.log('[1/5] constructing one game (constructor == openGame) on the sim ledger…');
 const contract = new Contract(witnesses);
 const commits = (seat) => SECRETS[seat].map((s, i) => pureCircuits.commitRoundSecret(s, BigInt(i + 1)));
-const initial = contract.initialState(
+const initial = await contract.initialState(
   runtime.createConstructorContext({}, SPONSOR),
   P1, P2, MODE, pureCircuits.commitEntropy(E1), pureCircuits.commitEntropy(E2), commits(0), commits(1),
 );
-const context = runtime.createCircuitContext(
-  runtime.dummyContractAddress(), SPONSOR, initial.currentContractState.data, initial.currentPrivateState, undefined, undefined, 1_800_000_000,
-);
+const context = runtime.createCircuitContext({
+  circuitId: 'proveRound', contractAddress: runtime.dummyContractAddress(),
+  coinPublicKeyOrZswapState: SPONSOR, contractState: initial.currentContractState,
+  privateState: initial.currentPrivateState, time: 1_800_000_000,
+});
 const ref = createV4Referee(pureCircuits, { seed, roundSecrets: SECRETS, mode: MODE });
 const round1 = playRound(ref);
 console.log(`      round 1: ${round1.moves.filter((m) => m.kind !== KIND.NOOP).length} moves, ended=${round1.boundaryOut.ended}, scores ${round1.boundaryOut.score0}-${round1.boundaryOut.score1}`);
 
 console.log('[2/5] proveRound(1) against the sim ledger (constraint smoke test)…');
 stageRound(round1);
-const r1 = contract.circuits.proveRound(context, 1n);
-const after = decodeLedger(r1.context.currentQueryContext.state);
+const r1 = await contract.circuits.proveRound(context, 1n);
+const after = decodeLedger(r1.context.callContext.currentQueryContext.state);
 if (after.roundsProven !== 1n) throw new Error('sim proveRound did not advance roundsProven');
 console.log(`      sim ledger: roundsProven=${after.roundsProven} ended=${after.ended}`);
 
 console.log('[3/5] building the unproven proveRound(1) transaction…');
-setNetworkId('undeployed');
-const zkConfigProvider = new NodeZkConfigProvider(MANAGED_DIR);
+// 5.0: no global network id — the config travels in the options.
+const MIDNIGHT_CONFIG = { networkId: 'undeployed', ttlSeconds: 3_600 };
+const zkConfigProvider = new NodeZkConfigProvider(MANAGED_DIR, { verify: 'require' });
+for (const circuitId of ['proveRound', 'closeGame']) {
+  const operation = new runtime.ContractOperation();
+  operation.verifierKey = await zkConfigProvider.getVerifierKey(circuitId);
+  initial.currentContractState.setOperation(circuitId, operation);
+}
 const compiledContract = CompiledContract.make('proof-or-bluff-rollup-v4', Contract).pipe(
   CompiledContract.withWitnesses(witnesses),
   CompiledContract.withCompiledFileAssets(MANAGED_DIR),
@@ -113,12 +121,12 @@ const compiledContract = CompiledContract.make('proof-or-bluff-rollup-v4', Contr
 stageRound(round1);
 const contractAddress = ledger.sampleContractAddress();
 const common = {
-  compiledContract, contractAddress, coinPublicKey: ledger.sampleCoinPublicKey(),
-  initialZswapChainState: new ledger.ZswapChainState(), ledgerParameters: ledger.LedgerParameters.initialParameters(),
+  compiledContract, contractAddress, coinPublicKey: ledger.sampleCoinPublicKey(), config: MIDNIGHT_CONFIG,
+  initialZswapChainState: SerializedZswapChainState.fromBytes('v9', new ledger.ZswapChainState().serialize()), ledgerParameters: SerializedLedgerParameters.fromBytes('v9', ledger.LedgerParameters.initialParameters().serialize()),
 };
 const unprovenRound = await createUnprovenCallTxFromInitialStates(zkConfigProvider, {
   ...common, circuitId: 'proveRound', args: [1n],
-  initialContractState: initial.currentContractState, initialPrivateState: initial.currentPrivateState,
+  initialContractState: SerializedContractState.fromBytes('v9', initial.currentContractState.serialize()), initialPrivateState: initial.currentPrivateState,
 }, ledger.sampleEncryptionPublicKey());
 console.log(`      unproven tx built (${(unprovenRound.private.unprovenTx.serialize().length / 1024).toFixed(0)} KB)`);
 
@@ -142,10 +150,10 @@ if (!round1.boundaryOut.ended) {
   witness.p1CloseConsent = signCloseConsent(pureCircuits, consent, KP1);
   witness.p2CloseConsent = signCloseConsent(pureCircuits, consent, KP2);
   const postRoundState = initial.currentContractState;
-  postRoundState.data = r1.context.currentQueryContext.state;
+  postRoundState.data = r1.context.callContext.currentQueryContext.state;
   const unprovenClose = await createUnprovenCallTxFromInitialStates(zkConfigProvider, {
     ...common, circuitId: 'closeGame', args: [result.p1Score, result.p2Score, result.winner],
-    initialContractState: postRoundState, initialPrivateState: r1.context.currentPrivateState,
+    initialContractState: SerializedContractState.fromBytes('v9', postRoundState.serialize()), initialPrivateState: r1.context.callContext.currentPrivateState,
   }, ledger.sampleEncryptionPublicKey());
   started = Date.now();
   const provenClose = await proofProvider.proveTx(unprovenClose.private.unprovenTx);

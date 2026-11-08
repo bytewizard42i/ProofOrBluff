@@ -8,10 +8,10 @@
 //   node scripts/prove-rollup-v3p.mjs [proof-server-url]   (default http://127.0.0.1:16300)
 //   POB_V3P_TRUSTING=1  → accept every claim so round 1 rolls over (no close)
 
-import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import * as runtime from '@midnight-ntwrk/compact-runtime';
-import * as ledger from '@midnight-ntwrk/ledger-v8';
-import { CompiledContract } from '@midnight-ntwrk/compact-js';
+import * as ledger from '@midnightntwrk/ledger-v9';
+import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/v9/compact-js';
+import { SerializedContractState, SerializedZswapChainState, SerializedLedgerParameters } from '@midnight-ntwrk/midnight-js-types';
 import { createUnprovenCallTxFromInitialStates } from '@midnight-ntwrk/midnight-js-contracts';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
@@ -104,16 +104,17 @@ if (after.roundsProven !== 1n) throw new Error('sim proveRound did not advance r
 console.log(`      sim ledger: roundsProven=${after.roundsProven} ended=${after.ended}`);
 
 console.log('[3/5] building the unproven proveRound(1) transaction…');
-setNetworkId('undeployed');
-const zkConfigProvider = new NodeZkConfigProvider(MANAGED_DIR);
+// 5.0: no global network id — the config travels in the options.
+const MIDNIGHT_CONFIG = { networkId: 'undeployed', ttlSeconds: 3_600 };
+const zkConfigProvider = new NodeZkConfigProvider(MANAGED_DIR, { verify: 'require-if-present' });
 const compiledContract = CompiledContract.make('proof-or-bluff-rollup-v3p', Contract).pipe(
   CompiledContract.withWitnesses(witnesses),
   CompiledContract.withCompiledFileAssets(MANAGED_DIR),
 );
 stageRound(round1);
 const common = {
-  compiledContract, contractAddress: ledger.sampleContractAddress(), coinPublicKey: ledger.sampleCoinPublicKey(),
-  initialZswapChainState: new ledger.ZswapChainState(), ledgerParameters: ledger.LedgerParameters.initialParameters(),
+  compiledContract, contractAddress: ledger.sampleContractAddress(), coinPublicKey: ledger.sampleCoinPublicKey(), config: MIDNIGHT_CONFIG,
+  initialZswapChainState: SerializedZswapChainState.fromBytes('v9', new ledger.ZswapChainState().serialize()), ledgerParameters: SerializedLedgerParameters.fromBytes('v9', ledger.LedgerParameters.initialParameters().serialize()),
 };
 const unprovenRound = await createUnprovenCallTxFromInitialStates(zkConfigProvider, {
   ...common, circuitId: 'proveRound', args: [1n],

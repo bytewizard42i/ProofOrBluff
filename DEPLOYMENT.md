@@ -78,21 +78,26 @@ edition is a separate contract and a separate state-channel design
 
 ## 4. Build & compile
 
-### Toolchain (confirmed via Midnight Expert / Kapa, Oct 2026)
+### Toolchain (Mainnet ledger 9, confirmed against the Nov 2026 release notes)
 
 | Component | Version |
 |---|---|
-| Compact CLI (`compact`) | 0.5.1 |
-| Compact compiler | **0.31.1** (language 0.23) |
-| `@midnight-ntwrk/compact-runtime` | 0.16.0 |
-| ledger | 8.0.2 |
-| midnight.js | 4.1.1 |
-| proof-server image | `midnightntwrk/proof-server:8.1.0` |
+| Compact compiler | **0.36.0** (language 0.28, runtime 0.21.0) |
+| `@midnight-ntwrk/compact-runtime` | 0.21.0 (active v4 + 5U2D artifacts) |
+| `compact-runtime-ledger8` alias | 0.16.0 (archived contract tests only) |
+| ledger | `@midnightntwrk/ledger-v9` 1.0.0 |
+| midnight.js | 5.0.0 |
+| wallet SDK | `@midnightntwrk/wallet-sdk` 2.0.0 |
+| proof-server image | `midnightntwrk/proof-server:9.0.0` |
 
-**Version policy:** stay on `compact update 0.31`. A bare `compact update`
-installs 0.35.x, which targets ledger 9 and is **not** on preview / preprod /
-mainnet. Bump the proof-server tag only together with ledger / compact /
-midnight.js, after re-checking the support matrix.
+**Version policy:** Mainnet moved from ledger 8 to ledger 9 on 2026-11-06.
+Ledger-8 transactions no longer decode, and midnight.js 4.x transactions are
+rejected, so every component above moves together. Preprod remained on
+ledger 8 at the time of writing; do not point this stack at Preprod without
+re-checking the support matrix. The archived contract generations under
+`realDeal/contracts/managed/` keep runtime 0.16 through per-directory
+`package.json` pins so their regression tests still execute; they are not
+deployable to Mainnet.
 
 ### Compiling
 
@@ -260,7 +265,7 @@ backend, where the key hop is loopback. Add preview origins to the
 
 ```bash
 curl -s https://proof.prooforbluff.app/health
-curl -s https://proof.prooforbluff.app/version      # expect 8.1.0
+curl -s https://proof.prooforbluff.app/version      # expect 9.0.0
 curl -s https://proof.prooforbluff.app/ready        # jobCapacity must be > 0
 # CORS: allowed origin echoes back, preflight is a 204 from Caddy
 curl -s -I -X OPTIONS -H 'Origin: https://prooforbluff.app' \
@@ -277,7 +282,7 @@ Terry is `j5i@192.168.1.71`, native Ubuntu, i5-1135G7 (4 cores / 8 threads),
 `/home/j5i/pob/compose.yaml`. No operator seeds, Blockfrost tokens, public
 proxy, bot, or database have been deployed there for POB.
 
-The proof server is pinned to version 8.1.0 and its image digest. It binds
+The proof server is pinned to version 9.0.0 and its image digest. It binds
 only `127.0.0.1:6300`, runs one proving worker with job capacity 1, limits
 CPU to 6 logical CPUs, and has a 14 GiB RAM limit plus at most 2 GiB swap
 (`memswap_limit: 16g` is the combined ceiling). Swap is spike protection,

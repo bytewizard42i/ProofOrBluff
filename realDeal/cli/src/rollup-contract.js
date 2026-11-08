@@ -15,32 +15,27 @@
  *
  * Mirrors contract.js: same provider stack (example-counter pattern), same
  * witness-slot trick, same withDustRetry wrapper, same network guards as
+ *
+ * NOTE (ledger-9 migration, 2026-11): this is a ledger-8 contract; it is NOT
+ * recompiled for ledger 9, so the chain path is unverified. Helpers and
+ * network guards below are still the shared source of truth for the v3p/v4/
+ * five-up adapters.
  * cli.js openSession. Nothing here holds funds — the rollup contract is
  * state-only.
  */
 
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { Buffer } from 'buffer';
-import * as Rx from 'rxjs';
 
-import * as ledger from '@midnight-ntwrk/ledger-v8';
 import {
   deployContract as midnightDeployContract,
   findDeployedContract as midnightFindDeployedContract,
 } from '@midnight-ntwrk/midnight-js-contracts';
-import { httpClientProofProvider } from
-  '@midnight-ntwrk/midnight-js-http-client-proof-provider';
-import { indexerPublicDataProvider } from
-  '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
-import { NodeZkConfigProvider } from
-  '@midnight-ntwrk/midnight-js-node-zk-config-provider';
-import { levelPrivateStateProvider } from
-  '@midnight-ntwrk/midnight-js-level-private-state-provider';
-import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
-import { CompiledContract } from '@midnight-ntwrk/compact-js';
+import { CompiledContract } from '@midnight-ntwrk/midnight-js-protocol/v9/compact-js';
+import { ContractState } from '@midnight-ntwrk/compact-runtime';
 
 import { withDustRetry } from './contract.js';
+import { buildLedger9Providers } from './providers.js';
 import { challengeReductionWitness } from './rollup-consent.js';
 import * as state from './state.js';
 
@@ -252,100 +247,19 @@ export function assertFreshPublicSeed(seedHex, networkId, environment = process.
 }
 
 // ---------------------------------------------------------------------------
-// Bindings loader + provider bridge
-//
-// NOTE: contract.js keeps loadContractModule / createWalletAndMidnightProvider
-// / signTransactionIntents module-private. We do not modify contract.js here,
-// so the bridge is restated below. contract.js remains the source of truth for
-// the wallet-SDK 'proof' / 'pre-proof' signing workaround; if it changes,
-// change this copy too (or, better, export it from contract.js and import it).
+// Bindings loader + provider bridge (shared: providers.js since ledger 9).
 
 async function loadRollupContractModule(managedDir) {
   const indexJs = path.resolve(managedDir, 'contract', 'index.js');
   return import(pathToFileURL(indexJs).href);
 }
 
-function signTransactionIntents(tx, signFn, proofMarker) {
-  if (!tx.intents || tx.intents.size === 0) return;
-  for (const segment of tx.intents.keys()) {
-    const intent = tx.intents.get(segment);
-    if (!intent) continue;
-    const cloned = ledger.Intent.deserialize('signature', proofMarker, 'pre-binding', intent.serialize());
-    const signature = signFn(cloned.signatureData(segment));
-    for (const offerName of ['fallibleUnshieldedOffer', 'guaranteedUnshieldedOffer']) {
-      const offer = cloned[offerName];
-      if (!offer) continue;
-      const signatures = offer.inputs.map((_input, index) => offer.signatures.at(index) ?? signature);
-      cloned[offerName] = offer.addSignatures(signatures);
-    }
-    tx.intents.set(segment, cloned);
-  }
-}
-
-async function createWalletAndMidnightProvider(walletCtx) {
-  const synced = await Rx.firstValueFrom(
-    walletCtx.wallet.state().pipe(Rx.filter((walletState) => walletState.isSynced)),
-  );
-  return {
-    getCoinPublicKey() { return synced.shielded.coinPublicKey.toHexString(); },
-    getEncryptionPublicKey() { return synced.shielded.encryptionPublicKey.toHexString(); },
-    async balanceTx(tx, ttl) {
-      const recipe = await walletCtx.wallet.balanceUnboundTransaction(
-        tx,
-        { shieldedSecretKeys: walletCtx.shieldedSecretKeys, dustSecretKey: walletCtx.dustSecretKey },
-        { ttl: ttl ?? new Date(Date.now() + 30 * 60 * 1000) },
-      );
-      const signFn = (payload) => walletCtx.unshieldedKeystore.signData(payload);
-      signTransactionIntents(recipe.baseTransaction, signFn, 'proof');
-      if (recipe.balancingTransaction) signTransactionIntents(recipe.balancingTransaction, signFn, 'pre-proof');
-      return walletCtx.wallet.finalizeRecipe(recipe);
-    },
-    submitTx(tx) { return walletCtx.wallet.submitTransaction(tx); },
-  };
-}
-
-function resolvePrivateStatePassword(networkId, accountId, environment = process.env) {
-  // Same policy as contract.js: a public-key-derived fallback is only
-  // acceptable for disposable local wallets.
-  const password = networkId === 'undeployed'
-    ? environment.POB_PRIVATE_STATE_PASSWORD || `${Buffer.from(accountId, 'hex').toString('base64')}!pob`
-    : environment.POB_PRIVATE_STATE_PASSWORD;
-  if (!password || password.length < 16) {
-    throw new Error('Set POB_PRIVATE_STATE_PASSWORD (at least 16 characters) before connecting to a public network.');
-  }
-  return password;
-}
-
 async function buildDefaultProviders({ walletHandle, endpoints, networkId, managedDir, proofServerUrl }) {
-  const walletCtx = walletHandle?.ctx;
-  if (!walletCtx) {
-    throw new Error('walletHandle.ctx missing — build it with buildWalletFromSeed() from wallet-node.js first.');
-  }
-  if (!endpoints?.indexer || !endpoints?.indexerWs) {
-    throw new Error('endpoints.indexer and endpoints.indexerWs are required (see cli.js endpointsFromEnv).');
-  }
-  const proofServer = proofServerUrl ?? endpoints.proofServer;
-  if (!proofServer) {
-    throw new Error('No proof server URL. Pass proofServerUrl or endpoints.proofServer (POB_PROOF_SERVER).');
-  }
-  const walletAndMidnightProvider = await createWalletAndMidnightProvider(walletCtx);
-  const accountId = walletAndMidnightProvider.getCoinPublicKey();
-  const zkConfigProvider = new NodeZkConfigProvider(managedDir);
-  return {
-    privateStateProvider: levelPrivateStateProvider({
-      privateStateStoreName: 'pob-rollup',
-      // state.privateStateDir() only distinguishes wagered/state-only; the
-      // rollup gets its own folder so LevelDB locks never collide.
-      privateStateStorePath: path.join(state.stateRoot(), networkId, 'private-state-rollup'),
-      accountId,
-      privateStoragePasswordProvider: () => resolvePrivateStatePassword(networkId, accountId),
-    }),
-    publicDataProvider: indexerPublicDataProvider(endpoints.indexer, endpoints.indexerWs),
-    zkConfigProvider,
-    proofProvider: httpClientProofProvider(proofServer, zkConfigProvider),
-    walletProvider: walletAndMidnightProvider,
-    midnightProvider: walletAndMidnightProvider,
-  };
+  return buildLedger9Providers({
+    walletHandle, endpoints, networkId, managedDir, proofServerUrl,
+    // The rollup gets its own folder so LevelDB locks never collide.
+    storeName: 'pob-rollup', storeDirName: 'private-state-rollup',
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +308,6 @@ export async function getRollupContractApi({
 }) {
   assertSupportedNetwork(networkId);
   if (seedHex !== undefined) assertFreshPublicSeed(seedHex, networkId);
-  setNetworkId(networkId);
 
   const internals = {
     loadContractModule: loadRollupContractModule,
@@ -465,11 +378,14 @@ export async function getRollupContractApi({
   };
 
   const readLedger = async () => {
-    const contractState = await providers.publicDataProvider.queryContractState(contractAddress);
-    if (!contractState) {
+    const read = await providers.publicDataProvider.queryContractState(contractAddress);
+    if (!read) {
       throw new Error(`The indexer has no state for rollup contract ${contractAddress} yet. Wait for the deploy tx to be indexed and retry.`);
     }
-    return decodeRollupLedger(contractState.data);
+    // 5.0 returns SerializedContractState (bytes + era); test mocks still
+    // hand back the pre-5.0 `{ data }` shape — accept both.
+    const data = read.contractState ? read.contractState.deserialize({ v9: ContractState }).data : read.data;
+    return decodeRollupLedger(data);
   };
 
   return {
