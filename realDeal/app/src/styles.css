@@ -3058,10 +3058,12 @@ button.active {
 }
 
 /* ── Hand celebration: confetti for the player, alarm lights for the Ai.
- *    z 45 — above the table and floating log panel (40), below
- *    .result-overlay (50) and the tutorial/activity overlays (60). ── */
+ *    z 55 — above the table, log panel (40) and .result-overlay (50),
+ *    below the tutorial/activity overlays (60). ── */
 .hand-celebration {
-  position: fixed; inset: 0; z-index: 45;
+  /* Above .result-overlay (50, 85% black) so the game-winning burst is not
+   * buried under it; still below the tutorial (60). Never blocks clicks. */
+  position: fixed; inset: 0; z-index: 55;
   pointer-events: none;
   display: flex; align-items: flex-start; justify-content: center;
 }
@@ -3123,7 +3125,7 @@ button.active {
 }
 
 /* ── Deal transition: two felt curtains + neon round card. z 48 — above the
- *    celebration (45), still below result/tutorial overlays. pointer-events
+ *    table, below result/tutorial overlays (the celebration is cleared first). pointer-events
  *    stay ON so nothing can be tapped mid-deal. ── */
 .hand-transition {
   position: fixed; inset: 0; z-index: 48;

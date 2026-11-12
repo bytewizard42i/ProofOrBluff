@@ -2,9 +2,9 @@ import React, { useMemo } from 'react';
 
 // Hand-level celebration + deal transition for 5 Up 2 Down. Purely visual —
 // FiveUpGame mounts/unmounts these; all motion lives in styles.css under the
-// hand-celebration / hand-transition prefixes. Z-indexes sit above the table
-// and floating log panel (40) but below .result-overlay (50) and the
-// tutorial/activity overlays (60).
+// hand-celebration / hand-transition prefixes. The celebration (z 55) sits
+// above .result-overlay (50) so a game-winning burst shows over the result
+// card; the transition (z 48) sits below it. Both stay under the tutorial (60).
 
 /**
  * Which side gained more between two score snapshots. `before`/`after` are
