@@ -22,10 +22,11 @@ Ranks are integers 0..12 indexing `RANKS` in `realDeal/shared/dealing.js` (0 = '
 | POST | `/v1/games` | `{ mode: 0\|1\|4, difficulty?: 'easy'\|'medium'\|'hard' }` | `GameView` |
 | GET | `/v1/games/:gameId` | — | `GameView` |
 | POST | `/v1/games/:gameId/play` | `{ rank, count, cards: [rank…] }` (cards.length === count, 1..4, rank === currentRank) | `GameView` (bot has responded: accept / challenge) |
-| POST | `/v1/games/:gameId/accept` | — | `GameView` (bot then plays if its turn) |
+| POST | `/v1/games/:gameId/accept` | — | `GameView` (bot's answer resolved; its own move waits for `/advance`) |
 | POST | `/v1/games/:gameId/challenge` | — | `GameView` (bot's cards revealed in `lastEvents`) |
 | POST | `/v1/games/:gameId/claim` | `{ count, ranks: [boardRank…] }` (5U2D, claim step) | `GameView` |
 | POST | `/v1/games/:gameId/pass` | — | `GameView` (5U2D claim step only; resolves a showdown) |
+| POST | `/v1/games/:gameId/advance` | — | `GameView` (both tables; releases the bot's held move — the "Next move" gate; 409 unless the bot is on move) |
 | POST | `/v1/games/:gameId/next` | — | `GameView` (both tables; deals the next hand once a finished round is held — `awaitingNext`) |
 
 Errors: `{ error: string }` with 400 (bad move / bad body), 404 (unknown game),
@@ -78,6 +79,15 @@ Original also holds each finished hand on the table: while `"awaitingNext":
 true`, `turn`/`currentRank`/`pending` are null, `hand`/`cardsLeft` show what
 was left, `roundSummary` is `{ round, scores, hand, botHandCount }`, and every
 move endpoint answers 409 until `POST /next` deals the following round.
+
+Both tables also gate the bot's OWN move behind `POST /advance`: after a
+human action the bot's *answer* to the claim (accept / challenge) resolves
+immediately inside that response, but its next play/claim/pass is held —
+the view then shows `turn: "bot"` (Original) or `turn: "bot", step:
+"claim"` (5U2D) with no pending claim. `POST /advance` releases exactly one
+bot move and returns the resulting view; it answers 409 on the human's turn,
+while a hand is held, or once the game is over. The frontend shows this as
+the "Next move" button + curtain; `POST /next` stays the "Next hand" gate.
 
 ### 5 Up 2 Down view extras (`"gameType": "fiveup"`, modes 0 | 1)
 

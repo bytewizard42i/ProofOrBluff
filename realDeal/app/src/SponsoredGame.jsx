@@ -11,7 +11,7 @@ import {
   usePresentation,
 } from './components/table/index.js';
 import { SponsoredGameProvider } from './providers/sponsored/sponsoredProvider.js';
-import { SPONSORED_API_URL } from './midnight/config.js';
+import { SPONSORED_API_URL, QUIT_URL } from './midnight/config.js';
 import { TUTORIAL_KEY } from './DemoGame.jsx';
 
 // Menu modes → contract modes (0 Casual, 1 Standard, 4 Casino). The Menu
@@ -181,8 +181,8 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
   // nothing is saved), then back to the menu. Resolves even if the service
   // is unreachable — the server's idle sweeper is the backstop.
   const handleQuit = useCallback(() => {
-    run(async () => { await provider.abandonGame(); handleMenu(); });
-  }, [provider, handleMenu, run]);
+    run(async () => { await provider.abandonGame(); window.location.assign(QUIT_URL); });
+  }, [provider, run]);
 
   // Tab closed / navigated away / refreshed mid-game: beacon the abandon so
   // the table is shut down like a failed transaction. pagehide fires on
@@ -228,6 +228,25 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
     challenge: () => run(() => provider.challenge()),
   };
 
+  // The bot's own move is held server-side until Next move is pressed —
+  // turn 'ai' with no pending claim is exactly the state advance() accepts.
+  const awaitingMove = !!state && state.status === 'playing' && state.turn === 'ai'
+    && !state.lastPlay && !state.awaitingNext;
+
+  // Next move: same curtain rhythm as Next hand, mid-round. The bot's answer
+  // to the player's claim already resolved inside the last action — this
+  // releases its OWN play, which the curtain labels "Ai's turn".
+  const nextMove = () => run(async () => {
+    setCelebration(null); playShuffle();
+    setHandTransition({ round: state?.round ?? 1, phase: 'in', turn: 'ai', sub: 'Next move' });
+    try {
+      await Promise.all([provider.advance(), new Promise((r) => setTimeout(r, 1100))]);
+    } finally {
+      setHandTransition((t) => (t ? { ...t, phase: 'out' } : t));
+      setTimeout(() => setHandTransition(null), 450);
+    }
+  });
+
   // Next hand: the ONLY way a new round starts now that finished hands are
   // held. The deal is instant server-side, so we await it first — the
   // returned table state already knows whose turn opens the hand, which the
@@ -236,7 +255,7 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
     const round = (state?.round ?? 0) + 1;
     setCelebration(null); playShuffle();
     const result = await provider.nextHand();
-    setHandTransition({ round, phase: 'in', turn: result?.turn ?? null, sub: 'Fresh hands.' });
+    setHandTransition({ round, phase: 'in', turn: result?.turn ?? null, sub: 'Next hand' });
     if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
     transitionTimerRef.current = setTimeout(() => {
       setHandTransition((t) => (t ? { ...t, phase: 'out' } : t));
@@ -293,6 +312,8 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
               onQuit={handleQuit}
               awaitingNext={!!state.awaitingNext}
               onNextHand={nextHand}
+              awaitingMove={awaitingMove}
+              onNextMove={nextMove}
             />
           </div>
           {state.status === 'gameover' && (

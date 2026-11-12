@@ -97,6 +97,7 @@ async function playOut(gameId, view) {
   while (view.status === 'playing') {
     if (guard++ > 400) throw new Error('did not finish');
     if (view.awaitingNext) { ({ body: view } = await api('POST', `/v1/games/${gameId}/next`)); continue; }
+    if (view.turn === 'bot') { ({ body: view } = await api('POST', `/v1/games/${gameId}/advance`)); continue; }   // Next move gate
     if (view.pending) { claims += 1; ({ body: view } = await api('POST', `/v1/games/${gameId}/${claims % 3 === 0 ? 'challenge' : 'accept'}`)); continue; }
     const card = view.hand.includes(view.currentRank) ? view.currentRank : view.hand[0];
     ({ body: view } = await api('POST', `/v1/games/${gameId}/play`, { rank: view.currentRank, count: 1, cards: [card] }));

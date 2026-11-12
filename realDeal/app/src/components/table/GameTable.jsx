@@ -41,6 +41,8 @@ export default function GameTable({
   onQuit = null,
   awaitingNext = false,
   onNextHand = null,
+  awaitingMove = false,
+  onNextMove = null,
 }) {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [claimedCount, setClaimedCount] = useState(1);
@@ -301,6 +303,19 @@ export default function GameTable({
             <div className="center-actions">
               <button className="primary" onClick={onNextHand} disabled={busy}>
                 Next hand
+              </button>
+            </div>
+          </div>
+        )}
+
+        {awaitingMove && onNextMove && (
+          // The bot's own move is held server-side until the player presses
+          // this — same curtain rhythm as Next hand, mid-round. Its answer
+          // to the player's claim already resolved inside the last action.
+          <div className="center-side">
+            <div className="center-actions">
+              <button className="primary" onClick={onNextMove} disabled={busy}>
+                Next move
               </button>
             </div>
           </div>

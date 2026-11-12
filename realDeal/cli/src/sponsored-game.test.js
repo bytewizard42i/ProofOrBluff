@@ -80,6 +80,7 @@ function playWholeGame(game, { challengeEvery = 3 } = {}) {
     if (guard++ > 500) throw new Error('game did not finish');
     const v = game.view();
     if (v.awaitingNext) { game.nextRound(); continue; }   // held hand: deal the next one
+    if (v.turn === 'bot') { game.advance(); continue; }    // held Ai move — the Next move gate
     if (v.turn !== 'human') throw new Error('bot stalled on its own turn');
     if (v.pending) {
       botClaims += 1;
@@ -135,7 +136,9 @@ describe('sponsored v3p game', () => {
     v = game.humanPlay({ rank: v.currentRank, count: 1, cards: [v.hand[0]] });
     const types = v.lastEvents.map((e) => e.type);
     expect(types[0]).toMatch(/^bot-(accept|challenge)$/);
-    // After the response the bot takes the turn and plays, leaving a pending claim for us.
+    // The bot's own play is held behind advance() — release it, then it
+    // leaves a pending claim for us.
+    if (v.status === 'playing' && v.turn === 'bot') v = game.advance();
     if (v.status === 'playing' && v.pending) {
       expect(v.pending.claimer).toBe('bot');
       const after = game.humanChallenge();
@@ -170,6 +173,27 @@ describe('sponsored v3p game', () => {
     expect(v.lastEvents.at(-1).type).toBe('game-end');
   });
 
+  it('holds the bot\'s own move behind advance() — the Next move gate', () => {
+    const game = createSponsoredGame({ gameId: 'gate-1', mode: 1, pureCircuits, random: seededRandom(7) });
+    const v0 = game.view();
+    // Not the bot's turn yet: advance is refused and changes nothing.
+    expect(() => game.advance()).toThrow(/Ai's turn/);
+    const v = game.humanPlay({ rank: v0.currentRank, count: 1, cards: [v0.hand[0]] });
+    // The bot's ANSWER to the claim resolved inside the action; its own play
+    // is what waits — turn 'bot', no pending, lastEvents = the response only.
+    if (v.status === 'playing' && v.turn === 'bot') {
+      expect(v.pending).toBeNull();
+      expect(v.lastEvents.every((e) => e.type !== 'bot-play')).toBe(true);
+      const mid = game.view();
+      expect(mid.turn).toBe('bot');
+      const adv = game.advance();
+      expect(adv.lastEvents.some((e) => e.type === 'bot-play')).toBe(true);
+      expect(['human', 'bot']).toContain(adv.turn === 'human' ? 'human' : adv.pending ? 'bot' : 'x');
+      // A second advance is refused — the gate only opens once per move.
+      if (adv.status === 'playing' && adv.turn === 'human' && !adv.pending) expect(() => game.advance()).toThrow(/Ai's turn/);
+    }
+  });
+
   it('holds a finished hand until nextRound', () => {
     const game = createSponsoredGame({ gameId: 'hold-1', mode: 1, pureCircuits, random: seededRandom(42) });
     // Play round 1 until the hand finishes and is held on the table.
@@ -179,6 +203,7 @@ describe('sponsored v3p game', () => {
       if (guard++ > 500) throw new Error('round 1 never finished');
       if (v.status !== 'playing') throw new Error('game ended before round 1 was held');
       if (v.pending) { game.humanAccept(); continue; }
+      if (v.turn === 'bot') { game.advance(); continue; }
       const card = v.hand.includes(v.currentRank) ? v.currentRank : v.hand[0];
       game.humanPlay({ rank: v.currentRank, count: 1, cards: [card] });
     }

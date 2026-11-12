@@ -165,6 +165,19 @@ function createMockGame({ gameId, mode, difficulty }) {
         push({ type: 'bot-accept', dialogue: 'Fine by me.' });
         resolve(null, cards.every((c) => c === rank));
       }
+      return this.view();
+    },
+
+    /**
+     * Release the bot's held turn — mirrors POST /advance. The bot's answer
+     * to the human's claim resolves inside the action itself; only its own
+     * next play waits for this gate.
+     */
+    advance() {
+      if (!live()) throw new MockHttpError(409, 'game is over');
+      if (game.hold) throw new MockHttpError(409, 'hand over — next hand first');
+      if (game.turn !== 'bot' || game.pending) throw new MockHttpError(409, 'not the Ai\'s turn');
+      game.events = [];
       botPlaysIfItsTurn();
       return this.view();
     },
@@ -174,7 +187,6 @@ function createMockGame({ gameId, mode, difficulty }) {
       if (!game.pending || game.pending.claimer !== 'bot') throw new MockHttpError(409, 'no bot claim to accept');
       game.events = [];
       resolve(null, true);
-      botPlaysIfItsTurn();
       return this.view();
     },
 
@@ -188,7 +200,6 @@ function createMockGame({ gameId, mode, difficulty }) {
         dialogue: truthful ? 'Told you. Honest as the day.' : 'Caught. Well played.',
       });
       resolve('human', truthful);
-      botPlaysIfItsTurn();
       return this.view();
     },
 
@@ -269,6 +280,7 @@ export function createMockSponsoredServer({ ready = true, maxOpenGames = Infinit
     if (method !== 'POST') throw new MockHttpError(405, 'Method not allowed.');
     if (action === 'play') return [200, game.humanPlay({ rank: body?.rank, count: body?.count, cards: body?.cards })];
     if (action === 'accept') return [200, game.humanAccept()];
+    if (action === 'advance') return [200, game.advance()];
     if (action === 'challenge') return [200, game.humanChallenge()];
     if (action === 'next') return [200, game.nextRound()];
     throw new MockHttpError(404, 'Not found.');

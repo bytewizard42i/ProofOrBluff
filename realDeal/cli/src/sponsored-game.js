@@ -178,7 +178,13 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
     if (Number(referee.state.turn) !== SEAT.HUMAN) throw new GameError(409, 'not your turn');
   }
 
-  function afterHumanAction() { settleRoundIfFinished(); botPlaysIfItsTurn(); return game.view(); }
+  /**
+   * After a human action: settle a finished hand, but DO NOT let the bot take
+   * its own turn yet — that waits for advance() so the table can curtain it
+   * behind a "Next move" button (the bot's answer to the human's claim —
+   * accept/challenge — still resolves inside the human's action itself).
+   */
+  function afterHumanAction() { settleRoundIfFinished(); return game.view(); }
 
   referee.startRound();
 
@@ -240,6 +246,21 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
       if (inRound()) throw new GameError(409, 'round still in progress');
       events = [];
       referee.startRound();
+      botPlaysIfItsTurn();
+      return game.view();
+    },
+
+    /**
+     * Play the bot's held turn — the "Next move" gate. Only valid while the
+     * bot is actually on move with no pending claim; anything else is a 409
+     * so a stray call can't skip a turn or wipe lastEvents.
+     */
+    advance() {
+      if (status !== GAME_STATUS.PLAYING) throw new GameError(409, 'game is over');
+      if (!inRound()) throw new GameError(409, 'hand over — next hand first');
+      const s = referee.state;
+      if (Number(s.turn) !== SEAT.BOT || s.pending) throw new GameError(409, 'not the Ai\'s turn');
+      events = [];
       botPlaysIfItsTurn();
       return game.view();
     },

@@ -43,9 +43,16 @@ describe('createSponsoredClient', () => {
     const rank = created.currentRank;
     const after = await client.play(created.gameId, { rank, count: 1, cards: [rank] });
     expect(after.hand).toHaveLength(6);
-    expect(after.lastEvents.map((e) => e.type)).toEqual(['bot-accept', 'bot-play']);
-    expect(after.pending).toEqual({ claimer: 'bot', rank: rank + 1, count: 1 });
-    expect(after.turn).toBe('human');
+    // The bot's ANSWER resolved inside the play; its own move waits for /advance.
+    expect(after.lastEvents.map((e) => e.type)).toEqual(['bot-accept']);
+    expect(after.turn).toBe('bot');
+    expect(after.pending).toBeNull();
+    const moved = await client.advance(created.gameId);
+    expect(moved.lastEvents.map((e) => e.type)).toEqual(['bot-play']);
+    expect(moved.pending).toEqual({ claimer: 'bot', rank: rank + 1, count: 1 });
+    expect(moved.turn).toBe('human');
+    // The gate is single-shot: the bot already moved, so a second advance 409s.
+    await expect(client.advance(created.gameId)).rejects.toMatchObject({ status: 409 });
   });
 
   it('challenge reveals the bot cards', async () => {
@@ -53,6 +60,7 @@ describe('createSponsoredClient', () => {
     const created = await client.createGame({ mode: 1 });
     const rank = created.currentRank;
     await client.play(created.gameId, { rank, count: 1, cards: [rank] });
+    await client.advance(created.gameId);   // release the bot's held play → its claim awaits us
     const after = await client.challenge(created.gameId);
     const reveal = after.lastEvents.find((e) => e.type === 'human-challenge');
     expect(reveal.truthful).toBe(false);
@@ -66,6 +74,7 @@ describe('createSponsoredClient', () => {
     const created = await client.createGame({ mode: 1 });
     const rank = created.currentRank;
     await client.play(created.gameId, { rank, count: 1, cards: [rank] });
+    await client.advance(created.gameId);
     const after = await client.accept(created.gameId);
     expect(after.lastEvents).toEqual([]);
     expect(after.pending).toBeNull();

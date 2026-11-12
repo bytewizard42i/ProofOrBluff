@@ -4,7 +4,7 @@ import { speak, cancelSpeech } from './speech.js';
 import { HandCelebration, HandTransition, handWinner } from './HandEffects.jsx';
 import { GameLogPanel, ResultOverlay, PlayingCard, LOG } from './components/table/index.js';
 import { createSponsoredClient } from './providers/sponsored/client.js';
-import { SPONSORED_API_URL } from './midnight/config.js';
+import { SPONSORED_API_URL, QUIT_URL } from './midnight/config.js';
 import { RANKS } from '../../shared/dealing.js';
 import { rankName } from './game/rules.js';
 import { chainStatusLine } from './SponsoredGame.jsx';
@@ -195,8 +195,11 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
 
   const quit = useCallback(() => {
     if (!quitArmed) { setQuitArmed(true); setTimeout(() => setQuitArmed(false), 4000); return; }
-    run(async () => { try { await client.abandon(gameIdRef.current); } catch { /* sweeper is the backstop */ } toMenu(); });
-  }, [quitArmed, client, run, toMenu]);
+    run(async () => {
+      try { await client.abandon(gameIdRef.current); } catch { /* sweeper is the backstop */ }
+      window.location.assign(QUIT_URL);
+    });
+  }, [quitArmed, client, run]);
 
   // Tab closed mid-game → beacon the abandon (same as Original).
   useEffect(() => {
@@ -224,6 +227,9 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
   const claiming = myTurn && view.step === 'claim';
   const responding = myTurn && view.step === 'respond';
   const awaitingNext = live && view.awaitingNext;
+  // The bot's own claim/pass is held server-side until Next move is pressed.
+  // Its answer to the player's claim already resolved inside the action.
+  const awaitingMove = live && !myTurn && !awaitingNext;
 
   // Hand celebration, fired ONCE per finished hand (keyed — the receipt poll
   // re-sets `view` every 6 s and must not retrigger it). A held finished
@@ -280,7 +286,7 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
   const pass = () => run(async () => absorb(await client.pass(gameIdRef.current), 'You pass.'));
   const nextHand = () => run(async () => {
     const round = (view?.round ?? 0) + 1;
-    setCelebration(null); setHandTransition({ round, phase: 'in' }); playShuffle();
+    setCelebration(null); setHandTransition({ round, phase: 'in', sub: 'Next hand' }); playShuffle();
     try {
       const [v] = await Promise.all([client.next(gameIdRef.current), new Promise((r) => setTimeout(r, 1100))]);
       // The deal response says who moves first in the new hand — label it.
@@ -295,6 +301,20 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
   });
   const accept = () => run(async () => absorb(await client.accept(gameIdRef.current), `${LOG.YOU_ACCEPTED} the Ai's claim.`));
   const challenge = () => run(async () => absorb(await client.challenge(gameIdRef.current), 'Proof or Bluff! You challenge the Ai.'));
+  // Next move: same curtain rhythm as Next hand, mid-round. The Ai's answer
+  // to the player's claim already resolved inside the last action — this
+  // releases its OWN claim/pass, labelled "Ai's turn" while covered.
+  const nextMove = () => run(async () => {
+    setCelebration(null);
+    setHandTransition({ round: view?.round ?? 1, phase: 'in', turn: 'ai', sub: 'Next move' }); playShuffle();
+    try {
+      const [v] = await Promise.all([client.advance(gameIdRef.current), new Promise((r) => setTimeout(r, 1100))]);
+      absorb(v);
+    } finally {
+      setHandTransition((t) => (t ? { ...t, phase: 'out' } : t));
+      setTimeout(() => setHandTransition(null), 450);
+    }
+  });
 
   const winner = view?.winner === 'human' ? 'player' : view?.winner === 'bot' ? 'ai' : view?.winner === 'draw' ? 'draw' : null;
   const pendingText = view?.pending && view.pending.claimer === 'bot'
@@ -391,7 +411,7 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
                   : `Claiming ${names(pickedRanks)}.`)}
                 {responding && pendingText}
                 {awaitingNext && 'Round complete — press Next hand to deal.'}
-                {live && !myTurn && !awaitingNext && 'The Ai is thinking…'}
+                {awaitingMove ? 'The Ai is waiting — press Next move.' : live && !myTurn && !awaitingNext && 'The Ai is thinking…'}
               </div>
               <div className="fiveup-actions">
                 <div className="fiveup-hole" aria-label="Your cards"
@@ -408,6 +428,7 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
                   {responding && <button className="primary" onClick={accept} disabled={busy}>Accept</button>}
                   {responding && view.pending.count > 0 && <button className="danger" onClick={challenge} disabled={busy}>Proof or Bluff!</button>}
                   {awaitingNext && <button className="primary" onClick={nextHand} disabled={busy}>Next hand</button>}
+                  {awaitingMove && <button className="primary" onClick={nextMove} disabled={busy}>Next move</button>}
                 </div>
               </div>
               </div>

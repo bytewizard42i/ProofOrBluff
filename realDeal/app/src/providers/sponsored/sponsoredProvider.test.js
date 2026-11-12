@@ -76,7 +76,11 @@ describe('SponsoredGameProvider', () => {
   it('plays through the table actions and surfaces the bot response', async () => {
     const { provider } = makeProvider();
     const start = await provider.startGame({ mode: 1 });
-    const state = await provider.actions.play({ cards: cardsOfRank(start, '5').slice(0, 1) });
+    const gated = await provider.actions.play({ cards: cardsOfRank(start, '5').slice(0, 1) });
+    // Next-move gate: the bot's answer resolved, its own play is still held.
+    expect(gated.turn).toBe('ai');
+    expect(gated.lastPlay).toBeNull();
+    const state = await provider.advance();
     expect(state.playerHand).toHaveLength(6);
     expect(state.turn).toBe('player');
     expect(state.lastPlay).toEqual({ player: 'ai', claimedRank: '6', claimedCount: 1, cards: [] });
@@ -95,6 +99,7 @@ describe('SponsoredGameProvider', () => {
     const { provider } = makeProvider();
     const start = await provider.startGame({ mode: 1 });
     await provider.actions.play({ cards: cardsOfRank(start, '5').slice(0, 1) });
+    await provider.advance();
     const result = await provider.actions.challenge();
     expect(result.claimWasTrue).toBe(false);
     expect(result.revealed).toEqual([{ id: 'reveal:2:0', rank: '4', rankIndex: 2, suit: 'hidden' }]);
@@ -113,6 +118,7 @@ describe('SponsoredGameProvider', () => {
     const { provider } = makeProvider();
     const start = await provider.startGame({ mode: 1 });
     await provider.actions.play({ cards: cardsOfRank(start, '5').slice(0, 1) });
+    await provider.advance();
     const state = await provider.actions.accept();
     expect(state.log.at(-1).startsWith(LOG.YOU_ACCEPTED)).toBe(true);
     expect(state.lastPlay).toBeNull();
@@ -151,6 +157,8 @@ describe('SponsoredGameProvider', () => {
       guard += 1;
       if (state.awaitingNext) {
         await provider.nextHand();
+      } else if (state.turn === 'ai') {
+        await provider.advance();   // Next move gate
       } else if (state.lastPlay?.player === 'ai') {
         await provider.challenge();
       } else {
@@ -231,6 +239,7 @@ describe('SponsoredAiProvider', () => {
     expect(() => ai.decideChallenge()).toThrow('server-driven');
     const start = await provider.startGame({ mode: 1 });
     await provider.makePlay({ cards: cardsOfRank(start, '5').slice(0, 1) });
+    await provider.advance();
     expect(ai.getReaction()).toEqual({ dialogue: 'One. Trust me.', mediaHint: null, emotionTag: null });
     expect(ai.getGameOverMessage(true).dialogue).toContain('Final score 0–0');
   });

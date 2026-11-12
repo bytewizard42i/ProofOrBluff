@@ -22,6 +22,10 @@ export const CONTRACT_ASSET_NAME = CONTRACT_VARIANT === 'state-only'
 export const SPONSORED_API_URL = env.VITE_POB_API_URL || null;
 export const SPONSORED_MODE = Boolean(SPONSORED_API_URL);
 
+// Quitting a live game abandons it server-side, then sends the player back
+// to the marketing home — the in-app menu is for browsing, not for quitters.
+export const QUIT_URL = 'https://prooforbluff.com';
+
 // Browser-side Blockfrost URLs would expose John's project token to everyone
 // who opens the page. Mainnet needs a trusted backend proxy or wallet-managed
 // endpoints; reject this configuration instead of silently leaking a token.

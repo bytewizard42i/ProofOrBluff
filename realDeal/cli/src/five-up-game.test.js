@@ -75,6 +75,7 @@ function playOut(game, { passOnEmpty = false } = {}) {
   while (v.status === 'playing') {
     if (guard++ > 200) throw new Error('did not finish');
     if (v.awaitingNext) { v = game.nextRound(); continue; }
+    if (v.turn === 'bot') { v = game.advance(); continue; }   // held Ai move — the Next move gate
     if (v.step === 'claim') {
       const m = v.myMatches;
       v = passOnEmpty && m.length === 0 ? game.humanPass() : game.humanClaim({ count: m.length, ranks: m });
@@ -122,11 +123,15 @@ describe('5 Up 2 Down sponsored game', () => {
     expect(Object.keys(v)).not.toContain('botHole');
     expect(v.turn).toBe('human'); expect(v.step).toBe('claim');
     const after = game.humanClaim({ count: 0, ranks: [] });
-    // bot responded (accept, 0-claim) and claimed; now it's the human's response — or the round rolled
-    if (after.step === 'respond') {
-      expect(after.pending.claimer).toBe('bot');
-      expect(after.lastEvents.some((e) => e.type === 'bot-claim' && typeof e.dialogue === 'string')).toBe(true);
-      if (after.pending.count > 0) {
+    // The bot's ANSWER to the 0-claim resolves immediately; its own claim is
+    // held behind advance() — the Next move gate.
+    expect(after.lastEvents.some((e) => e.type === 'bot-accept' || e.type === 'bot-challenge')).toBe(true);
+    const adv = after.turn === 'bot' ? game.advance() : after;
+    // bot claimed; now it's the human's response — or the round rolled
+    if (adv.step === 'respond') {
+      expect(adv.pending.claimer).toBe('bot');
+      expect(adv.lastEvents.some((e) => e.type === 'bot-claim' && typeof e.dialogue === 'string')).toBe(true);
+      if (adv.pending.count > 0) {
         const c = game.humanChallenge();
         const ev = c.lastEvents.find((e) => e.type === 'human-challenge');
         expect(ev.revealed).toHaveLength(2);
@@ -134,6 +139,28 @@ describe('5 Up 2 Down sponsored game', () => {
       }
     }
   });
+  it('holds the bot\'s own claim behind advance() — the Next move gate', () => {
+    const game = createFiveUpGame({ gameId: 'q'.repeat(64), mode: 1, pureCircuits });
+    const v0 = game.view();
+    expect(() => game.advance()).toThrow(/Ai's turn/);
+    const v = game.humanClaim({ count: v0.myMatches.length, ranks: v0.myMatches });
+    if (v.status === 'playing' && v.turn === 'bot') {
+      // The bot's response resolved; its fresh claim waits for advance().
+      expect(v.step).toBe('claim');
+      const adv = game.advance();
+      expect(adv.lastEvents.some((e) => e.type === 'bot-claim' || e.type === 'bot-pass')).toBe(true);
+      // The bot's move either hands the claim back to the human or settles
+      // the round (a pass showdown can end it) — both are valid gate exits.
+      if (adv.awaitingNext) {
+        expect(adv.turn).toBeNull();
+        expect(() => game.advance()).toThrow(/next hand/);
+      } else {
+        expect(adv.turn).toBe('human');
+        expect(() => game.advance()).toThrow(/Ai's turn/);
+      }
+    }
+  });
+
   it('validation: bad counts, ranks not on board, wrong step, challenging a 0-claim', () => {
     const game = createFiveUpGame({ gameId: 'i'.repeat(64), mode: 1, pureCircuits });
     expect(() => game.humanClaim({ count: 3, ranks: [1, 2, 3] })).toThrow(/count must be/);
@@ -165,6 +192,7 @@ describe('5 Up 2 Down sponsored game', () => {
     let cur = after;
     while (cur.status === 'playing' && !(cur.awaitingNext && cur.roundSummary?.showdowns?.length)) {
       if (cur.awaitingNext) cur = game.nextRound();
+      else if (cur.turn === 'bot') cur = game.advance();
       else if (cur.step === 'claim') cur = cur.myMatches.length === 0 ? game.humanPass() : game.humanClaim({ count: cur.myMatches.length, ranks: cur.myMatches });
       else cur = game.humanAccept();
     }
@@ -234,6 +262,7 @@ describe('5 Up 2 Down over HTTP (fake chain)', () => {
       let guard = 0;
       while (v.status === 'playing' && guard++ < 200) {
         if (v.awaitingNext) ({ body: v } = await call('POST', `/v1/games/${id}/next`));
+        else if (v.turn === 'bot') ({ body: v } = await call('POST', `/v1/games/${id}/advance`));
         else if (v.step === 'claim') ({ body: v } = await call('POST', `/v1/games/${id}/claim`, { count: v.myMatches.length, ranks: v.myMatches }));
         else ({ body: v } = await call('POST', `/v1/games/${id}/${v.pending.count === 2 ? 'challenge' : 'accept'}`));
       }

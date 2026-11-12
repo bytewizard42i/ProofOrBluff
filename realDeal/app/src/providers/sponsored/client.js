@@ -91,6 +91,8 @@ export function createSponsoredClient({ baseUrl = defaultBaseUrl(), fetchImpl = 
     /** 5 Up 2 Down: deal the next hand once the finished round has been shown. */
     next: (gameId) => request('POST', `/games/${requireGameId(gameId)}/next`),
     accept: (gameId) => request('POST', `/games/${requireGameId(gameId)}/accept`),
+    /** Both tables: release the bot's held move (the "Next move" gate). */
+    advance: (gameId) => request('POST', `/games/${requireGameId(gameId)}/advance`),
     challenge: (gameId) => request('POST', `/games/${requireGameId(gameId)}/challenge`),
     abandon: (gameId) => request('POST', `/games/${requireGameId(gameId)}/abandon`),
     /** Absolute URL for navigator.sendBeacon on tab close (no custom headers → no preflight). */

@@ -534,6 +534,12 @@ export function createSponsoredHttpApp({
         }));
       }
       if (action === 'accept') { await readJsonBody(request).catch(() => ({})); return sendJson(response, 200, act(entry, (g) => g.humanAccept())); }
+      if (action === 'advance') { await readJsonBody(request).catch(() => ({})); return sendJson(response, 200, act(entry, (g) => {
+        // advance is shared — both tables hold the bot's own move behind a
+        // "Next move" press; the bot's answer to your claim is NOT gated.
+        if (!g.advance) throw new GameError(409, 'this table has no advance action');
+        return g.advance();
+      })); }
       if (action === 'challenge') { await readJsonBody(request).catch(() => ({})); return sendJson(response, 200, act(entry, (g) => g.humanChallenge())); }
       if (action === 'pass' || action === 'next') {
         await readJsonBody(request).catch(() => ({}));

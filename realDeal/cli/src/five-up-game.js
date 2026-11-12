@@ -99,12 +99,19 @@ export function createFiveUpGame({ gameId, mode, difficulty = 'medium', pureCirc
     push({ type: 'game-end', winner: winnerName(result.winner) });
   }
 
-  /** The bot acts (claims and/or responds) until it is the human's move or the round settles. */
-  function runBot() {
+  /**
+   * The bot acts (claims and/or responds) until it is the human's move or the
+   * round settles. `holdClaims` stops BEFORE the bot's fresh claim/pass —
+   * its answer to the human's pending claim still plays immediately, but its
+   * own next move waits for advance() so the table can curtain it behind a
+   * "Next move" button (same rhythm as Original's botPlaysIfItsTurn gate).
+   */
+  function runBot({ holdClaims = false } = {}) {
     for (let guard = 0; guard < 6 && status === GAME_STATUS.PLAYING; guard += 1) {
       if (!inRound()) return;   // finished round held on the table
       const s = referee.state;
       if (Number(s.actor) !== SEAT.BOT) return;
+      if (holdClaims && s.step === 'claim') return;
       const hole = nums(referee.hole(SEAT.BOT));
       const board = nums(s.board);
       if (s.step === 'claim') {
@@ -142,7 +149,7 @@ export function createFiveUpGame({ gameId, mode, difficulty = 'medium', pureCirc
     if (s.step !== step) throw new GameError(409, step === 'claim' ? 'respond to the pending claim first' : 'no claim to respond to');
     return s;
   }
-  function afterHuman() { settleRoundIfFinished(); runBot(); return game.view(); }
+  function afterHuman() { settleRoundIfFinished(); runBot({ holdClaims: true }); return game.view(); }
 
   referee.startRound();
   runBot();   // round 1: the human claims first, so this is a no-op; kept for symmetry
@@ -196,6 +203,20 @@ export function createFiveUpGame({ gameId, mode, difficulty = 'medium', pureCirc
       if (inRound()) throw new GameError(409, 'round still in progress');
       events = [];
       referee.startRound();
+      runBot();
+      return game.view();
+    },
+    /**
+     * Play the bot's held claim/pass — the "Next move" gate. Only valid while
+     * the bot is actually on move (its claim step); anything else is a 409 so
+     * a stray call can't skip a turn or wipe lastEvents.
+     */
+    advance() {
+      if (status !== GAME_STATUS.PLAYING) throw new GameError(409, 'game is over');
+      if (!inRound()) throw new GameError(409, 'round complete — deal the next hand');
+      const s = referee.state;
+      if (Number(s.actor) !== SEAT.BOT) throw new GameError(409, 'not the Ai\'s turn');
+      events = [];
       runBot();
       return game.view();
     },

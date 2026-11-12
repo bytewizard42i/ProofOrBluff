@@ -358,6 +358,17 @@ export class SponsoredGameProvider {
     return this._absorb(view);
   }
 
+  /**
+   * Release the bot's held move (POST /advance, both tables). The bot's
+   * answer to the human's claim already resolved inside the last action —
+   * this plays its OWN next move, which the table curtains as "Next move".
+   */
+  async advance() {
+    const gameId = this._requireGame();
+    const view = await this._act(() => this.client.advance(gameId));
+    return this._absorb(view);
+  }
+
   /** Resolves to `{ claimWasTrue, revealed, logLength, state }` for GameTable's reaction + SFX. */
   async challenge() {
     const gameId = this._requireGame();
