@@ -35,6 +35,7 @@ import {
   createKeystore,
   PublicKey as UnshieldedPublicKey,
   UnshieldedWallet,
+  NoOpTransactionHistoryStorage,
 } from '@midnightntwrk/wallet-sdk';
 import { Buffer } from 'buffer';
 
@@ -73,7 +74,7 @@ export function deriveUnshieldedAddress(seed, networkId) {
     .getBech32Address().asString();
 }
 
-function buildFacadeConfig(networkId, endpoints) {
+export function buildFacadeConfig(networkId, endpoints) {
   return {
     networkId,
     indexerClientConnection: {
@@ -89,8 +90,15 @@ function buildFacadeConfig(networkId, endpoints) {
     // `forks` is deliberately left out: the facade presets
     // DefaultForkSchedule (ledger-v9 at the protocol version a 2.x node
     // reports), which is where Mainnet already is.
-    // txHistoryStorage is gone from DefaultConfiguration in facade 5.0.0 —
-    // history is held inside the per-wallet snapshots we already persist.
+    // txHistoryStorage is NOT optional at runtime even though it is absent
+    // from DefaultConfiguration's type: WalletFacade.init reads
+    // configuration.txHistoryStorage and calls gotPending/gotRejected on
+    // every submission — omitting it crashes the FIRST rejected tx with
+    // "Cannot read properties of undefined (reading 'gotRejected')"
+    // (seen live on the first ledger-9 deploy attempt, 2026-11-12).
+    // NoOp is correct here: we track receipts ourselves in the chain queue
+    // and never query wallet tx history.
+    txHistoryStorage: new NoOpTransactionHistoryStorage(),
   };
 }
 

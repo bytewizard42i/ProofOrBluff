@@ -72,3 +72,19 @@ describe('describeSyncProgress', () => {
     expect(describeSyncProgress(hostile)).toBe('sync progress unavailable');
   });
 });
+
+describe('buildFacadeConfig', () => {
+  it('always supplies txHistoryStorage — the facade calls it on every submit', async () => {
+    const { buildFacadeConfig } = await import('./wallet-node.js');
+    const config = buildFacadeConfig('mainnet', {
+      indexer: 'https://idx.example', indexerWs: 'wss://idx.example/ws',
+      node: 'https://node.example', proofServer: 'http://127.0.0.1:6300',
+    });
+    // Runtime-required but absent from DefaultConfiguration's TS type:
+    // WalletFacade.init reads configuration.txHistoryStorage and calls
+    // gotPending/gotRejected — undefined crashes the first tx outcome.
+    expect(config.txHistoryStorage).toBeDefined();
+    await expect(config.txHistoryStorage.gotRejected({})).resolves.toBeUndefined();
+    await expect(config.txHistoryStorage.getAll()).resolves.toEqual([]);
+  });
+});
