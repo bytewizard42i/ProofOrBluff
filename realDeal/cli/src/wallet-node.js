@@ -95,15 +95,114 @@ function buildFacadeConfig(networkId, endpoints) {
 }
 
 /**
+ * One-line wallet sync progress for the 'syncing…' heartbeat. Field names
+ * come from the wallet-sdk 2 FacadeState: shielded/dust progress is
+ * index-based (appliedIndex / highestRelevantWalletIndex / isConnected),
+ * unshielded is transaction-id-based (appliedId / highestTransactionId /
+ * isConnected). Never throws — a half-built state prints '?' instead of
+ * killing the sync loop that called it.
+ */
+export function describeSyncProgress(state) {
+  try {
+    const pair = (p, applied, target) => {
+      const a = p?.[applied];
+      const t = p?.[target];
+      return `${a == null ? '?' : String(a)}/${t == null ? '?' : String(t)}`;
+    };
+    const conn = (p) => (p?.isConnected == null ? '?' : String(p.isConnected));
+    const shielded = state?.shielded?.progress;
+    const dust = state?.dust?.progress;
+    const unshielded = state?.unshielded?.progress;
+    return `shielded ${pair(shielded, 'appliedIndex', 'highestRelevantWalletIndex')} `
+      + `dust ${pair(dust, 'appliedIndex', 'highestRelevantWalletIndex')} `
+      + `unshielded ${pair(unshielded, 'appliedId', 'highestTransactionId')} `
+      + `(connected: s=${conn(shielded)} d=${conn(dust)} u=${conn(unshielded)})`;
+  } catch {
+    return 'sync progress unavailable';
+  }
+}
+
+/** signal.reason as an Error — AbortSignal.reason may be any value. */
+function abortReasonError(signal) {
+  const reason = signal?.reason;
+  return reason instanceof Error ? reason : new Error(String(reason ?? 'Wallet sync aborted.'));
+}
+
+/** '36 h' / '15 min' / '2 min' — for the sync-limit log and timeout text. */
+function formatSyncLimit(ms) {
+  const hours = ms / 3_600_000;
+  if (Number.isInteger(hours)) return `${hours} h`;
+  return `${Math.round(ms / 60_000)} min`;
+}
+
+/**
+ * The three sync cursors as one comparable string. A stall is "the cursors
+ * stopped moving" — NOT "no state emissions", because the SDK emits progress
+ * updates that change nothing. Missing fields read as '?', like
+ * describeSyncProgress.
+ */
+function syncSignature(state) {
+  const cursor = (v) => (v == null ? '?' : String(v));
+  return [
+    cursor(state?.shielded?.progress?.appliedIndex),
+    cursor(state?.dust?.progress?.appliedIndex),
+    cursor(state?.unshielded?.progress?.appliedId),
+  ].join('|');
+}
+
+/**
+ * Stall detector for the sync wait: subscribes to the state stream and
+ * ERRORS with the last seen progress description when the cursor signature
+ * has not changed for `stallMs`. Never emits a value (ignoreElements), so it
+ * can sit in the same merge as the real wait — an error tears the wait down,
+ * a healthy sync is untouched. The timeout runs from subscription, so a
+ * sync that never emits at all stalls too.
+ */
+export function syncStall$(state$, stallMs) {
+  let lastState = null;
+  return state$.pipe(
+    Rx.tap((s) => { lastState = s; }),
+    Rx.map(syncSignature),
+    Rx.distinctUntilChanged(),
+    Rx.timeout({
+      each: stallMs,
+      with: () => Rx.throwError(() => new Error(
+        `Wallet sync made no progress for ${formatSyncLimit(stallMs)} (${describeSyncProgress(lastState)}).`,
+      )),
+    }),
+    Rx.ignoreElements(),
+  );
+}
+
+/**
+ * Observable that errors with signal.reason the moment `signal` aborts —
+ * merged into the sync wait so an abort rejects firstValueFrom with the
+ * caller's reason instead of hanging until the sync timeout.
+ */
+function abortSync$(signal) {
+  return Rx.defer(() => {
+    if (signal.aborted) throw abortReasonError(signal);
+    return Rx.fromEvent(signal, 'abort').pipe(
+      Rx.map(() => { throw abortReasonError(signal); }),
+    );
+  });
+}
+
+/**
  * Build the wallet handle (facade + unshielded keystore) and wait for it to
  * sync. Returns a `walletHandle` whose `.ctx` shape is what providers.js
  * expects.
+ *
+ * `signal` (optional AbortSignal): aborting during the sync wait rejects
+ * with signal.reason so the caller's catch can stop the facade — used by
+ * the provider-budget guard in sponsored-service.js.
  */
 export async function buildWalletFromSeed({
   seed,
   endpoints,
   networkId,
   snapshotPath = process.env.POB_WALLET_SNAPSHOT || null,
+  signal = null,
 }) {
   // Never print even a prefix of a production seed. Wallet addresses are
   // public; seed material is not, including in development logs.
@@ -119,6 +218,7 @@ export async function buildWalletFromSeed({
   // tail. The snapshot holds NO secret keys (those come from the seed every
   // time); it is just indexed public state, so a stale/corrupt file is safe
   // to ignore — we log and fall back to a cold start.
+  if (signal?.aborted) throw abortReasonError(signal);
   const snapshot = await readWalletSnapshot(snapshotPath, networkId);
   if (snapshot) log.info(`  Restoring wallet sync snapshot from ${snapshotPath} (saved ${snapshot.savedAt})`);
 
@@ -134,28 +234,79 @@ export async function buildWalletFromSeed({
       ? DustWallet(cfg).restore(snapshot.dust)
       : DustWallet(cfg).startWithSeed(seeds.dust)),
   });
+  // The snapshot interval is cleared on EVERY exit path: the catch below and
+  // the returned handle's shutdown().
+  let snapshotTimer = null;
   try {
   await facade.start(seeds);
 
   const ctx = { wallet: facade, unshieldedKeystore };
 
+  // Persist partial sync progress every 5 min FROM HERE — before the sync
+  // wait, not after it. A cold Mainnet sync replays ~2.0M events at
+  // ~2,400/min (≈14 h on the VPS); snapshots used to be written only once
+  // isSynced flipped, so every restart replayed from zero. serializeState()
+  // snapshots the CURRENT state — progress cursor included, no isSynced
+  // requirement — and restore resumes at the saved appliedIndex/appliedId
+  // (verified in the SDK's Serialization/Sync sources for all three wallets).
+  const saveSnapshot = () => writeWalletSnapshot(snapshotPath, networkId, facade);
+  let snapshotWriteFailing = false;
+  snapshotTimer = snapshotPath ? setInterval(() => {
+    saveSnapshot()
+      .then(() => { snapshotWriteFailing = false; })
+      .catch((error) => {
+        // Once per failure streak: a dead disk must not spam a line every
+        // 5 min for a 14 h sync, but the first failure is never silent.
+        if (!snapshotWriteFailing) {
+          snapshotWriteFailing = true;
+          log.warn(`  Wallet snapshot write failed: ${error.message} — retrying every 5 min.`);
+        }
+      });
+  }, 5 * 60_000) : null;
+  snapshotTimer?.unref?.();
+
   log.info(`  Unshielded address: ${unshieldedKeystore.getBech32Address().asString()}`);
-  // Local chains sync in seconds. Public networks replay the chain's ledger
-  // events for a new wallet; the Foundation measured ~67 min for a full
-  // Preprod sync. `each` resets on every emission.
-  const syncTimeoutMs = networkId === 'undeployed'
-    ? 120_000
-    : Number(process.env.POB_SYNC_TIMEOUT_MS || 90 * 60_000);
-  log.info(`  Waiting for wallet sync… (timeout ${Math.round(syncTimeoutMs / 60_000)} min)`);
+  // Local chains sync in seconds. Public cold syncs replay the chain's
+  // ledger events for a new wallet — measured ~14 h for a full Mainnet
+  // replay on the VPS — so the limits are two-fold: a STALL timeout (no
+  // progress-cursor movement for stallMs — a wedged sync dies fast instead
+  // of burning quota silently, the Nov-9 failure mode) and an absolute CAP
+  // (a legitimately slow cold replay must not be killed by a total-time
+  // limit sized for Preview). `undeployed` keeps 120 s for both.
+  const syncLimits = networkId === 'undeployed'
+    ? { stallMs: 120_000, capMs: 120_000 }
+    : {
+        stallMs: Number(process.env.POB_SYNC_STALL_MS || 15 * 60_000),
+        capMs: Number(process.env.POB_SYNC_TIMEOUT_MS || 36 * 60 * 60_000),
+      };
+  log.info(`  Waiting for wallet sync… (stall timeout ${formatSyncLimit(syncLimits.stallMs)}, absolute cap ${formatSyncLimit(syncLimits.capMs)})`);
+  let lastProgressLogAt = 0;
+  const syncWait = facade.state().pipe(
+    Rx.tap((s) => {
+      // 60 s heartbeat — a 14 h cold sync would otherwise write ~5,000
+      // lines. The tap runs BEFORE the isSynced filter but does not
+      // throttle the stream, so completion is never delayed by logging.
+      if (s.isSynced || Date.now() - lastProgressLogAt < 60_000) return;
+      lastProgressLogAt = Date.now();
+      log.info(`    syncing… ${describeSyncProgress(s)}`);
+    }),
+    Rx.filter((s) => s.isSynced),
+    Rx.take(1),
+  );
+  // merge (not race): the abort/stall branches only ever error, so the first
+  // real emission still wins while either tears the whole wait down. The
+  // outer timeout is the absolute cap — `first` is a total-time limit here
+  // because the merged stream only ever emits once (the synced state).
   const synced = await Rx.firstValueFrom(
-    facade.state().pipe(
-      Rx.throttleTime(10_000),
-      Rx.tap((s) => {
-        if (!s.isSynced) log.info('    syncing…');
+    Rx.merge(
+      syncWait,
+      signal ? abortSync$(signal) : Rx.EMPTY,
+      syncStall$(facade.state(), syncLimits.stallMs),
+    ).pipe(
+      Rx.timeout({
+        first: syncLimits.capMs,
+        with: () => Rx.throwError(() => new Error(`Wallet sync exceeded ${formatSyncLimit(syncLimits.capMs)}.`)),
       }),
-      Rx.filter((s) => s.isSynced),
-      Rx.take(1),
-      Rx.timeout({ each: syncTimeoutMs }),
     )
   );
 
@@ -173,10 +324,9 @@ export async function buildWalletFromSeed({
     await registerNightForDust(ctx, networkId);
   }
 
-  const saveSnapshot = () => writeWalletSnapshot(snapshotPath, networkId, facade);
+  // Final snapshot write once everything (sync + DUST registration) settled;
+  // the 5-min interval above has been covering the long sync already.
   await saveSnapshot();
-  const snapshotTimer = snapshotPath ? setInterval(() => { saveSnapshot().catch(() => {}); }, 5 * 60_000) : null;
-  snapshotTimer?.unref?.();
 
   return {
     api: facade,
@@ -193,6 +343,7 @@ export async function buildWalletFromSeed({
   } catch (error) {
     // Includes start, sync, registration and snapshot failures: never leave
     // an orphaned wallet retrying after the caller has entered paused mode.
+    if (snapshotTimer) clearInterval(snapshotTimer);
     await facade.stop().catch(() => {});
     throw error;
   }

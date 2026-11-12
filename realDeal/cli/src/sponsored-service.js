@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 import { createSponsoredGame, GAME_STATUS, GameError, MODES, DIFFICULTIES } from './sponsored-game.js';
 import { createFiveUpGame, FIVE_UP_MODES, GAME_TYPE as FIVE_UP } from './five-up-game.js';
+import { createProviderMeter, installProviderMeter, sendProviderAlert } from './provider-meter.js';
 
 // The two tables. `original` = the Cheat-style rollup (v3p/v4, picked by
 // POB_CONTRACT_VERSION); `fiveup` = 5 Up 2 Down. Each game remembers its type
@@ -329,10 +330,12 @@ function defaultSerializeStep(step) { return toJsonSafe({ ...step, witnesses: st
  * @param {function} [options.readiness]   () → { ok, reason } — 503 on game creation when !ok
  * @param {Set<string>} [options.allowedOrigins]
  * @param {function} [options.now]
+ * @param {function} [options.healthExtra]  () → object merged into /v1/health
+ *                                        (main() uses it for the provider meter)
  */
 export function createSponsoredHttpApp({
   pureCircuits, fiveUpPureCircuits = null, queue, readiness = () => ({ ok: true }), allowedOrigins = new Set(DEFAULT_ALLOWED_ORIGINS), now = Date.now, ai, random,
-  network = process.env.POB_NETWORK_ID || 'undeployed', walletAddress = null, walletExtra = () => ({}),
+  network = process.env.POB_NETWORK_ID || 'undeployed', walletAddress = null, walletExtra = () => ({}), healthExtra = () => ({}),
   contractVersion = process.env.POB_CONTRACT_VERSION || 'v3p',
 }) {
   /** gameId → { game, contractAddressRef, touchedAt } */
@@ -441,6 +444,7 @@ export function createSponsoredHttpApp({
       wallet: { address: walletAddress, dustReady: ready.ok, ...walletExtra() },
       proofQueue: { pending: queue.pending },
       openGames: games.size,
+      ...healthExtra(),
     };
   }
   function statsView() {
@@ -536,14 +540,96 @@ async function main() {
   // Keep liveness separate from readiness, including DURING wallet startup.
   // A quota/configuration failure must not crash into Docker/watchdog restarts.
   let app, queue, walletHandle, walletSubscription, walletGuardTimer;
+  let walletStoppedReason = null;
+  // Live DUST view — declared here (not beside the wallet subscription below)
+  // so the provider-budget stop path can mark it unsynced before a wallet
+  // even exists.
+  let dust = { balance: 0n, synced: false, at: new Date().toISOString() };
   let startupReason = 'Wallet is starting; games are paused.';
+
+  // Provider request meter — installed BEFORE any wallet/provider traffic so
+  // every outbound call is counted from the first one. Buckets persist to
+  // <stateDir>/provider-usage.json (60 s + shutdown) so a restart does not
+  // reset the daily budget. 'stop' level aborts providerStop (passed to
+  // buildWalletFromSeed) and shuts a running wallet down via stopWallet().
+  const envCount = (name, fallback) => {
+    const value = Number(process.env[name]);
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+  };
+  const providerMeter = createProviderMeter({
+    hourlyWarn: envCount('POB_PROVIDER_HOURLY_WARN', 1500),
+    dailyWarn: envCount('POB_PROVIDER_DAILY_WARN', 25000),
+    dailyStop: envCount('POB_PROVIDER_DAILY_STOP', 40000),
+    onAlert: (level, snap) => {
+      handleProviderAlert(level, snap).catch((error) => log(`provider alert handler failed: ${safeErrorMessage(error)}`));
+    },
+  });
+  const providerUsagePath = path.join(stateDir, 'provider-usage.json');
+  try {
+    providerMeter.restore(JSON.parse(await readFile(providerUsagePath, 'utf8')));
+  } catch { /* first run or unreadable file — start with empty buckets */ }
+  const providerHealth = () => {
+    const snap = providerMeter.snapshot();
+    return { lastHour: snap.lastHour.total, last24h: snap.last24h.total, level: snap.level, lastWsClose: snap.lastWsClose };
+  };
+  const uninstallProviderMeter = installProviderMeter(providerMeter, { log });
+  const providerStop = new AbortController();
+  const persistProviderUsage = async () => {
+    try {
+      await mkdir(stateDir, { recursive: true });
+      await writeFile(`${providerUsagePath}.tmp`, JSON.stringify(providerMeter.serialize()), 'utf8');
+      await rename(`${providerUsagePath}.tmp`, providerUsagePath);
+    } catch { /* usage persistence is best-effort — never break the service */ }
+  };
+  const providerPersistTimer = setInterval(() => { persistProviderUsage().catch(() => {}); }, 60_000);
+  providerPersistTimer.unref();
+  const providerLogTimer = setInterval(() => {
+    const snap = providerMeter.snapshot();
+    log(`provider usage: lastHour=${snap.lastHour.total} (http=${snap.lastHour.http} ws=${snap.lastHour.wsOpen}) last24h=${snap.last24h.total} level=${snap.level}`);
+  }, 3_600_000);
+  providerLogTimer.unref();
+
+  // The ONE place that stops the wallet's network activity: both the
+  // 10-minute unavailability guard and the provider-budget 'stop' level land
+  // here. Idempotent — the process stays alive in paused mode either way.
+  async function stopWallet(reason) {
+    const message = typeof reason === 'string' ? reason : (reason?.message ?? String(reason));
+    if (walletStoppedReason) return;
+    walletStoppedReason = message;
+    if (walletGuardTimer) { clearInterval(walletGuardTimer); walletGuardTimer = null; }
+    walletSubscription?.unsubscribe();
+    dust = { ...dust, synced: false };
+    log(`Wallet stopped: ${message}`);
+    await walletHandle?.shutdown?.().catch(() => {});
+  }
+
+  // Provider-meter upward transitions: log, optionally webhook, and on
+  // 'stop' abort the wallet (in-flight sync rejects with the reason; a
+  // running wallet is shut down). The process stays alive and paused.
+  async function handleProviderAlert(level, snap) {
+    const lastHour = snap.lastHour.total;
+    const last24h = snap.last24h.total;
+    log(`PROVIDER ALERT level=${level} lastHour=${lastHour} last24h=${last24h}`);
+    const webhook = process.env.POB_ALERT_WEBHOOK_URL?.trim();
+    if (webhook) {
+      const message = `Proof or Bluff provider alert: level=${level} lastHour=${lastHour} last24h=${last24h} on ${networkId}`;
+      const delivered = await sendProviderAlert(webhook, message, fetch);
+      if (!delivered) log('provider alert webhook failed (check POB_ALERT_WEBHOOK_URL)');
+    }
+    if (level === 'stop') {
+      const reason = new Error('Provider request budget exceeded (24 h); wallet stopped to protect the quota.');
+      providerStop.abort(reason);
+      await stopWallet(reason);
+    }
+  }
+
   const server = http.createServer((request, response) => {
     if (app) return app.handle(request, response);
     try {
       applyCors(request, response, allowedOriginsFromEnvironment());
       if (request.method === 'OPTIONS') { response.writeHead(204); response.end(); return; }
       if (request.method === 'GET' && request.url === '/v1/health') {
-        return sendJson(response, 200, { ok: false, network: networkId, reason: startupReason, wallet: { synced: false } });
+        return sendJson(response, 200, { ok: false, network: networkId, reason: startupReason, wallet: { synced: false }, provider: providerHealth() });
       }
       return sendJson(response, 503, { error: 'Games are temporarily paused. Please try again later.' });
     } catch (error) { sendJson(response, error.statusCode ?? 500, { error: 'Request refused.' }); }
@@ -555,6 +641,10 @@ async function main() {
     log(`${signal}: draining chain queue…`);
     server.close();
     if (walletGuardTimer) clearInterval(walletGuardTimer);
+    clearInterval(providerPersistTimer);
+    clearInterval(providerLogTimer);
+    uninstallProviderMeter();
+    await persistProviderUsage();
     if (queue) await Promise.race([queue.idle(), new Promise((r) => setTimeout(r, 120_000))]);
     walletSubscription?.unsubscribe();
     await walletHandle?.shutdown?.();
@@ -594,19 +684,29 @@ async function main() {
   // Any other indexer failure is left to the operator (no automatic retry).
   const INDEXER_RECHECK_MS = Number(process.env.POB_INDEXER_RECHECK_MS || 15 * 60_000);
   for (;;) {
+    // A provider-budget 'stop' must also end the paused re-check loop —
+    // otherwise a quota-protected service would keep polling all day.
+    if (providerStop.signal.aborted) throw providerStop.signal.reason;
     try { await checkIndexerAvailability(endpoints.indexer); break; }
     catch (error) {
       if (!/access paused/.test(error.message)) throw error;
       startupReason = `${safeErrorMessage(error)} Re-checking in ${Math.round(INDEXER_RECHECK_MS / 60_000)} min.`;
       log(`Startup paused: ${startupReason}`);
-      await new Promise((resolve) => setTimeout(resolve, INDEXER_RECHECK_MS));
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, INDEXER_RECHECK_MS);
+        timer.unref?.();
+        providerStop.signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          reject(providerStop.signal.reason ?? new Error('Provider request budget exceeded.'));
+        }, { once: true });
+      });
     }
   }
   startupReason = 'Wallet is syncing; games are paused.';
   // Sync snapshot on the state volume: restart = ~40 s instead of a ~20 min cold
   // sync (measured on Preview: 737 s cold → 37 s restored).
   const snapshotPath = process.env.POB_WALLET_SNAPSHOT || path.join(stateDir, `wallet-${networkId}.snapshot.json`);
-  walletHandle = await buildWalletFromSeed({ seed: seedHex, endpoints, networkId, snapshotPath });
+  walletHandle = await buildWalletFromSeed({ seed: seedHex, endpoints, networkId, snapshotPath, signal: providerStop.signal });
 
   // One contract API instance per game (each binds to one contract address).
   const apis = new Map();
@@ -623,8 +723,9 @@ async function main() {
 
   // Live DUST view: a game costs several transactions, so refuse to open new
   // games unless the operator wallet can pay for at least one. Mirrors the
-  // wallet facade's own state stream; cheap to read on every /v1/health.
-  let dust = { balance: 0n, synced: false, at: new Date().toISOString() };
+  // wallet facade's state stream; cheap to read on every /v1/health.
+  // (`dust` itself is declared beside the other wallet lets above so the
+  // provider-stop path can reach it before the wallet exists.)
   walletSubscription = walletHandle.api.state().subscribe({
     next: (st) => { dust = walletObservation(st); },
     error: () => { dust = { ...dust, synced: false }; log('Wallet state stream failed; games are paused.'); },
@@ -637,15 +738,12 @@ async function main() {
     if (walletIsCurrent(dust)) { unavailableSince = null; return; }
     unavailableSince ??= Date.now();
     if (Date.now() - unavailableSince < 10 * 60_000) return;
-    clearInterval(walletGuardTimer);
-    walletSubscription.unsubscribe();
-    dust = { ...dust, synced: false };
-    log('Wallet unavailable for 10 minutes: stopping sync to protect the provider quota. Inspect logs and provider status before manually restarting.');
-    await walletHandle.shutdown().catch(() => {});
+    await stopWallet('Wallet unavailable for 10 minutes: stopping sync to protect the provider quota. Inspect logs and provider status before manually restarting.');
   }, 30_000);
   walletGuardTimer.unref();
   const MIN_DUST_FOR_A_GAME = BigInt(process.env.POB_MIN_DUST_FOR_GAME || '1000000000000000'); // 1 DUST in specks (1 DUST = 1e15)
   const readiness = () => {
+    if (walletStoppedReason) return { ok: false, reason: walletStoppedReason };
     if (!walletIsCurrent(dust)) return { ok: false, reason: 'Wallet sync is unavailable; games are paused.' };
     if (dust.balance < MIN_DUST_FOR_A_GAME) return { ok: false, reason: 'Operator wallet has no DUST yet; games are paused.' };
     return { ok: true };
@@ -682,6 +780,7 @@ async function main() {
     walletAddress: walletHandle.address ?? null,
     readiness, contractVersion,
     walletExtra: () => ({ dust: dust.balance.toString(), synced: walletIsCurrent(dust), observedAt: dust.at, dustLowSince: dustLowSince?.toISOString() ?? null }),
+    healthExtra: () => ({ provider: providerHealth() }),
   });
 
   // Abandon live games nobody has touched for IDLE_ABANDON_MS (closed laptop,

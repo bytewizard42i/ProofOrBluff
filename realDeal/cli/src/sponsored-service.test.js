@@ -6,6 +6,7 @@
 import http from 'node:http';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createChainQueue, createSponsoredHttpApp, toJsonSafe, allowedOriginsFromEnvironment, installConsoleRedaction, originAllowed, walletObservation, walletIsCurrent, checkIndexerAvailability } from './sponsored-service.js';
+import { sendProviderAlert } from './provider-meter.js';
 
 const { pureCircuits } = await import('../../contracts/managed/proof-or-bluff-rollup-v3p/contract/index.js');
 const ORIGIN = 'https://prooforbluff.app';
@@ -329,5 +330,46 @@ describe('sponsored service HTTP', () => {
     expect(originAllowed('http://pob-enterpisezk-labs-projects.vercel.app', wild)).toBe(false);
     expect(originAllowed('https://evil.example/x-enterpisezk-labs-projects.vercel.app', wild)).toBe(false);
     expect(() => allowedOriginsFromEnvironment({ POB_ALLOWED_ORIGINS: 'https://*' })).toThrow(/real suffix/);
+  });
+});
+
+describe('provider meter wiring', () => {
+  it('health includes the provider block from healthExtra, existing fields intact', async () => {
+    const provider = { lastHour: 12, last24h: 340, level: 'warn', lastWsClose: null };
+    const app2 = createSponsoredHttpApp({
+      pureCircuits, queue, network: 'test',
+      healthExtra: () => ({ provider }),
+    });
+    const srv = http.createServer((q, s) => app2.handle(q, s));
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    try {
+      const res = await fetch(`http://127.0.0.1:${srv.address().port}/v1/health`, { headers: { Origin: ORIGIN } });
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.provider).toEqual(provider);
+      // Sibling fields are untouched.
+      expect(body.ok).toBe(true);
+      expect(body.network).toBe('test');
+      expect(body.wallet).toBeDefined();
+      expect(body.proofQueue).toBeDefined();
+    } finally {
+      srv.close();
+    }
+  });
+
+  it('sendProviderAlert posts { text, content } once and swallows a rejected fetch', async () => {
+    const calls = [];
+    const delivered = await sendProviderAlert('https://hooks.example/secret', 'level=stop last24h=41000 on mainnet', async (url, init) => {
+      calls.push({ url, init });
+      return { ok: true };
+    });
+    expect(delivered).toBe(true);
+    expect(calls).toHaveLength(1);
+    const body = JSON.parse(calls[0].init.body);
+    expect(body.text).toBe('level=stop last24h=41000 on mainnet');
+    expect(body.content).toBe(body.text);
+    expect(calls[0].init.method).toBe('POST');
+
+    await expect(sendProviderAlert('https://hooks.example/secret', 'x', async () => { throw new Error('down'); })).resolves.toBe(false);
   });
 });

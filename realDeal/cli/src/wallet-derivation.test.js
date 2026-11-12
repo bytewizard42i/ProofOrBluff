@@ -46,3 +46,29 @@ describe('wallet derivation is unchanged by the wallet-sdk 2 upgrade', () => {
     expect(() => deriveUnshieldedAddress('abc', 'mainnet')).toThrow(/64-character hex/);
   });
 });
+
+describe('describeSyncProgress', () => {
+  it('formats index-based shielded/dust and id-based unshielded progress', async () => {
+    const { describeSyncProgress } = await import('./wallet-node.js');
+    const state = {
+      shielded: { progress: { appliedIndex: 1200n, highestRelevantWalletIndex: 5000n, isConnected: true } },
+      dust: { progress: { appliedIndex: 300n, highestRelevantWalletIndex: 900n, isConnected: false } },
+      unshielded: { progress: { appliedId: 10n, highestTransactionId: 40n, isConnected: true } },
+    };
+    expect(describeSyncProgress(state)).toBe(
+      'shielded 1200/5000 dust 300/900 unshielded 10/40 (connected: s=true d=false u=true)',
+    );
+  });
+
+  it('prints ? for missing fields and never throws on garbage', async () => {
+    const { describeSyncProgress } = await import('./wallet-node.js');
+    expect(describeSyncProgress(null)).toContain('?');
+    expect(describeSyncProgress({})).toContain('shielded ?/?');
+    expect(describeSyncProgress({ shielded: null, dust: { progress: {} }, unshielded: { progress: { appliedId: 3n } } }))
+      .toBe('shielded ?/? dust ?/? unshielded 3/? (connected: s=? d=? u=?)');
+    // A getter that throws must not escape — the sync loop depends on this.
+    const hostile = { get shielded() { throw new Error('boom'); } };
+    expect(() => describeSyncProgress(hostile)).not.toThrow();
+    expect(describeSyncProgress(hostile)).toBe('sync progress unavailable');
+  });
+});

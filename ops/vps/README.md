@@ -57,10 +57,18 @@ curl -s https://api.prooforbluff.app/v1/stats | jq
 # games created/ended/closed, wins, chain { submitted, failed, lastError, avgSeconds }
 ```
 
-First boot on a fresh `pob-api-state` volume syncs the Mainnet wallet
-(~10 min; `syncing…` lines in the logs). Restarts resume from the saved sync
-position in seconds. The Docker HEALTHCHECK only probes HTTP; read `ok` /
-`wallet.dustReady` from the body for the real picture.
+First boot on a fresh `pob-api-state` volume cold-syncs the Mainnet wallet —
+on wallet-sdk 2 that is a full chain replay of ~2.0M events at ~2,400
+events/min, i.e. MANY HOURS on this box (measured 2026-11-12; the old "~10
+min" figure predates the ledger-9 SDK). Progress is visible in the throttled
+`syncing… shielded a/b dust c/d unshielded e/f (connected: …)` log lines
+(one per minute). The sync dies only if the cursors stop moving for
+`POB_SYNC_STALL_MS` (default 15 min) or the whole wait exceeds
+`POB_SYNC_TIMEOUT_MS` (default 36 h) — a healthy slow replay is never cut
+off. Because the wallet snapshot is rewritten every 5 min DURING the sync,
+restarts resume from the last saved position instead of replaying from zero.
+The Docker HEALTHCHECK only probes HTTP; read `ok` / `wallet.dustReady` from
+the body for the real picture.
 
 ## Logs
 
@@ -104,6 +112,38 @@ reset. Safeguards now in place:
   checks the provider and restarts it.
 * Startup/sync failures stop the facade before rethrowing, so no orphaned
   wallet keeps polling behind a paused health response.
+
+### Provider request meter
+
+`realDeal/cli/src/provider-meter.js` counts OUR outbound calls to the
+provider hosts (`*.blockfrost.io` by default) via `node:diagnostics_channel`:
+every HTTP request (fetch, node-fetch/cross-fetch, the `ws` package's
+handshake counted as a connection) plus every WebSocket open/close. It is NOT
+Blockfrost's own billing figure and does not count individual WebSocket
+messages — one connection is one `wsOpen` no matter how chatty the
+subscription is.
+
+Thresholds (requests+connections per window, env-tunable):
+
+| Env var | Default | Effect |
+| --- | --- | --- |
+| `POB_PROVIDER_HOURLY_WARN` | 1500 | `warn` when last-hour total reaches it |
+| `POB_PROVIDER_DAILY_WARN` | 25000 | `warn` when 24 h total reaches it |
+| `POB_PROVIDER_DAILY_STOP` | 40000 | `stop` when 24 h total reaches it |
+
+On an upward transition the service logs `PROVIDER ALERT level=… lastHour=…
+last24h=…`; if `POB_ALERT_WEBHOOK_URL` is set it also POSTs
+`{ text, content }` there (10 s timeout, failures logged without the URL).
+`stop` aborts the wallet build/sync and shuts a running wallet down — the
+process stays alive and `/v1/health` reports the reason until an operator
+restarts after checking Blockfrost. Counts persist in
+`<stateDir>/provider-usage.json` (rewritten every 60 s and on shutdown) so a
+restart does not reset the daily budget.
+
+Where to read it: `/v1/health` → `provider` (`lastHour`, `last24h`, `level`,
+`lastWsClose`), an hourly `provider usage: …` log line, and the provider
+meter's own `provider websocket closed host=… code=… reason=…` lines when a
+subscription socket drops (the Nov-9 silent-sync-failure class of bug).
 
 ## Rollback
 
