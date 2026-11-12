@@ -283,6 +283,8 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
     setCelebration(null); setHandTransition({ round, phase: 'in' }); playShuffle();
     try {
       const [v] = await Promise.all([client.next(gameIdRef.current), new Promise((r) => setTimeout(r, 1100))]);
+      // The deal response says who moves first in the new hand — label it.
+      setHandTransition((t) => (t ? { ...t, turn: v?.turn === 'human' ? 'player' : v?.turn === 'bot' ? 'ai' : null } : t));
       roundStartScoresRef.current = { ...v.scores };
       absorb(v, `Round ${round}: new board, new cards.`);
     } finally {

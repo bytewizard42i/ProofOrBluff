@@ -26,7 +26,7 @@ Ranks are integers 0..12 indexing `RANKS` in `realDeal/shared/dealing.js` (0 = '
 | POST | `/v1/games/:gameId/challenge` | — | `GameView` (bot's cards revealed in `lastEvents`) |
 | POST | `/v1/games/:gameId/claim` | `{ count, ranks: [boardRank…] }` (5U2D, claim step) | `GameView` |
 | POST | `/v1/games/:gameId/pass` | — | `GameView` (5U2D claim step only; resolves a showdown) |
-| POST | `/v1/games/:gameId/next` | — | `GameView` (5U2D; deals the next hand once a round is held) |
+| POST | `/v1/games/:gameId/next` | — | `GameView` (both tables; deals the next hand once a finished round is held — `awaitingNext`) |
 
 Errors: `{ error: string }` with 400 (bad move / bad body), 404 (unknown game),
 409 (not your turn / game over), 429 (too many open games), 503 (service not
@@ -73,6 +73,11 @@ a challenge scores the challenger −1 (floored at 0) if the claim was truthful,
 or +3 if it was a bluff; the responder takes the next turn; the rank advances
 after every resolution; a round ends when a hand empties (or the game does);
 win at 10 / 15 / 20 for mode 0 (Casual) / 1 (Standard) / 4 (Casino); 6 rounds max.
+
+Original also holds each finished hand on the table: while `"awaitingNext":
+true`, `turn`/`currentRank`/`pending` are null, `hand`/`cardsLeft` show what
+was left, `roundSummary` is `{ round, scores, hand, botHandCount }`, and every
+move endpoint answers 409 until `POST /next` deals the following round.
 
 ### 5 Up 2 Down view extras (`"gameType": "fiveup"`, modes 0 | 1)
 

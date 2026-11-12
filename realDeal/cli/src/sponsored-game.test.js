@@ -79,6 +79,7 @@ function playWholeGame(game, { challengeEvery = 3 } = {}) {
   while (game.status === GAME_STATUS.PLAYING) {
     if (guard++ > 500) throw new Error('game did not finish');
     const v = game.view();
+    if (v.awaitingNext) { game.nextRound(); continue; }   // held hand: deal the next one
     if (v.turn !== 'human') throw new Error('bot stalled on its own turn');
     if (v.pending) {
       botClaims += 1;
@@ -167,6 +168,49 @@ describe('sponsored v3p game', () => {
     expect(['human', 'bot', 'draw']).toContain(v.winner);
     expect(v.winner).toBe(Number(s.winner) === 1 ? 'human' : Number(s.winner) === 2 ? 'bot' : 'draw');
     expect(v.lastEvents.at(-1).type).toBe('game-end');
+  });
+
+  it('holds a finished hand until nextRound', () => {
+    const game = createSponsoredGame({ gameId: 'hold-1', mode: 1, pureCircuits, random: seededRandom(42) });
+    // Play round 1 until the hand finishes and is held on the table.
+    let v;
+    let guard = 0;
+    while (!(v = game.view()).awaitingNext) {
+      if (guard++ > 500) throw new Error('round 1 never finished');
+      if (v.status !== 'playing') throw new Error('game ended before round 1 was held');
+      if (v.pending) { game.humanAccept(); continue; }
+      const card = v.hand.includes(v.currentRank) ? v.currentRank : v.hand[0];
+      game.humanPlay({ rank: v.currentRank, count: 1, cards: [card] });
+    }
+    expect(v.awaitingNext).toBe(true);
+    expect(v.turn).toBeNull();
+    expect(v.pending).toBeNull();
+    expect(v.currentRank).toBeNull();
+    expect(v.round).toBe(1);
+    expect(v.roundSummary.round).toBe(1);
+    expect(v.roundSummary.scores).toEqual(v.scores);
+    expect(v.hand).toEqual(v.roundSummary.hand);
+    expect(v.cardsLeft.human).toBe(v.roundSummary.hand.length);
+    // Every human action is refused while the hand is held.
+    expect(() => game.humanPlay({ rank: 0, count: 1, cards: [0] })).toThrow(/next hand/);
+    expect(() => game.humanAccept()).toThrow(/next hand/);
+    expect(() => game.humanChallenge()).toThrow(/next hand/);
+    // nextRound deals round 2 and the game continues.
+    const dealt = game.nextRound();
+    expect(dealt.awaitingNext).toBe(false);
+    expect(dealt.round).toBe(2);
+    expect(dealt.status).toBe('playing');
+    expect(dealt.turn).toBe('human');
+    expect(() => game.nextRound()).toThrow(/still in progress/);
+    // The held round's proveRound step is still queued, in order, and the
+    // rest of the game drains normally.
+    playWholeGame(game);
+    expect(game.status).toBe('ended');
+    const steps = game.takePendingChainSteps();
+    const rounds = steps.filter((s) => s.step === 'proveRound').map((s) => s.round);
+    expect(rounds).toEqual(rounds.map((_, i) => i + 1));
+    expect(rounds[0]).toBe(1);
+    expect(steps.at(-1).step).toBe('closeGame');
   });
 
   it('receipts clear pending steps and closing flips status to closed', () => {

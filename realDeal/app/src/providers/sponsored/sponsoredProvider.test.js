@@ -149,7 +149,9 @@ describe('SponsoredGameProvider', () => {
     let guard = 0;
     while (state.status === 'playing' && guard < 200) {
       guard += 1;
-      if (state.lastPlay?.player === 'ai') {
+      if (state.awaitingNext) {
+        await provider.nextHand();
+      } else if (state.lastPlay?.player === 'ai') {
         await provider.challenge();
       } else {
         await provider.makePlay({ cards: state.playerHand.slice(0, 1) });

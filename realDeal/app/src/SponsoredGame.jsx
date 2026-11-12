@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { unlockAudio, startBackgroundMusic } from './sounds.js';
+import { unlockAudio, startBackgroundMusic, playWinBells, playEvilLaugh, playShuffle } from './sounds.js';
+import { HandCelebration, HandTransition, handWinner } from './HandEffects.jsx';
 import { speak } from './speech.js';
 import {
   GameTable,
@@ -56,9 +57,66 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
     try { return typeof window !== 'undefined' && !window.localStorage.getItem(TUTORIAL_KEY); } catch { return true; }
   });
   const busyRef = useRef(false);
+  // Hand celebration + curtain transition for the Original table. Same
+  // keyed-once pattern as 5 Up 2 Down: receipt polling re-sets `state` every
+  // 6 s, so each visual fires only once per game/round key.
+  const [celebration, setCelebration] = useState(null);
+  const [handTransition, setHandTransition] = useState(null);
+  // Scores at the start of the current hand — handWinner diffs these against
+  // roundSummary.scores to decide who took the hand (same pattern as 5U2D).
+  const roundStartScoresRef = useRef({ human: 0, bot: 0 });
+  const celebratedRef = useRef('');
+  const transitionTimerRef = useRef(null);
 
   useEffect(() => { onScreenChange?.(screen); }, [screen, onScreenChange]);
   useEffect(() => provider.subscribe((s) => { setState(s); setChain(provider.chain); setAiDialogue(provider.aiDialogue); }), [provider]);
+
+  // Hand celebration, fired ONCE per finished hand (keyed — receipt polling
+  // re-sets `state` every 6 s and must not retrigger it). A held finished
+  // round celebrates by score gain; roundStartScoresRef keeps the scores the
+  // hand started with, so it must NOT be updated while awaitingNext.
+  useEffect(() => {
+    if (!state) return;
+    if (state.awaitingNext && state.roundSummary) {
+      const key = `${state.gameId}:r${state.roundSummary.round}`;
+      if (key === celebratedRef.current) return;
+      celebratedRef.current = key;
+      const kind = handWinner(roundStartScoresRef.current, {
+        human: state.roundSummary.scores.human, bot: state.roundSummary.scores.bot,
+      });
+      if (kind) {
+        setCelebration({ kind, key });
+        if (kind === 'human') playWinBells(); else playEvilLaugh();
+      }
+      return;
+    }
+    roundStartScoresRef.current = { human: state.scores.player, bot: state.scores.ai };
+  }, [state]);
+
+  // Game-end celebration, once per game. The player's win/lose sound already
+  // fires through usePresentation on the YOU_WIN/AI_WINS log lines — here we
+  // only add the Ai's evil laugh for a bot win.
+  useEffect(() => {
+    if (!state || state.status !== 'gameover') return;
+    if (state.winner !== 'player' && state.winner !== 'ai') return;
+    const key = `${state.gameId}:end`;
+    if (celebratedRef.current === key) return;
+    celebratedRef.current = key;
+    setCelebration({ kind: state.winner === 'player' ? 'human' : 'bot', key });
+    if (state.winner === 'ai') playEvilLaugh();
+  }, [state]);
+
+  // The celebration clears itself; handleMenu also clears it early.
+  useEffect(() => {
+    if (!celebration) return undefined;
+    const t = setTimeout(() => setCelebration(null), 4000);
+    return () => clearTimeout(t);
+  }, [celebration]);
+
+  // Unmount: don't leave the curtain timer running.
+  useEffect(() => () => {
+    if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+  }, []);
 
   const dismissTutorial = useCallback(() => {
     setShowTutorial(false);
@@ -89,6 +147,9 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
     run(async () => {
       const fresh = await provider.startGame({ mode: MENU_MODE_TO_CONTRACT[cfg.mode] ?? 1, difficulty: cfg.difficulty });
       resetForNewGame(fresh);
+      roundStartScoresRef.current = { human: 0, bot: 0 };
+      celebratedRef.current = '';
+      setCelebration(null); setHandTransition(null);
       setScreen('game');
     });
   }, [provider, resetForNewGame, run]);
@@ -97,6 +158,9 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
     run(async () => {
       const fresh = await provider.startGame({ mode: MENU_MODE_TO_CONTRACT[settings.mode] ?? 1, difficulty: settings.difficulty });
       resetForNewGame(fresh);
+      roundStartScoresRef.current = { human: 0, bot: 0 };
+      celebratedRef.current = '';
+      setCelebration(null); setHandTransition(null);
     });
   }, [provider, settings, resetForNewGame, run]);
 
@@ -104,6 +168,11 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
     setScreen('menu');
     provider.resetGame();
     setState(null); setChain(null); setAiDialogue('');
+    // Drop any in-flight celebration/curtain and forget round/game keys so a
+    // rematch doesn't inherit stale state (gameId differs anyway, but tidy).
+    setCelebration(null); setHandTransition(null);
+    if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+    celebratedRef.current = ''; roundStartScoresRef.current = { human: 0, bot: 0 };
   }, [provider]);
 
   useEffect(() => { if (menuRequest > 0) handleMenu(); }, [menuRequest, handleMenu]);
@@ -159,10 +228,28 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
     challenge: () => run(() => provider.challenge()),
   };
 
+  // Next hand: the ONLY way a new round starts now that finished hands are
+  // held. The deal is instant server-side, so we await it first — the
+  // returned table state already knows whose turn opens the hand, which the
+  // curtain labels — then hold the curtains ~1.1 s like 5U2D does.
+  const nextHand = () => run(async () => {
+    const round = (state?.round ?? 0) + 1;
+    setCelebration(null); playShuffle();
+    const result = await provider.nextHand();
+    setHandTransition({ round, phase: 'in', turn: result?.turn ?? null, sub: 'Fresh hands.' });
+    if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+    transitionTimerRef.current = setTimeout(() => {
+      setHandTransition((t) => (t ? { ...t, phase: 'out' } : t));
+      setTimeout(() => setHandTransition(null), 450);
+    }, 1100);
+  });
+
   const explorer = chain ? explorerHref(chain.network, chain.contractAddress) : null;
 
   return (
     <>
+      {celebration && <HandCelebration key={celebration.key} kind={celebration.kind} />}
+      {handTransition && <HandTransition {...handTransition} />}
       {showTutorial && <Tutorial variant="midnight" contractVersion={state?.contractVersion ?? 'v3p'} onClose={dismissTutorial} />}
       {screen === 'menu' && (
         <>
@@ -204,6 +291,8 @@ export default function SponsoredGame({ audio, onScreenChange, menuRequest = 0 }
               outputComplete={outputComplete}
               busy={busy}
               onQuit={handleQuit}
+              awaitingNext={!!state.awaitingNext}
+              onNextHand={nextHand}
             />
           </div>
           {state.status === 'gameover' && (

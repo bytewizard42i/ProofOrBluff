@@ -5,7 +5,8 @@
 
 import http from 'node:http';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createChainQueue, createSponsoredHttpApp, toJsonSafe, allowedOriginsFromEnvironment, installConsoleRedaction, originAllowed, walletObservation, walletIsCurrent, checkIndexerAvailability } from './sponsored-service.js';
+import { BehaviorSubject, Subject } from 'rxjs';
+import { createChainQueue, createSponsoredHttpApp, toJsonSafe, allowedOriginsFromEnvironment, installConsoleRedaction, originAllowed, walletObservation, walletIsCurrent, sampleWalletObservation, checkIndexerAvailability } from './sponsored-service.js';
 import { sendProviderAlert } from './provider-meter.js';
 
 const { pureCircuits } = await import('../../contracts/managed/proof-or-bluff-rollup-v3p/contract/index.js');
@@ -42,6 +43,19 @@ describe('wallet readiness after a sync failure', () => {
     expect(walletIsCurrent(walletObservation(state, now), now + 300_000)).toBe(false);
     expect(walletIsCurrent(walletObservation(state, now + 300_000), now + 300_000)).toBe(true);
     expect(walletIsCurrent({ synced: true, at: 'invalid' }, now)).toBe(false);
+  });
+
+  // A quiet wallet emits nothing for minutes; the periodic re-sample must
+  // read the replayed current value so readiness stops flapping to "paused".
+  it('re-samples a replaying state stream and gives up on a silent one', async () => {
+    const now = Date.now();
+    const state$ = new BehaviorSubject({ isSynced: true, dust: { balance: () => 7n } });
+    const fresh = await sampleWalletObservation(state$, 1_000, () => now + 600_000);
+    expect(fresh).toEqual({ balance: 7n, synced: true, at: new Date(now + 600_000).toISOString() });
+    expect(walletIsCurrent(fresh, now + 600_000)).toBe(true);
+    expect(state$.observed).toBe(false);
+    const silent = await sampleWalletObservation(new Subject(), 20);
+    expect(silent).toBeNull();
   });
 });
 
@@ -82,6 +96,7 @@ async function playOut(gameId, view) {
   let claims = 0, guard = 0;
   while (view.status === 'playing') {
     if (guard++ > 400) throw new Error('did not finish');
+    if (view.awaitingNext) { ({ body: view } = await api('POST', `/v1/games/${gameId}/next`)); continue; }
     if (view.pending) { claims += 1; ({ body: view } = await api('POST', `/v1/games/${gameId}/${claims % 3 === 0 ? 'challenge' : 'accept'}`)); continue; }
     const card = view.hand.includes(view.currentRank) ? view.currentRank : view.hand[0];
     ({ body: view } = await api('POST', `/v1/games/${gameId}/play`, { rank: view.currentRank, count: 1, cards: [card] }));

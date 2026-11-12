@@ -41,6 +41,39 @@ export function walletObservation(state, now = Date.now()) {
   };
 }
 
+/**
+ * Re-sample the wallet's CURRENT state once. The facade's `state()` is a
+ * combineLatest over replaying sub-wallet states, so a fresh subscription
+ * emits the latest value immediately even when nothing has changed. A quiet
+ * Mainnet wallet (no events for this address) otherwise emits NOTHING for
+ * long stretches, so a push-only observation went stale after 5 minutes and
+ * readiness flapped between ok and "paused" (2026-11-12 incident: players
+ * were refused mid-evening while the wallet was perfectly healthy).
+ * Returns a promise of the observation, or null if the stream stays silent
+ * for `timeoutMs` — the caller then leaves the staleness expiry to stand.
+ */
+export function sampleWalletObservation(state$, timeoutMs = 5_000, now = Date.now) {
+  return new Promise((resolve) => {
+    let done = false;
+    let subscription = null;
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      queueMicrotask(() => subscription?.unsubscribe());
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    timer.unref?.();
+    subscription = state$.subscribe({
+      next: (st) => finish(walletObservation(st, now())),
+      error: () => finish(null),
+      complete: () => finish(null),
+    });
+    if (done) subscription.unsubscribe();
+  });
+}
+
 export function walletIsCurrent(observation, now = Date.now()) {
   const age = now - Date.parse(observation.at);
   return observation.synced && age >= 0 && age < 5 * 60_000;
@@ -443,12 +476,17 @@ export function createSponsoredHttpApp({
       ok: ready.ok, reason: ready.ok ? undefined : ready.reason, network,
       wallet: { address: walletAddress, dustReady: ready.ok, ...walletExtra() },
       proofQueue: { pending: queue.pending },
-      openGames: games.size,
+      // `openGames` counts LIVE games only. Finished games stay in the map
+      // for the transcript/receipt endpoints and sweep after GAME_TTL_MS, so
+      // counting `games.size` made dropped games look "open" (2026-11-12).
+      openGames: [...games.values()].filter((e) => e.game.status === GAME_STATUS.PLAYING).length,
+      retainedGames: games.size,
       ...healthExtra(),
     };
   }
   function statsView() {
-    return { ...totals, openGames: games.size, chain: queue.stats, uptimeSeconds: Math.round(process.uptime()) };
+    const live = [...games.values()].filter((e) => e.game.status === GAME_STATUS.PLAYING).length;
+    return { ...totals, openGames: live, retainedGames: games.size, chain: queue.stats, uptimeSeconds: Math.round(process.uptime()) };
   }
 
   async function handle(request, response) {
@@ -500,7 +538,10 @@ export function createSponsoredHttpApp({
       if (action === 'pass' || action === 'next') {
         await readJsonBody(request).catch(() => ({}));
         return sendJson(response, 200, act(entry, (g) => {
-          if (!g.humanPass) throw new GameError(409, 'this table has no pass or next actions');
+          // pass is 5U2D-only; next is shared — both tables hold a finished
+          // hand until the player deals the next one.
+          if (action === 'pass' && !g.humanPass) throw new GameError(409, 'this table has no pass action');
+          if (action === 'next' && !g.nextRound) throw new GameError(409, 'this table has no next action');
           return action === 'pass' ? g.humanPass() : g.nextRound();
         }));
       }
@@ -539,7 +580,7 @@ async function main() {
 
   // Keep liveness separate from readiness, including DURING wallet startup.
   // A quota/configuration failure must not crash into Docker/watchdog restarts.
-  let app, queue, walletHandle, walletSubscription, walletGuardTimer;
+  let app, queue, walletHandle, walletSubscription, walletGuardTimer, walletRefreshTimer;
   let walletStoppedReason = null;
   // Live DUST view — declared here (not beside the wallet subscription below)
   // so the provider-budget stop path can mark it unsynced before a wallet
@@ -629,6 +670,7 @@ async function main() {
     if (walletStoppedReason) return;
     walletStoppedReason = message;
     if (walletGuardTimer) { clearInterval(walletGuardTimer); walletGuardTimer = null; }
+    if (walletRefreshTimer) { clearInterval(walletRefreshTimer); walletRefreshTimer = null; }
     walletSubscription?.unsubscribe();
     dust = { ...dust, synced: false };
     log(`Wallet stopped: ${message}`);
@@ -676,6 +718,7 @@ async function main() {
     log(`${signal}: draining chain queue…`);
     server.close();
     if (walletGuardTimer) clearInterval(walletGuardTimer);
+    if (walletRefreshTimer) clearInterval(walletRefreshTimer);
     clearInterval(providerPersistTimer);
     clearInterval(providerLogTimer);
     uninstallProviderMeter();
@@ -766,6 +809,15 @@ async function main() {
     error: () => { dust = { ...dust, synced: false }; log('Wallet state stream failed; games are paused.'); },
     complete: () => { dust = { ...dust, synced: false }; },
   });
+  // The push stream above only fires on CHANGE. Re-sample once a minute so a
+  // quiet-but-healthy wallet keeps a fresh observation (see
+  // sampleWalletObservation); a dead stream still expires after 5 minutes.
+  walletRefreshTimer = setInterval(async () => {
+    if (walletStoppedReason) return;
+    const fresh = await sampleWalletObservation(walletHandle.api.state());
+    if (fresh) dust = fresh;
+  }, 60_000);
+  walletRefreshTimer.unref();
   // After initial sync, a prolonged failure stops network activity until an
   // operator restarts us. Keeping HTTP alive avoids automatic retry storms.
   let unavailableSince = null;
@@ -827,6 +879,7 @@ async function main() {
     startupReason = safeErrorMessage(error);
     log(`Startup paused: ${startupReason}`);
     if (walletGuardTimer) clearInterval(walletGuardTimer);
+    if (walletRefreshTimer) clearInterval(walletRefreshTimer);
     walletSubscription?.unsubscribe();
     await walletHandle?.shutdown?.().catch(() => {});
   }

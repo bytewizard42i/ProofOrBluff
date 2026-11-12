@@ -39,6 +39,8 @@ export default function GameTable({
   outputComplete,
   busy = false,
   onQuit = null,
+  awaitingNext = false,
+  onNextHand = null,
 }) {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [claimedCount, setClaimedCount] = useState(1);
@@ -290,6 +292,19 @@ export default function GameTable({
           </div>
         )}
         </div> {/* /center-stage */}
+
+        {awaitingNext && onNextHand && (
+          // A finished hand is held on the table (both sponsored tables): the
+          // only reachable action is dealing the next one. play/accept/
+          // challenge are hidden — the API would 409 them anyway.
+          <div className="center-side">
+            <div className="center-actions">
+              <button className="primary" onClick={onNextHand} disabled={busy}>
+                Next hand
+              </button>
+            </div>
+          </div>
+        )}
 
         {playerMustRespond && (
           <div className="center-side">

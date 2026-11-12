@@ -51,6 +51,7 @@ function createMockGame({ gameId, mode, difficulty }) {
     status: 'playing', round: 1, turn: 'human', currentRank: STARTING_RANK,
     pending: null, scores: { human: 0, bot: 0 }, winner: null,
     hands: { human: [], bot: [] }, events: [], lastBotPlay: [],
+    hold: null,   // finished-hand snapshot while awaitingNext (POST /next deals)
     chain: { contractAddress: null, receipts: [], pending: ['deploy'] },
   };
   const deal = () => {
@@ -69,8 +70,12 @@ function createMockGame({ gameId, mode, difficulty }) {
     game.chain.pending.push(`proveRound:${game.round}`);
     const someoneWon = game.scores.human >= threshold || game.scores.bot >= threshold;
     if (!someoneWon && game.round < MAX_ROUNDS) {
-      game.round += 1;
-      deal();
+      // Hold the finished hand on the table until POST /next — same as the
+      // real service and 5 Up 2 Down.
+      game.hold = {
+        round: game.round, hand: [...game.hands.human], botHandCount: game.hands.bot.length,
+        scores: { ...game.scores },
+      };
       return;
     }
     game.status = 'ended';
@@ -91,7 +96,7 @@ function createMockGame({ gameId, mode, difficulty }) {
   }
 
   function botPlaysIfItsTurn() {
-    if (!live() || game.turn !== 'bot' || game.pending) return;
+    if (!live() || game.hold || game.turn !== 'bot' || game.pending) return;
     const holdsRank = game.hands.bot.includes(game.currentRank);
     const card = holdsRank ? game.currentRank : game.hands.bot[0];
     game.hands.bot = removeCards(game.hands.bot, [card]);
@@ -104,11 +109,24 @@ function createMockGame({ gameId, mode, difficulty }) {
 
   function requireHumanTurn() {
     if (!live()) throw new MockHttpError(409, 'game is over');
+    if (game.hold) throw new MockHttpError(409, 'hand over — next hand first');
     if (game.turn !== 'human') throw new MockHttpError(409, 'not your turn');
   }
 
   return {
     get status() { return game.status; },
+
+    /** Deal the next hand — only while a finished round sits on the table. */
+    nextRound() {
+      if (!live()) throw new MockHttpError(409, 'game is over');
+      if (!game.hold) throw new MockHttpError(409, 'round still in progress');
+      game.hold = null;
+      game.round += 1;
+      deal();
+      game.events = [];
+      botPlaysIfItsTurn();
+      return this.view();
+    },
 
     recordReceipt(receipt) {
       game.chain.receipts.push(receipt);
@@ -176,15 +194,20 @@ function createMockGame({ gameId, mode, difficulty }) {
 
     view() {
       const isLive = live();
+      const held = isLive ? game.hold : null;
       return {
         gameId, status: game.status, mode, difficulty,
         round: game.round,
-        turn: isLive ? game.turn : null,
-        currentRank: isLive ? game.currentRank : null,
-        pending: game.pending ? { ...game.pending } : null,
+        turn: held ? null : (isLive ? game.turn : null),
+        currentRank: held ? null : (isLive ? game.currentRank : null),
+        pending: held ? null : (game.pending ? { ...game.pending } : null),
         scores: { ...game.scores },
-        hand: isLive ? [...game.hands.human] : [],
-        cardsLeft: isLive ? { human: game.hands.human.length, bot: game.hands.bot.length } : { human: 0, bot: 0 },
+        awaitingNext: !!held,
+        roundSummary: held ? { round: held.round, scores: { ...held.scores }, hand: [...held.hand], botHandCount: held.botHandCount } : null,
+        hand: isLive ? (held ? [...held.hand] : [...game.hands.human]) : [],
+        cardsLeft: isLive
+          ? (held ? { human: held.hand.length, bot: held.botHandCount } : { human: game.hands.human.length, bot: game.hands.bot.length })
+          : { human: 0, bot: 0 },
         winner: game.winner,
         lastEvents: game.events.map((event) => ({ ...event })),
         chain: {
@@ -247,6 +270,7 @@ export function createMockSponsoredServer({ ready = true, maxOpenGames = Infinit
     if (action === 'play') return [200, game.humanPlay({ rank: body?.rank, count: body?.count, cards: body?.cards })];
     if (action === 'accept') return [200, game.humanAccept()];
     if (action === 'challenge') return [200, game.humanChallenge()];
+    if (action === 'next') return [200, game.nextRound()];
     throw new MockHttpError(404, 'Not found.');
   }
 

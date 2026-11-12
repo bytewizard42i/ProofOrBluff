@@ -71,9 +71,11 @@ export function HandCelebration({ kind }) {
  * Curtain transition while the next hand is dealt. `phase` 'in' slides the
  * two felt curtains closed (~0.35 s, on mount), 'out' slides them open again
  * (~0.4 s). pointer-events stay ON for the whole overlay so no card can be
- * tapped mid-deal.
+ * tapped mid-deal. `sub` is the flavour line under the round number (5U2D
+ * deals a new board; Original just deals fresh hands); `turn` — 'player' |
+ * 'ai' | null — names who moves first in the new hand when known.
  */
-export function HandTransition({ round, phase }) {
+export function HandTransition({ round, phase, turn = null, sub = 'New board. New cards.' }) {
   return (
     <div className={`hand-transition hand-transition--${phase}`} role="presentation">
       <div className="hand-curtain hand-curtain--left" />
@@ -83,7 +85,8 @@ export function HandTransition({ round, phase }) {
           {[0, 1, 2, 3, 4].map((i) => <div key={i} className="hand-card-back" />)}
         </div>
         <div className="hand-transition-round">Round {round}</div>
-        <div className="hand-transition-sub">New board. New cards.</div>
+        <div className="hand-transition-sub">{sub}</div>
+        {turn && <div className="hand-transition-turn">{turn === 'ai' ? "Ai's turn" : 'Your turn'}</div>}
       </div>
     </div>
   );

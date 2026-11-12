@@ -61,7 +61,8 @@ export function summariseChain(view) {
   const chain = view?.chain ?? {};
   const receipts = chain.receipts ?? [];
   const roundsProven = receipts.filter((r) => r.step === 'proveRound').length;
-  const roundsPlayed = (view?.round ?? 1) - (view?.status === 'playing' ? 1 : 0);
+  // While a finished round is held (awaitingNext) it counts as played.
+  const roundsPlayed = (view?.round ?? 1) - (view?.status === 'playing' && !view?.awaitingNext ? 1 : 0);
   return {
     network: chain.network ?? null,
     contractAddress: chain.contractAddress ?? null,
@@ -191,8 +192,9 @@ export function viewToTableState(view, context = {}) {
     pile: [],
     pileCount: (context.pileCount ?? 0) + (pending?.count ?? 0),
     discardPile: [],
-    currentRank: RANKS[view?.currentRank ?? 0],
-    turn: view?.turn === 'bot' ? 'ai' : 'player',
+    // null while a finished hand is held (awaitingNext) — there is no rank to declare.
+    currentRank: view?.currentRank != null ? RANKS[view.currentRank] : null,
+    turn: view?.turn ? (view.turn === 'bot' ? 'ai' : 'player') : null,
     status: live ? 'playing' : view ? 'gameover' : 'waiting',
     winner,
     log,
@@ -204,6 +206,8 @@ export function viewToTableState(view, context = {}) {
     stats,
     aiDialogue: context.dialogue ?? '',
     lastReveal: context.reveal ?? null,
+    awaitingNext: !!view?.awaitingNext,
+    roundSummary: view?.roundSummary ?? null,
     chain: summariseChain(view),
     chainStatus: view?.status ?? null,
   };
@@ -345,6 +349,13 @@ export class SponsoredGameProvider {
     const count = this.view?.pending?.count ?? 0;
     const view = await this._act(() => this.client.accept(gameId));
     return this._absorb(view, { type: 'accept', count });
+  }
+
+  /** Deal the next hand while a finished round sits on the table (both tables). */
+  async nextHand() {
+    const gameId = this._requireGame();
+    const view = await this._act(() => this.client.next(gameId));
+    return this._absorb(view);
   }
 
   /** Resolves to `{ claimWasTrue, revealed, logLength, state }` for GameTable's reaction + SFX. */

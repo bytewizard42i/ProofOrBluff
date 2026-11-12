@@ -89,6 +89,7 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
   const chain = { contractAddress: null, receipts: [], pending: ['deploy'] };
   const pendingChainSteps = [];    // produced here, drained by the service
   const finishedRounds = [];       // every finishRound() output, for the post-close transcript
+  let roundSummary = null;         // finished-hand display data while awaitingNext
 
   const push = (event) => events.push(event);
   const botHandAsCardObjects = () => handCountsToCardObjects(referee.hands[SEAT.BOT], 'bot');
@@ -106,18 +107,28 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
   /** Round over → proveRound witnesses; game over → closeGame as well. */
   function settleRoundIfFinished() {
     if (!inRound() || !roundFinished(referee.state, size)) return;
+    // Snapshot the finished hand BEFORE finishRound: the round stays on the
+    // table (awaitingNext) until the player asks for the next one, exactly
+    // like 5 Up 2 Down — the view shows what was left in each hand.
+    const heldHand = handCountsToRanks(referee.hands[SEAT.HUMAN]);
+    const heldBotCount = handCountsToRanks(referee.hands[SEAT.BOT]).length;
     const fin = referee.finishRound();
     const round = Number(fin.round);
     finishedRounds.push(fin);
     botPlays = [];
     push({ type: 'round-end', round, scores: { human: Number(fin.boundaryOut.score0), bot: Number(fin.boundaryOut.score1) } });
+    roundSummary = {
+      round,
+      scores: { human: Number(fin.boundaryOut.score0), bot: Number(fin.boundaryOut.score1) },
+      hand: heldHand, botHandCount: heldBotCount,
+    };
     pendingChainSteps.push({
       step: 'proveRound', round,
       witnesses: { ...fin, entropyPair: entropy, roundSecrets: [roundSecrets[0][round - 1], roundSecrets[1][round - 1]] },
     });
     chain.pending.push(`proveRound:${round}`);
 
-    if (!referee.boundary.ended) { referee.startRound(); return; }
+    if (!referee.boundary.ended) return;   // hold the finished hand until nextRound()
 
     status = GAME_STATUS.ENDED;
     const result = referee.result();
@@ -144,6 +155,7 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
 
   /** Bot PLAYs when it is its turn with no pending claim; then waits for the human. */
   function botPlaysIfItsTurn() {
+    if (!inRound()) return;   // finished hand held on the table
     if (status !== GAME_STATUS.PLAYING) return;
     const s = referee.state;
     if (Number(s.turn) !== SEAT.BOT || s.pending) return;
@@ -162,6 +174,7 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
 
   function requireHumanTurn() {
     if (status !== GAME_STATUS.PLAYING) throw new GameError(409, 'game is over');
+    if (!inRound()) throw new GameError(409, 'hand over — next hand first');
     if (Number(referee.state.turn) !== SEAT.HUMAN) throw new GameError(409, 'not your turn');
   }
 
@@ -219,6 +232,16 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
         push({ type: 'bot-accept', dialogue: decision.dialogue });
       }
       return afterHumanAction();
+    },
+
+    /** Deal the next hand — only while a finished round sits on the table. */
+    nextRound() {
+      if (status !== GAME_STATUS.PLAYING) throw new GameError(409, 'game is over');
+      if (inRound()) throw new GameError(409, 'round still in progress');
+      events = [];
+      referee.startRound();
+      botPlaysIfItsTurn();
+      return game.view();
     },
 
     /**
@@ -291,7 +314,8 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
 
     view() {
       const live = status === GAME_STATUS.PLAYING;
-      const s = live ? referee.state : null;
+      const waiting = live && !inRound();       // finished hand held until nextRound
+      const s = live && !waiting ? referee.state : null;
       const b = referee.boundary;
       return {
         gameId, status, mode, difficulty, contractVersion,
@@ -300,8 +324,12 @@ export function createSponsoredGame({ gameId, mode, difficulty = 'medium', pureC
         currentRank: s ? Number(s.currentRank) : null,
         pending: s?.pending ? { claimer: seatName(s.claimer), rank: Number(s.claimRank), count: Number(s.claimCount) } : null,
         scores: { human: Number(s ? s.score0 : b.score0), bot: Number(s ? s.score1 : b.score1) },
-        hand: s ? handCountsToRanks(referee.hands[SEAT.HUMAN]) : [],
-        cardsLeft: s ? { human: Number(size - s.plays0), bot: Number(size - s.plays1) } : { human: 0, bot: 0 },
+        awaitingNext: waiting,
+        roundSummary: waiting ? roundSummary : null,
+        hand: waiting ? (roundSummary?.hand ?? []) : (s ? handCountsToRanks(referee.hands[SEAT.HUMAN]) : []),
+        cardsLeft: waiting
+          ? { human: (roundSummary?.hand ?? []).length, bot: roundSummary?.botHandCount ?? 0 }
+          : (s ? { human: Number(size - s.plays0), bot: Number(size - s.plays1) } : { human: 0, bot: 0 }),
         winner: live || status === GAME_STATUS.ABANDONED ? null : winnerName(referee.result().winner),
         lastEvents: [...events],
         chain: { contractAddress: chain.contractAddress, receipts: [...chain.receipts], pending: [...chain.pending] },
