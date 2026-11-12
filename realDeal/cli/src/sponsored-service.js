@@ -589,6 +589,38 @@ async function main() {
   }, 3_600_000);
   providerLogTimer.unref();
 
+  // Readiness notifier: pushes ONCE when the service first reports
+  // ok+dustReady (the long cold-sync case — nobody should have to poll
+  // /v1/health by hand). Re-arms if readiness drops again. Best-effort:
+  // a failed probe or webhook never affects the service.
+  const readinessWebhook = process.env.POB_ALERT_WEBHOOK_URL?.trim();
+  if (readinessWebhook) {
+    let webhookHost = 'webhook';
+    try { webhookHost = new URL(readinessWebhook).hostname; } catch { /* keep generic label */ }
+    log(`readiness notifier armed → ${webhookHost}`);
+  }
+  let wasReady = false;
+  const readinessTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/health`, { signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) return;
+      const body = await res.json();
+      const ready = body?.ok === true && body?.wallet?.dustReady === true;
+      if (ready && !wasReady) {
+        wasReady = true;
+        const message = `Proof or Bluff is live on ${networkId}: wallet synced, games are open.`;
+        log(message);
+        if (readinessWebhook) {
+          const delivered = await sendProviderAlert(readinessWebhook, message, fetch, { priority: 'high' });
+          if (!delivered) log('readiness alert webhook failed (check POB_ALERT_WEBHOOK_URL)');
+        }
+      } else if (!ready) {
+        wasReady = false;
+      }
+    } catch { /* health probe is best-effort */ }
+  }, 60_000);
+  readinessTimer.unref();
+
   // The ONE place that stops the wallet's network activity: both the
   // 10-minute unavailability guard and the provider-budget 'stop' level land
   // here. Idempotent — the process stays alive in paused mode either way.
@@ -613,7 +645,10 @@ async function main() {
     const webhook = process.env.POB_ALERT_WEBHOOK_URL?.trim();
     if (webhook) {
       const message = `Proof or Bluff provider alert: level=${level} lastHour=${lastHour} last24h=${last24h} on ${networkId}`;
-      const delivered = await sendProviderAlert(webhook, message, fetch);
+      const delivered = await sendProviderAlert(webhook, message, fetch, {
+        priority: level === 'stop' ? 'urgent' : 'high',
+        email: process.env.POB_ALERT_EMAIL?.trim() || undefined,
+      });
       if (!delivered) log('provider alert webhook failed (check POB_ALERT_WEBHOOK_URL)');
     }
     if (level === 'stop') {

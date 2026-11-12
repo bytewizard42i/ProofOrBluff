@@ -276,17 +276,29 @@ export function installProviderMeter(meter, { hostPattern = /(^|\.)blockfrost\.i
 }
 
 /**
- * POST a provider alert to an incoming webhook (Slack/Discord/ntfy style:
- * `{ text, content }` carry the same message). Never throws and never logs
- * the URL — webhook URLs are secrets too.
+ * POST an alert to a webhook. Two wire formats:
+ *   - ntfy.sh topics: plain-text body + ntfy headers (Title/Priority, and
+ *     Email when `options.email` is set — ntfy forwards to that address,
+ *     but ntfy.sh requires a verified account for email, so it is opt-in).
+ *   - everything else (Slack/Discord style): JSON `{ text, content }`.
+ * Never throws and never logs the URL — webhook URLs (and ntfy topics)
+ * are secrets too.
  * @returns {Promise<boolean>} true when the POST was attempted successfully
  */
-export async function sendProviderAlert(webhookUrl, message, fetchImpl = fetch) {
+export async function sendProviderAlert(webhookUrl, message, fetchImpl = fetch, options = {}) {
   try {
+    const isNtfy = (() => { try { return new URL(webhookUrl).hostname.endsWith('ntfy.sh'); } catch { return false; } })();
     const response = await fetchImpl(webhookUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: message, content: message }),
+      headers: isNtfy
+        ? {
+            'Content-Type': 'text/plain; charset=utf-8',
+            Title: 'Proof or Bluff',
+            Priority: options.priority ?? 'high',
+            ...(options.email ? { Email: options.email } : {}),
+          }
+        : { 'Content-Type': 'application/json' },
+      body: isNtfy ? message : JSON.stringify({ text: message, content: message }),
       signal: AbortSignal.timeout(10_000),
     });
     return response.ok !== false;

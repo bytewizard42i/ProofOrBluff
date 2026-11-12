@@ -226,4 +226,19 @@ describe('sendProviderAlert', () => {
     const failing = await sendProviderAlert('https://hooks.example/secret', 'x', async () => { throw new Error('network down'); });
     expect(failing).toBe(false); // resolved, not rejected
   });
+
+  it('uses ntfy headers + plain-text body for ntfy.sh topics', async () => {
+    const calls = [];
+    await sendProviderAlert('https://ntfy.sh/sometopic', 'POB is live', async (url, init) => {
+      calls.push({ url, init });
+      return { ok: true };
+    }, { priority: 'urgent', email: 'ops@example.com' });
+    expect(calls).toHaveLength(1);
+    const { init } = calls[0];
+    expect(init.body).toBe('POB is live');
+    expect(init.headers['Content-Type']).toContain('text/plain');
+    expect(init.headers.Title).toBe('Proof or Bluff');
+    expect(init.headers.Priority).toBe('urgent');
+    expect(init.headers.Email).toBe('ops@example.com');
+  });
 });
