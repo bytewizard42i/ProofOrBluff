@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { unlockAudio, startBackgroundMusic } from './sounds.js';
-import { speak } from './speech.js';
+import { unlockAudio, startBackgroundMusic, playWinBells, playGameWon, playEvilLaugh, playShuffle } from './sounds.js';
+import { speak, cancelSpeech } from './speech.js';
+import { HandCelebration, HandTransition, handWinner } from './HandEffects.jsx';
 import { GameLogPanel, ResultOverlay, PlayingCard, LOG } from './components/table/index.js';
 import { createSponsoredClient } from './providers/sponsored/client.js';
 import { SPONSORED_API_URL } from './midnight/config.js';
@@ -15,6 +16,7 @@ import { chainStatusLine } from './SponsoredGame.jsx';
 
 const ACTIVE_KEY = 'pob:fiveup:active-game';
 const TUTORIAL_KEY = 'pob:fiveup:tutorial-seen';
+const COACH_KEY = 'pob:fiveup:board-coach-seen';
 const RECEIPT_POLL_MS = 6000;
 const SUITS = ['spades', 'hearts', 'clubs', 'diamonds'];
 
@@ -84,6 +86,21 @@ export function describeEvents(view, events, humanLine) {
   return { lines, dialogue };
 }
 
+/**
+ * Neon pointer for first-time claimers: John kept tapping his own two hole
+ * cards instead of the five face-up board cards. Rendered only while a claim
+ * is being picked and the player has not finished a claim yet; pointer-events
+ * are off so it can never block a tap.
+ */
+export function BoardCoach() {
+  return (
+    <div className="board-coach" role="note">
+      <span className="board-coach-text">Tap one or two <strong>house cards</strong>. Hold the match? Claim it. Don't? Claim it anyway.</span>
+      <svg className="board-coach-arrow" viewBox="0 0 80 64" aria-hidden="true"><path d="M0 22h44V4l36 28-36 28V42H0z" fill="currentColor" /></svg>
+    </div>
+  );
+}
+
 function FiveUpTutorial({ onClose }) {
   return (
     <div className="tutorial-overlay" role="dialog" aria-modal="true">
@@ -119,9 +136,16 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
   const [quitArmed, setQuitArmed] = useState(false);
   const [serviceError, setServiceError] = useState(null);
   const [showTutorial, setShowTutorial] = useState(() => { try { return !window.localStorage.getItem(TUTORIAL_KEY); } catch { return true; } });
+  const [coachSeen, setCoachSeen] = useState(() => { try { return !!window.localStorage.getItem(COACH_KEY); } catch { return false; } });
   const busyRef = useRef(false);
   const gameIdRef = useRef(null);
-  const announcedRef = useRef('');
+  // Scores at the start of the current hand — handWinner diffs these against
+  // roundSummary.scores to decide who took the hand. celebratedRef keys the
+  // celebration so the 6 s receipt poll can't retrigger it.
+  const roundStartScoresRef = useRef({ human: 0, bot: 0 });
+  const celebratedRef = useRef('');
+  const [celebration, setCelebration] = useState(null);
+  const [handTransition, setHandTransition] = useState(null);
 
   useEffect(() => { onScreenChange?.(screen); }, [screen, onScreenChange]);
   const dismissTutorial = useCallback(() => { setShowTutorial(false); try { window.localStorage.setItem(TUTORIAL_KEY, '1'); } catch { /* ignore */ } }, []);
@@ -130,6 +154,11 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
     const { lines, dialogue: d } = describeEvents(v, v.lastEvents, humanLine);
     setView(v); setPicked([]);
     if (lines.length) setLog((l) => [...l, ...lines]);
+    // 5U2D narrates like Original: every new line is spoken in order
+    // (warnings excluded — same rule as usePresentation), then the Ai's
+    // banter. speech.js itself skips phones and honours the mute toggle.
+    for (const line of lines) if (!line.startsWith(LOG.WARN)) speak(line);
+    if (d) speak(d);
     if (d) setDialogue(d); else if (humanLine) setDialogue('');
     return v;
   }, []);
@@ -150,6 +179,9 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
     run(async () => {
       const v = await client.createGame({ game: 'fiveup', mode: cfg.mode, difficulty: cfg.difficulty });
       gameIdRef.current = v.gameId;
+      roundStartScoresRef.current = { human: 0, bot: 0 };
+      celebratedRef.current = '';
+      setCelebration(null); setHandTransition(null);
       try { window.localStorage.setItem(ACTIVE_KEY, v.gameId); } catch { /* ignore */ }
       setLog([`Game started: race to ${v.target}. Two cards for you, five on the board. Midnight is deploying the game contract in the background.`]);
       setDialogue(''); setQuitArmed(false);
@@ -158,7 +190,7 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
     });
   }, [client, run, absorb]);
 
-  const toMenu = useCallback(() => { setScreen('menu'); setView(null); setLog([]); setDialogue(''); gameIdRef.current = null; try { window.localStorage.removeItem(ACTIVE_KEY); } catch { /* ignore */ } }, []);
+  const toMenu = useCallback(() => { setScreen('menu'); setView(null); setLog([]); setDialogue(''); cancelSpeech(); setCelebration(null); setHandTransition(null); gameIdRef.current = null; try { window.localStorage.removeItem(ACTIVE_KEY); } catch { /* ignore */ } }, []);
   useEffect(() => { if (menuRequest > 0) toMenu(); }, [menuRequest, toMenu]);
 
   const quit = useCallback(() => {
@@ -187,20 +219,45 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
     return () => clearInterval(t);
   }, [screen, chain.pending.length, client]);
 
-  // Dealer voice for the bot's challenge — once per distinct event set.
-  useEffect(() => {
-    const ev = view?.lastEvents ?? [];
-    const sig = JSON.stringify(ev.map((e) => [e.type, e.lies, e.count, e.ranks]));
-    if (sig === announcedRef.current) return;
-    announcedRef.current = sig;
-    if (ev.some((e) => e.type === 'bot-challenge')) speak('The Ai is calling your bluff.');
-  }, [view]);
-
   const live = view?.status === 'playing';
   const myTurn = live && view.turn === 'human';
   const claiming = myTurn && view.step === 'claim';
   const responding = myTurn && view.step === 'respond';
   const awaitingNext = live && view.awaitingNext;
+
+  // Hand celebration, fired ONCE per finished hand (keyed — the receipt poll
+  // re-sets `view` every 6 s and must not retrigger it). A held finished
+  // round celebrates by score gain; the final hand celebrates by winner.
+  useEffect(() => {
+    if (!view || !gameIdRef.current) return;
+    const gameId = gameIdRef.current;
+    if (view.awaitingNext && view.roundSummary) {
+      const key = `${gameId}:r${view.roundSummary.round}`;
+      if (key === celebratedRef.current) return;
+      celebratedRef.current = key;
+      const kind = handWinner(roundStartScoresRef.current, view.roundSummary.scores);
+      if (kind) {
+        setCelebration({ kind, key });
+        if (kind === 'human') playWinBells(); else playEvilLaugh();
+      }
+      return;
+    }
+    if (view.status !== 'playing' && view.status !== 'abandoned'
+        && (view.winner === 'human' || view.winner === 'bot')) {
+      const key = `${gameId}:end`;
+      if (celebratedRef.current === key) return;
+      celebratedRef.current = key;
+      setCelebration({ kind: view.winner, key });
+      if (view.winner === 'human') playGameWon(); else playEvilLaugh();
+    }
+  }, [view]);
+
+  // The celebration clears itself; Next hand and toMenu also clear it early.
+  useEffect(() => {
+    if (!celebration) return undefined;
+    const t = setTimeout(() => setCelebration(null), 4000);
+    return () => clearTimeout(t);
+  }, [celebration]);
   const board = view?.board ?? [];
   const hole = view?.hole ?? [];
   // myMatches is only populated while a round is live; during the round-end
@@ -216,9 +273,24 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
   const submitClaim = () => run(async () => {
     const v = await client.claim(gameIdRef.current, { count: pickedRanks.length, ranks: pickedRanks });
     absorb(v, `${LOG.YOU_CLAIMED} ${pickedRanks.length} match${pickedRanks.length > 1 ? 'es' : ''}: ${names(pickedRanks)}.`);
+    // A completed claim means the coach did its job — retire it for good.
+    setCoachSeen(true);
+    try { window.localStorage.setItem(COACH_KEY, '1'); } catch { /* ignore */ }
   });
   const pass = () => run(async () => absorb(await client.pass(gameIdRef.current), 'You pass.'));
-  const nextHand = () => run(async () => absorb(await client.next(gameIdRef.current), `Round ${(view?.round ?? 0) + 1}: new board, new cards.`));
+  const nextHand = () => run(async () => {
+    const round = (view?.round ?? 0) + 1;
+    setCelebration(null); setHandTransition({ round, phase: 'in' }); playShuffle();
+    try {
+      const [v] = await Promise.all([client.next(gameIdRef.current), new Promise((r) => setTimeout(r, 1100))]);
+      roundStartScoresRef.current = { ...v.scores };
+      absorb(v, `Round ${round}: new board, new cards.`);
+    } finally {
+      // The curtain always opens again, even if the deal call failed.
+      setHandTransition((t) => (t ? { ...t, phase: 'out' } : t));
+      setTimeout(() => setHandTransition(null), 450);
+    }
+  });
   const accept = () => run(async () => absorb(await client.accept(gameIdRef.current), `${LOG.YOU_ACCEPTED} the Ai's claim.`));
   const challenge = () => run(async () => absorb(await client.challenge(gameIdRef.current), 'Proof or Bluff! You challenge the Ai.'));
 
@@ -229,6 +301,8 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
 
   return (
     <>
+      {celebration && <HandCelebration key={celebration.key} kind={celebration.kind} />}
+      {handTransition && <HandTransition {...handTransition} />}
       {showTutorial && <FiveUpTutorial onClose={dismissTutorial} />}
       {screen === 'menu' && (
         <div className="menu fiveup-menu">
@@ -288,10 +362,13 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
               <div className="fiveup-main">
                 <div className="fiveup-round">Round {view.round} · race to {view.target}</div>
                 {dialogue && <p className="ai-dialogue fiveup-dialogue">"{dialogue}"</p>}
-                <div className="fiveup-board" aria-label="Board">
-                  {board.map((r, i) => (
-                    <PlayingCard key={`b${i}`} card={card(r, i, 'board')} selected={picked.includes(i)} disabled={!claiming || busy} onClick={() => togglePick(i)} />
-                  ))}
+                <div className="fiveup-board-wrap">
+                  {claiming && picked.length === 0 && !coachSeen && !showTutorial && <BoardCoach />}
+                  <div className="fiveup-board" aria-label="Board">
+                    {board.map((r, i) => (
+                      <PlayingCard key={`b${i}`} card={card(r, i, 'board')} selected={picked.includes(i)} disabled={!claiming || busy} onClick={() => togglePick(i)} />
+                    ))}
+                  </div>
                 </div>
               {awaitingNext && summary?.showdowns?.map((sd, i) => (
                 <div key={`sd${i}`} className="fiveup-showdown" aria-label="Showdown result">
@@ -315,7 +392,11 @@ export default function FiveUpGame({ audio, onScreenChange, menuRequest = 0 }) {
                 {live && !myTurn && !awaitingNext && 'The Ai is thinking…'}
               </div>
               <div className="fiveup-actions">
-                <div className="fiveup-hole" aria-label="Your cards">
+                <div className="fiveup-hole" aria-label="Your cards"
+                  onClick={() => { if (claiming) setCoachSeen(false); }}>
+                  {/* Hole cards are never claimable — a click on them while
+                      claiming means the player aimed at the wrong cards, so
+                      the board coach comes back for this session. */}
                   {hole.map((r, i) => <PlayingCard key={`h${i}`} card={card(r, i + 7, 'hole')} disabled pairColor={board.includes(r) ? { color: 'var(--gold)', glow: 'rgba(255,215,0,0.45)' } : null} />)}
                   <span className="fiveup-hint">{displayMatches.length === 0 ? 'No real matches — Claim a bluff or Pass.' : `${displayMatches.length} real match${displayMatches.length > 1 ? 'es' : ''} (gold).`}</span>
                 </div>

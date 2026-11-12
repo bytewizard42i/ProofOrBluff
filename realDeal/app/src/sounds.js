@@ -332,6 +332,35 @@ export function playGameLost() {
   setTimeout(playYeoww, 600);
 }
 
+/** Villain "mwa-ha-ha-ha-haaa" — seven descending sawtooth pulses, each
+ *  lower and slightly longer, the last one held. ~1.7 s total. Played when
+ *  the Ai takes a hand or wins the game. */
+export function playEvilLaugh() {
+  if (!ensureCtx()) return;
+  const starts = [0, 0.22, 0.44, 0.66, 0.88, 1.08, 1.26];
+  const freqs = [300, 275, 250, 222, 196, 175, 158];   // ~300 Hz down to ~150
+  const durs = [0.16, 0.16, 0.17, 0.17, 0.18, 0.2, 0.5]; // last "haaa" is held
+  starts.forEach((t, i) => {
+    const f = freqs[i];
+    tone({ type: 'sawtooth', freq: f, freqEnd: f * 0.8, t0: t, dur: durs[i], gain: 0.3 });
+    tone({ type: 'square',   freq: f * 0.5, freqEnd: f * 0.4, t0: t, dur: durs[i], gain: 0.1 });
+  });
+}
+
+/** Card riffle — ~10 short bright noise bursts accelerating over ~0.5 s,
+ *  closed by a soft table thump. Played while the deal transition runs. */
+export function playShuffle() {
+  if (!ensureCtx()) return;
+  let t = 0;
+  for (let i = 0; i < 10; i += 1) {
+    // High `lowpass` keeps the bursts bright (the helper only filters low).
+    noise({ t0: t, dur: 0.035, gain: 0.32, lowpass: i % 2 ? 6000 : 9000 });
+    t += 0.07 - i * 0.0045; // ~70 ms apart shrinking to ~30 ms
+  }
+  tone({ type: 'sine', freq: 110, freqEnd: 55, t0: t + 0.02, dur: 0.12, gain: 0.4 });
+  noise({ t0: t + 0.02, dur: 0.05, gain: 0.2, lowpass: 900 });
+}
+
 /** Quick chip-click chime for the player's submit/accept/challenge press. */
 export function playSubmitClick() {
   if (!ensureCtx()) return;

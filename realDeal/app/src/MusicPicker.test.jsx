@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { MUSIC_TRACKS, SYNTH_TRACK_ID, DEFAULT_TRACK_ID, findMusicTrack } from './musicTracks.js';
 
 describe('custom soundtrack catalogue', () => {
-  it('offers Three Aces first (the default), the synth loop, and every custom MP3 with a unique id and title', () => {
+  it('offers Proof or Bluff — Long first (the default), the synth loop, and every custom MP3 with a unique id and title', () => {
     expect(MUSIC_TRACKS[0].id).toBe(DEFAULT_TRACK_ID);
-    expect(DEFAULT_TRACK_ID).toBe('three-aces');
+    expect(DEFAULT_TRACK_ID).toBe('pob-long-5');
     expect(MUSIC_TRACKS.some((t) => t.id === SYNTH_TRACK_ID)).toBe(true);
     expect(MUSIC_TRACKS[0].url).toMatch(/\.mp3$/);
     expect(MUSIC_TRACKS.find((t) => t.id === SYNTH_TRACK_ID).url).toBeNull();
@@ -20,7 +20,7 @@ describe('custom soundtrack catalogue', () => {
   });
 
   it('falls back to the default track for unknown or stale ids', () => {
-    expect(findMusicTrack('does-not-exist').id).toBe(DEFAULT_TRACK_ID);
+    expect(findMusicTrack('does-not-exist').id).toBe('pob-long-5');
     expect(findMusicTrack('three-aces').title).toMatch(/Three Aces/);
   });
 });

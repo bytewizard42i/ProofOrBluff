@@ -3008,6 +3008,212 @@ button.active {
   background: radial-gradient(ellipse at center, rgba(157, 78, 221, 0.18), rgba(0,0,0,0) 70%); }
 .fiveup-board .card { cursor: pointer; }
 .fiveup-board .card.disabled { cursor: default; opacity: 1; }
+
+/* Neon "board coach" — first-time claimers kept tapping their own hole
+ * cards. Floats LEFT of the board with an arrow nudging toward the five
+ * house cards; pointer-events off so it can never block a tap. */
+.fiveup-board-wrap { position: relative; }
+.board-coach {
+  position: absolute; right: calc(100% + 0.6rem); top: 50%;
+  transform: translateY(-50%);
+  display: flex; align-items: center; gap: 0.6rem;
+  width: max-content; max-width: 15rem;
+  pointer-events: none; z-index: 5;
+  color: #39ff14;
+  font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.95rem;
+  text-align: right;
+  text-shadow: 0 0 6px rgba(57, 255, 20, 0.9), 0 0 18px rgba(57, 255, 20, 0.5);
+  filter:
+    drop-shadow(0 0 8px rgba(57, 255, 20, 0.85))
+    drop-shadow(0 0 22px rgba(57, 255, 20, 0.5));
+}
+.board-coach-arrow {
+  width: 64px; flex-shrink: 0;
+  animation: board-coach-nudge 1.1s ease-in-out infinite;
+}
+/* `translate` (not transform) so the nudge composes with the mobile
+ * rotate(90deg) instead of replacing it. */
+@keyframes board-coach-nudge {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 12px 0; }
+}
+@keyframes board-coach-nudge-down {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-coach-arrow { animation: none; }
+}
+/* Below ~1100px the log column + three table columns leave under ~600px for
+ * the main stack — a 15rem coach would sit on the Quit button's column, so
+ * it moves ABOVE the board, arrow rotated to point down. (Subsumes the
+ * 640px single-column layout.) */
+@media (max-width: 1099px) {
+  .board-coach {
+    position: static; transform: none; max-width: none;
+    flex-direction: column; text-align: center;
+    margin: 0 auto 0.4rem;
+  }
+  .board-coach-arrow { transform: rotate(90deg); animation-name: board-coach-nudge-down; }
+}
+
+/* ── Hand celebration: confetti for the player, alarm lights for the Ai.
+ *    z 45 — above the table and floating log panel (40), below
+ *    .result-overlay (50) and the tutorial/activity overlays (60). ── */
+.hand-celebration {
+  position: fixed; inset: 0; z-index: 45;
+  pointer-events: none;
+  display: flex; align-items: flex-start; justify-content: center;
+}
+.hand-celebration-headline {
+  margin-top: 15vh;
+  font-family: 'Cinzel', serif; font-weight: 700;
+  font-size: clamp(2rem, 6vw, 4rem); text-align: center;
+  animation: hand-headline 3.4s ease both;
+}
+.hand-celebration--human .hand-celebration-headline {
+  color: #ffd700;
+  text-shadow: 0 0 12px rgba(255, 215, 0, 0.9), 0 0 42px rgba(255, 215, 0, 0.5), 0 0 90px rgba(57, 255, 20, 0.3);
+}
+.hand-celebration--bot .hand-celebration-headline {
+  color: #ff2a2a;
+  text-shadow: 0 0 12px rgba(255, 42, 42, 0.95), 0 0 42px rgba(255, 42, 42, 0.6);
+}
+@keyframes hand-headline {
+  0% { opacity: 0; transform: scale(0.6); }
+  12% { opacity: 1; transform: scale(1.08); }
+  20% { transform: scale(1); }
+  78% { opacity: 1; }
+  100% { opacity: 0; transform: scale(0.96); }
+}
+.hand-celebration--bot { animation: hand-celebration-out 2.6s ease 0.2s forwards; }
+@keyframes hand-celebration-out {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.hand-confetti { position: absolute; inset: 0; overflow: hidden; }
+.hand-confetti-piece {
+  position: absolute; top: -8%; left: var(--x);
+  width: var(--size); height: var(--size);
+  background: var(--color);
+  animation: hand-confetti-fall var(--dur) var(--delay) cubic-bezier(0.2, 0.6, 0.4, 1) forwards;
+}
+.hand-confetti-piece--round { border-radius: 50%; }
+@keyframes hand-confetti-fall {
+  0% { transform: translate3d(0, -4vh, 0) rotate(0deg); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translate3d(var(--drift), 112vh, 0) rotate(var(--spin)); opacity: 0; }
+}
+/* Bot alarm: red edge vignette + two corner beacons. Flash period 0.55 s
+ * ≈ 1.8 flashes/s — under the 2/s photosensitivity ceiling. */
+.hand-celebration--bot {
+  background: radial-gradient(ellipse at center, transparent 42%, rgba(255, 0, 0, 0.32) 100%);
+}
+.hand-alarm-beacon {
+  position: absolute; top: -12vmax;
+  width: 62vmax; height: 62vmax;
+  background: radial-gradient(circle, rgba(255, 30, 30, 0.5), transparent 62%);
+  animation: hand-alarm-flash 0.55s steps(1, end) infinite;
+}
+.hand-alarm-beacon--tl { left: -22vmax; }
+.hand-alarm-beacon--tr { right: -22vmax; animation-delay: 0.275s; }
+@keyframes hand-alarm-flash {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.12; }
+}
+
+/* ── Deal transition: two felt curtains + neon round card. z 48 — above the
+ *    celebration (45), still below result/tutorial overlays. pointer-events
+ *    stay ON so nothing can be tapped mid-deal. ── */
+.hand-transition {
+  position: fixed; inset: 0; z-index: 48;
+  pointer-events: auto;
+  background: rgba(8, 4, 18, 0.55);
+}
+.hand-curtain {
+  position: absolute; top: 0; bottom: 0; width: 50.6%;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0 2px, transparent 2px 16px),
+    linear-gradient(180deg, #1a0b2e, #2a1245 55%, #1a0b2e);
+  will-change: transform;
+}
+.hand-curtain--left { left: 0; transform: translateX(-102%); border-right: 1px solid rgba(255, 215, 0, 0.22); }
+.hand-curtain--right { right: 0; transform: translateX(102%); border-left: 1px solid rgba(255, 215, 0, 0.22); }
+.hand-transition--in .hand-curtain--left { animation: hand-curtain-l-in 0.35s cubic-bezier(0.75, 0, 0.25, 1) both; }
+.hand-transition--in .hand-curtain--right { animation: hand-curtain-r-in 0.35s cubic-bezier(0.75, 0, 0.25, 1) both; }
+.hand-transition--out .hand-curtain--left { animation: hand-curtain-l-out 0.4s cubic-bezier(0.75, 0, 0.25, 1) both; }
+.hand-transition--out .hand-curtain--right { animation: hand-curtain-r-out 0.4s cubic-bezier(0.75, 0, 0.25, 1) both; }
+@keyframes hand-curtain-l-in { from { transform: translateX(-102%); } to { transform: translateX(0); } }
+@keyframes hand-curtain-r-in { from { transform: translateX(102%); } to { transform: translateX(0); } }
+@keyframes hand-curtain-l-out { from { transform: translateX(0); } to { transform: translateX(-102%); } }
+@keyframes hand-curtain-r-out { from { transform: translateX(0); } to { transform: translateX(102%); } }
+.hand-transition-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.45rem;
+  opacity: 0; transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.hand-transition--in .hand-transition-center { opacity: 1; transition-delay: 0.38s; }
+.hand-transition--out .hand-transition-center { opacity: 0; transition-delay: 0s; transition-duration: 0.18s; }
+.hand-card-backs { display: flex; gap: 0.35rem; margin-bottom: 0.35rem; }
+.hand-card-back {
+  width: 30px; height: 42px; border-radius: 5px;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.07) 0 3px, transparent 3px 7px),
+    linear-gradient(160deg, #3b2a63, #241543);
+  border: 1px solid rgba(157, 78, 221, 0.55);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  animation: hand-card-riffle 1.1s ease-in-out infinite;
+}
+.hand-card-back:nth-child(1) { transform: rotate(-18deg) translateY(5px); animation-delay: 0s; }
+.hand-card-back:nth-child(2) { transform: rotate(-9deg) translateY(1px); animation-delay: 0.08s; }
+.hand-card-back:nth-child(3) { transform: rotate(0deg); animation-delay: 0.16s; }
+.hand-card-back:nth-child(4) { transform: rotate(9deg) translateY(1px); animation-delay: 0.08s; }
+.hand-card-back:nth-child(5) { transform: rotate(18deg) translateY(5px); animation-delay: 0s; }
+@keyframes hand-card-riffle {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -5px; }
+}
+.hand-transition-round {
+  font-family: 'Cinzel', serif; font-weight: 700;
+  font-size: clamp(2.4rem, 7vw, 4.6rem);
+  color: #39ff14;
+  text-shadow: 0 0 14px rgba(57, 255, 20, 0.9), 0 0 46px rgba(57, 255, 20, 0.45);
+  animation: hand-round-pop 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) 0.45s both;
+}
+.hand-transition-sub {
+  color: #e8dff5; font-size: 1.05rem; letter-spacing: 0.14em; text-transform: uppercase;
+  opacity: 0.85;
+  animation: hand-round-pop 0.5s ease 0.55s both;
+}
+@keyframes hand-round-pop {
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Celebration: no confetti motion, no alarm flashing — just the headline
+   * with a single soft fade. */
+  .hand-confetti { display: none; }
+  .hand-alarm-beacon { display: none; }
+  .hand-celebration--bot { animation: none; background: none; }
+  .hand-celebration-headline { animation: hand-headline-soft 2.8s ease both; }
+  @keyframes hand-headline-soft {
+    0% { opacity: 0; }
+    15% { opacity: 1; }
+    75% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  /* Transition: curtains become a simple background cross-fade. */
+  .hand-curtain { display: none; }
+  .hand-transition { background: #12081f; animation: hand-fade-in 0.35s ease both; }
+  .hand-transition--out { animation: hand-fade-out 0.4s ease both; }
+  @keyframes hand-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes hand-fade-out { from { opacity: 1; } to { opacity: 0; } }
+  .hand-transition-center { transition: none; opacity: 1; }
+  .hand-card-back, .hand-transition-round, .hand-transition-sub { animation: none; }
+}
 .fiveup-showdown { display: flex; align-items: center; justify-content: center; gap: 0.7rem; flex-wrap: wrap;
   color: var(--text); font-size: 0.95rem; padding: 0.5rem 0.9rem; border-radius: 12px;
   border: 1px solid rgba(157, 78, 221, 0.35); background: rgba(20, 12, 36, 0.55); }

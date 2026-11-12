@@ -13,16 +13,16 @@ import midnightProof7 from '../../../media/Audio/Midnight Proof-7.mp3';
 
 // `url: null` means "synthesize in Web Audio" (the original lounge loop).
 export const SYNTH_TRACK_ID = 'lounge-synth';
-// What a first-time visitor hears. John's pick (2026-10-05): Three Aces.
-export const DEFAULT_TRACK_ID = 'three-aces';
+// What a first-time visitor hears. John's pick (2026-11-12): Proof or Bluff — Long.
+export const DEFAULT_TRACK_ID = 'pob-long-5';
 
 export const MUSIC_TRACKS = Object.freeze([
-  { id: DEFAULT_TRACK_ID, title: 'Three Aces — Smokey Echo', url: threeAces },
+  { id: DEFAULT_TRACK_ID, title: 'Proof or Bluff — Long', url: pobLong5 },
+  { id: 'three-aces', title: 'Three Aces — Smokey Echo', url: threeAces },
   { id: SYNTH_TRACK_ID, title: 'Lounge Piano (synth)', url: null },
   { id: 'smokey-long', title: 'Smokey Lounge (long)', url: smokeyLong },
   { id: 'pob-short-great', title: 'Proof or Bluff — Short I', url: pobShortGreat },
   { id: 'pob-short-sexier', title: 'Proof or Bluff — Short II', url: pobShortSexier },
-  { id: 'pob-long-5', title: 'Proof or Bluff — Long', url: pobLong5 },
   { id: 'pob-6', title: 'Proof or Bluff — VI', url: pob6 },
   { id: 'midnight-proof-7', title: 'Midnight Proof', url: midnightProof7 },
   { id: 'midnight-chains', title: 'Midnight Chains — Epic', url: midnightChains },
